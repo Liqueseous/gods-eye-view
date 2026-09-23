@@ -1,0 +1,15 @@
+.git
+.github
+.agents
+node_modules
+.env*
+pinokio/ENVIRONMENT
+pinokio/.installed
+dist
+build-output
+qa-shots
+screenshots
+output
+.gev-cache
+.gev-logs
+*.log
