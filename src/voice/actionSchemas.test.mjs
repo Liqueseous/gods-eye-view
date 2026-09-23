@@ -15,13 +15,14 @@ const stable = (value) =>
         )
       : value;
 
-test('the complete Realtime tool payload retains its pre-extraction contract and wording', () => {
+test('the complete Realtime tool payload pins the additive analyst, satellite and Local ADS-B release', () => {
   const digest = createHash('sha256')
     .update(JSON.stringify(stable(GEV_REALTIME_TOOLS)))
     .digest('hex');
   assert.equal(
     digest,
-    '956381c3456d3644ed7c9cda72910dc68a34d9191e0b3e414ee200c348245214',
+    // Re-derived for the additive `local-adsb` set_layer_visibility value.
+    '07c2439e085cce9b9e1b36dfd01e2a688e66957db464c740627dd378536d904b',
   );
 });
 
@@ -75,4 +76,24 @@ test('metadata cannot add tools, fields, types or enum values', () => {
     { fly_to_location: { description: { nested: 'invalid' } } },
   ])
     assert.throws(() => createActionTools(descriptions), TypeError);
+});
+
+test('all legacy action arguments are byte-identical after removing the deliberate additions', () => {
+  const legacy = structuredClone(GEV_ACTION_SCHEMAS).filter(
+    (tool) => tool.name !== 'next_satellite_pass',
+  );
+  const layers = legacy.find((tool) => tool.name === 'analyst_query').parameters
+    .properties.layers.items;
+  layers.enum = layers.enum.filter(
+    (key) => !['satellites', 'local-datacenters', 'local-dams'].includes(key),
+  );
+  // Local ADS-B is an additive set_layer_visibility enum value.
+  const visibility = legacy.find((tool) => tool.name === 'set_layer_visibility')
+    .parameters.properties.layerId;
+  visibility.enum = visibility.enum.filter((key) => key !== 'local-adsb');
+  // Independently derived by executing trusted c9f9896 actionSchemas in the restricted container.
+  assert.equal(
+    createHash('sha256').update(JSON.stringify(legacy)).digest('hex'),
+    '820fff21658f6907e1010b2b79c5431a77f4e34afd2277d62d8de46c368b6f8c',
+  );
 });
