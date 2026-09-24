@@ -24,20 +24,32 @@ Priority is ranked by:
 
 | Priority | Feature | Why it matters | Target outcome |
 | --- | --- | --- | --- |
-| 1 | Mission / Incident Command Mode | Turns the app into a practical operations dashboard instead of only a visualizer | A usable live command surface for emergencies, security, and logistics |
+| 1 | ~~Mission / Incident Command Mode~~ | Turns the app into a practical operations dashboard instead of only a visualizer | A usable live command surface for emergencies, security, and logistics |
 | 2 | Natural-Language Analyst Assistant | Makes the app more accessible and turns complex queries into natural interactions | Users can ask for insights instead of manually filtering layers |
 | 3 | Custom Live Data Ingestion and User-Defined Layers | Enables domain-specific monitoring and community-driven extension | Anyone can add their own feeds, layers, and geospatial data |
 
 ### 1) Mission / Incident Command Mode
 
-Add a dedicated operational mode for field and emergency workflows.
+**Status: Complete.** The first operational slice is implemented in Command Mode.
 
-Planned capabilities:
-- incident overlays and event polygons
-- safe-zone and exclusion-zone controls
-- route and proximity alerts
-- operator briefing panel
-- multi-resource tracking for emergency or logistics teams
+Delivered capabilities:
+- Command Mode toggle in the Display panel
+- manually entered incident coordinates
+- click-to-place incident coordinates on the globe
+- severity-colored persistent incident markers
+- incident count and status feedback
+- incident list with Focus and Remove actions
+- clear annotations control
+- shared pointer ownership and Escape-to-cancel placement
+
+Remaining follow-up capabilities:
+
+- [x] incident point overlays
+- [ ] event polygons
+- [ ] safe-zone and exclusion-zone controls
+- [ ] route and proximity alerts
+- [ ] operator briefing panel
+- [ ] multi-resource tracking for emergency or logistics teams
 
 Best fit:
 - emergency response
@@ -169,7 +181,7 @@ Planned capabilities:
 ## Recommended execution order
 
 ### Phase 1
-1. Mission / Incident Command Mode
+1. ~~Mission / Incident Command Mode~~
 2. Natural-Language Analyst Assistant
 3. Custom Live Data Ingestion and User-Defined Layers
 

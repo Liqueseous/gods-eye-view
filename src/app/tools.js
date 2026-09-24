@@ -56,7 +56,7 @@ export function createApplicationTools({
   // lifetime rather than to whoever last pressed the button.
   const drawTool = initDrawTool({ viewer, annotations });
   defer(() => drawTool?.destroy());
-  const incidentCommand = initIncidentCommand({ annotations });
+  const incidentCommand = initIncidentCommand({ viewer, annotations });
   defer(() => {
     if (window.__gevIncidentCommand === incidentCommand)
       delete window.__gevIncidentCommand;

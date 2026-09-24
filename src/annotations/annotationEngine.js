@@ -1075,6 +1075,22 @@ export function createAnnotationEngine({
   const engine = {
     annotate,
     clear,
+    remove(ids) {
+      const wanted = new Set(Array.isArray(ids) ? ids : [ids]);
+      let removed = 0;
+      for (const id of wanted) {
+        const anno = annotations.get(id);
+        if (!anno) continue;
+        renderer.remove(anno);
+        annotations.delete(id);
+        removed += 1;
+      }
+      if (removed) {
+        renderer.sync(annotations);
+        syncAnnotationHold();
+      }
+      return removed;
+    },
     destroy() {
       if (destroyed) return;
       destroyed = true;
