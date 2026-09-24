@@ -1250,6 +1250,7 @@
       "src/scenes/nepalEvidencePack.js",
       "src/data/bhoteKoshiEvent.js",
       "src/ui/imagerySplit.js",
+      "src/ui/incidentCommand.js",
       "src/data/bhoteKoshiEmbeddedMedia.js",
       "src/data/bhoteKoshiLocator.js",
       "src/data/bhoteKoshiIncidentPlaces.js",

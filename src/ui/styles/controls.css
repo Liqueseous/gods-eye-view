@@ -506,6 +506,50 @@
   color: var(--accent);
 }
 
+.command-mode-panel {
+  display: block;
+  min-width: 280px;
+}
+
+.command-mode-panel[hidden] {
+  display: none;
+}
+
+.incident-form,
+.command-mode-meta {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.incident-form .pp-text-input {
+  min-width: 74px;
+  flex: 1 1 74px;
+}
+
+.incident-form .pp-text-input[name='label'] {
+  flex-basis: 130px;
+}
+
+.command-mode-meta {
+  justify-content: space-between;
+  margin-top: 5px;
+  color: rgba(190, 221, 230, 0.64);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.command-mode-meta [data-state='error'] {
+  color: #ff6b6b;
+}
+
+body.command-mode #hud {
+  filter: drop-shadow(0 0 8px rgba(255, 107, 107, 0.24));
+}
+
 /* ── Bloom Slider (inline with toggle) ───────── */
 .pp-toggle-group {
   display: flex;

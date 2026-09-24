@@ -57,6 +57,31 @@
       <div id="param-sliders"></div>
     </div>
     <div class="pp-toggle-group">
+      <button class="pp-toggle-btn" id="command-mode-toggle" title="Incident Command Mode" aria-pressed="false">
+        <span class="pp-icon material-symbols-outlined" aria-hidden="true">shield</span>
+        <span class="pp-label">Command</span>
+      </button>
+      <div class="pp-slider-row command-mode-panel" id="command-mode-panel" hidden>
+        <form id="incident-form" class="incident-form">
+          <input class="pp-text-input" name="label" maxlength="80" placeholder="Incident name" aria-label="Incident name" required>
+          <input class="pp-text-input" name="latitude" inputmode="decimal" placeholder="Latitude" aria-label="Incident latitude" required>
+          <input class="pp-text-input" name="longitude" inputmode="decimal" placeholder="Longitude" aria-label="Incident longitude" required>
+          <select class="pp-select" name="severity" aria-label="Incident severity">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+          <button class="pp-mode-btn" type="submit">Add</button>
+        </form>
+        <div class="command-mode-meta">
+          <span id="command-mode-status" aria-live="polite">Command mode offline</span>
+          <span>INCIDENTS <strong id="incident-count">0</strong></span>
+          <button class="pp-mode-btn draw-clear-btn" id="incident-clear" type="button">Clear annotations</button>
+        </div>
+      </div>
+    </div>
+    <div class="pp-toggle-group">
       <!-- 3D aircraft is DEFAULT-ON in Proximity (owner directive 2026-08-22), so the
            button ships lit and the mode row ships open — the same markup-carries-the-default
            convention as #scope-toggle. ui.js re-syncs both from durable layer state, which
