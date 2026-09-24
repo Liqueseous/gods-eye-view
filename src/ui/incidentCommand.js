@@ -19,6 +19,7 @@ const STATUS_COUNT_LABELS = {
   contained: 'CNT',
   resolved: 'RES',
 };
+const INCIDENT_STORAGE_KEY = 'gev.command.incidents.v1';
 const SEVERITY_COLORS = {
   low: 'cyan',
   medium: 'amber',
@@ -92,10 +93,63 @@ function formatIncidentTime(value) {
   });
 }
 
+export function readStoredIncidents(storage) {
+  try {
+    const raw = storage?.getItem(INCIDENT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (incident) =>
+          incident &&
+          typeof incident.label === 'string' &&
+          Number.isFinite(incident.latitude) &&
+          incident.latitude >= -90 &&
+          incident.latitude <= 90 &&
+          Number.isFinite(incident.longitude) &&
+          incident.longitude >= -180 &&
+          incident.longitude <= 180 &&
+          SEVERITIES.has(incident.severity) &&
+          INCIDENT_STATUSES.includes(incident.status),
+      )
+      .map((incident) => ({
+        label: incident.label.slice(0, 80),
+        latitude: incident.latitude,
+        longitude: incident.longitude,
+        severity: incident.severity,
+        status: incident.status,
+        createdAt: Number.isFinite(incident.createdAt)
+          ? incident.createdAt
+          : Date.now(),
+        updatedAt: Number.isFinite(incident.updatedAt)
+          ? incident.updatedAt
+          : Date.now(),
+      }));
+  } catch (error) {
+    console.warn('[Command] Saved incidents could not be read:', error);
+    return [];
+  }
+}
+
+function writeStoredIncidents(incidents, storage) {
+  try {
+    storage?.setItem(
+      INCIDENT_STORAGE_KEY,
+      JSON.stringify(
+        incidents.map(({ annotationId, ...incident }) => incident),
+      ),
+    );
+  } catch (error) {
+    console.warn('[Command] Incidents could not be saved:', error);
+  }
+}
+
 export function initIncidentCommand({
   viewer,
   annotations,
   requestRender = governorRequestRender,
+  storage = typeof localStorage === 'undefined' ? null : localStorage,
 } = {}) {
   const toggle = document.getElementById('command-mode-toggle');
   const panel = document.getElementById('command-mode-panel');
@@ -117,6 +171,7 @@ export function initIncidentCommand({
   let placeHandler = null;
   let placeLease = null;
   let statusFilter = 'all';
+  const storedIncidents = readStoredIncidents(storage);
 
   const listen = (target, type, listener) => {
     target.addEventListener(type, listener);
@@ -204,6 +259,7 @@ export function initIncidentCommand({
               if (!result?.ok)
                 throw new Error('marker update returned no result');
               incident.annotationId = result.ids?.[0] || null;
+              writeStoredIncidents(incidents, storage);
               setStatus(`Status updated · ${incident.label}`);
             } catch (error) {
               incident.status = previousStatus;
@@ -236,6 +292,7 @@ export function initIncidentCommand({
               annotations.remove?.(incident.annotationId);
             const index = incidents.indexOf(incident);
             if (index >= 0) incidents.splice(index, 1);
+            writeStoredIncidents(incidents, storage);
             setStatus(`Incident removed · ${incident.label}`);
             sync();
           });
@@ -255,8 +312,7 @@ export function initIncidentCommand({
     setStatus(active ? 'Command mode ready' : 'Command mode offline');
     sync();
   };
-  const onSubmit = async (event) => {
-    event.preventDefault();
+  const createIncidentFromForm = async () => {
     if (destroyed) return;
     const fields = new FormData(form);
     const parsed = parseIncidentForm({
@@ -289,10 +345,15 @@ export function initIncidentCommand({
     incident.annotationId = result.ids?.[0] || null;
     incident.createdAt = Date.now();
     incident.updatedAt = incident.createdAt;
+    writeStoredIncidents(incidents, storage);
     form.reset();
     form.elements.severity.value = 'medium';
     setStatus(`Incident recorded · ${incident.label}`);
     sync();
+  };
+  const onSubmit = async (event) => {
+    event.preventDefault();
+    await createIncidentFromForm();
   };
   const onClear = () => {
     if (!incidents.length) {
@@ -305,6 +366,7 @@ export function initIncidentCommand({
     if (typeof annotations.remove === 'function') annotations.remove(ids);
     else annotations.clear();
     incidents.length = 0;
+    writeStoredIncidents(incidents, storage);
     setStatus('Annotation board cleared.');
     sync();
   };
@@ -329,7 +391,7 @@ export function initIncidentCommand({
     setStatus('Click the globe to place the incident.');
     place.classList.add('active');
     placeHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-    placeHandler.setInputAction((event) => {
+    placeHandler.setInputAction(async (event) => {
       const canvas = viewer.scene.canvas;
       const width = canvas.clientWidth || canvas.width || 1;
       const height = canvas.clientHeight || canvas.height || 1;
@@ -345,8 +407,12 @@ export function initIncidentCommand({
       form.elements.latitude.value = point.lat.toFixed(5);
       form.elements.longitude.value = point.lon.toFixed(5);
       stopPlacing();
-      setStatus('Coordinates captured. Add an incident name.');
-      form.elements.label.focus();
+      if (String(form.elements.label.value || '').trim()) {
+        await createIncidentFromForm();
+      } else {
+        setStatus('Coordinates captured. Add an incident name.');
+        form.elements.label.focus();
+      }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   };
   const onKeyDown = (event) => {
@@ -359,6 +425,30 @@ export function initIncidentCommand({
   if (place) listen(place, 'click', onPlace);
   if (filter) listen(filter, 'change', onFilter);
   listen(document, 'keydown', onKeyDown);
+  void (async () => {
+    for (const incident of storedIncidents) {
+      try {
+        const result = await annotations.annotate(
+          [incidentMarkerSpec(incident)],
+          { persist: true },
+        );
+        if (result?.ok) {
+          incident.annotationId = result.ids?.[0] || null;
+          incidents.push(incident);
+        }
+      } catch (error) {
+        console.warn(
+          `[Command] Saved incident could not be restored: ${incident.label}`,
+          error,
+        );
+      }
+    }
+    sync();
+    if (incidents.length)
+      setStatus(
+        `Restored ${incidents.length} saved incident${incidents.length === 1 ? '' : 's'}.`,
+      );
+  })();
   sync();
 
   const api = {

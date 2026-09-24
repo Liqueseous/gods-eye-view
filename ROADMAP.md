@@ -44,6 +44,10 @@ Delivered capabilities:
 - status-aware incident pins with state labels and colors
 - severity remains the pin color while status remains visible in the label
 - status symbols provide a second at-a-glance pin and list cue
+- color-coded status and severity count summaries
+- browser-persisted incident memory across page refreshes
+- zoom-scaled incident badges that remain readable at distance
+- one-click incident creation when placing with a populated incident name
 - clear annotations control
 - shared pointer ownership and Escape-to-cancel placement
 
@@ -54,6 +58,10 @@ Remaining follow-up capabilities:
 - [x] status-aware incident pin indicators
 - [x] severity-aware incident pin styling
 - [x] status symbol indicators
+- [x] color-coded status and severity summaries
+- [x] persisted incident memory
+- [x] zoom-scaled incident badges
+- [x] click-to-create incident placement flow
 - [ ] event polygons
 - [ ] safe-zone and exclusion-zone controls
 - [ ] route and proximity alerts
