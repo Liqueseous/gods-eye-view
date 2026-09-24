@@ -6,6 +6,32 @@
   panel method.
 - On phones the title bar sits 16 px from the top so both Radio broadcast
   waves stay on-screen.
+## Unreleased — UI memory follow-up (since `1daa4d6`)
+
+### Added
+
+- Restore the expanded state of the **Command** and **Draw** controls from
+  browser UI memory on startup.
+- Restore the selected Draw shape and color when those controls were saved.
+- Keep the existing reset action available for clearing saved panel and display
+  preferences.
+
+### Fixed
+
+- Command and Draw no longer reset themselves to inactive after the generic UI
+  memory layer restores their saved button state.
+- Clean UI is now treated as a transient presentation mode instead of a
+  persisted control selection.
+- Prevent stale Clean UI memory from highlighting the Clean UI button after a
+  normal refresh.
+- Make the Clean UI button's highlight reflect the actual `ui-clean-view`
+  body state.
+
+### Validation
+
+- Focused Draw, Command, Weather, panel lifecycle, and UI regression tests
+  pass.
+- Formatting and whitespace checks pass.
 
 - Add a **Recent Imagery** data layer (NASA GIBS · HLS + VIIRS, keyless).
   Select a box (drag, the current view, or around a pin; up to 1,000 km a
