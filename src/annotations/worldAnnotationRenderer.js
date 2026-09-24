@@ -309,6 +309,7 @@ export function createWorldAnnotationRenderer(viewer) {
               width: 24,
               height: 24,
               verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              scaleByDistance: new Cesium.NearFarScalar(500, 1.2, 30000, 0.55),
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             }
           : undefined,

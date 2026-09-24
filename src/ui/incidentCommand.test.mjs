@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { incidentMarkerSpec, parseIncidentForm } from './incidentCommand.js';
+import {
+  incidentMarkerSpec,
+  parseIncidentForm,
+  readStoredIncidents,
+} from './incidentCommand.js';
+
+function memoryStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+}
 
 test('incident form parsing normalizes a valid incident', () => {
   assert.deepEqual(
@@ -49,6 +61,40 @@ test('incident form parsing falls back to medium for unknown severity', () => {
     latitude: '0',
     longitude: '0',
     severity: 'urgent',
+  });
+
+  test('stored incidents restore only valid command records', () => {
+    const storage = memoryStorage({
+      'gev.command.incidents.v1': JSON.stringify([
+        {
+          label: 'Saved fire',
+          latitude: 30,
+          longitude: -97,
+          severity: 'critical',
+          status: 'active',
+          createdAt: 10,
+          updatedAt: 20,
+        },
+        {
+          label: 'Invalid',
+          latitude: 95,
+          longitude: 0,
+          severity: 'low',
+          status: 'new',
+        },
+      ]),
+    });
+    assert.deepEqual(readStoredIncidents(storage), [
+      {
+        label: 'Saved fire',
+        latitude: 30,
+        longitude: -97,
+        severity: 'critical',
+        status: 'active',
+        createdAt: 10,
+        updatedAt: 20,
+      },
+    ]);
   });
 
   test('incident marker spec exposes status and severity on the pin', () => {

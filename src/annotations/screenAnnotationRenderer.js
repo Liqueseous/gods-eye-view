@@ -40,6 +40,10 @@ const PALETTE = {
 const MARK_SCALE_NEAR_H = 800; // m: at/below this, full-size reticles
 const MARK_SCALE_FAR_H = 6000; // m: at/above this, minimum size
 const MARK_SCALE_MIN = 0.32; // floor so dots never vanish
+const BADGE_SCALE_NEAR_H = 800;
+const BADGE_SCALE_FAR_H = 30000;
+const BADGE_SCALE_MIN = 0.55;
+const BADGE_SCALE_MAX = 1.2;
 const RING_OUTER_R = 34;
 const RING_INNER_R = 18;
 const DOT_R = 5;
@@ -49,6 +53,13 @@ function markScale(h) {
   if (h >= MARK_SCALE_FAR_H) return MARK_SCALE_MIN;
   const t = (h - MARK_SCALE_NEAR_H) / (MARK_SCALE_FAR_H - MARK_SCALE_NEAR_H);
   return 1 - t * (1 - MARK_SCALE_MIN);
+}
+
+export function badgeScale(h) {
+  if (!(h > BADGE_SCALE_NEAR_H)) return BADGE_SCALE_MAX;
+  if (h >= BADGE_SCALE_FAR_H) return BADGE_SCALE_MIN;
+  const t = (h - BADGE_SCALE_NEAR_H) / (BADGE_SCALE_FAR_H - BADGE_SCALE_NEAR_H);
+  return BADGE_SCALE_MAX - t * (BADGE_SCALE_MAX - BADGE_SCALE_MIN);
 }
 
 export function createScreenAnnotationRenderer(
@@ -562,7 +573,9 @@ export function createScreenAnnotationRenderer(
             parts.dot.setAttribute('r', (baseDotR * mScale).toFixed(1));
           }
           if (parts.badge) {
-            const badgeSize = 28 * mScale;
+            const badgeSize =
+              28 *
+              badgeScale(viewer.camera.positionCartographic?.height ?? 1000);
             parts.badge.setAttribute('x', (p.x - badgeSize / 2).toFixed(1));
             parts.badge.setAttribute('y', (p.y - badgeSize / 2).toFixed(1));
             parts.badge.setAttribute('width', badgeSize.toFixed(1));
