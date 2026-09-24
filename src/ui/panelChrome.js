@@ -188,6 +188,7 @@ export class PanelChrome {
     for (const control of document.querySelectorAll(
       '.panel-collapsible [id]',
     )) {
+      if (control.id === 'clean-view-toggle') continue;
       const state = saved[control.id];
       if (!state) continue;
       if ('value' in control && state.value !== undefined)
@@ -200,9 +201,19 @@ export class PanelChrome {
       if (typeof state.checkedRadio === 'boolean')
         control.setAttribute('aria-checked', String(state.checkedRadio));
     }
+    const cleanViewButton = document.getElementById('clean-view-toggle');
+    cleanViewButton?.classList.toggle(
+      'active',
+      document.body.classList.contains('ui-clean-view'),
+    );
     const save = (event) => {
       const control = event.target.closest?.('.panel-collapsible [id]');
-      if (!control || control.id === 'ui-memory-reset') return;
+      if (
+        !control ||
+        control.id === 'ui-memory-reset' ||
+        control.id === 'clean-view-toggle'
+      )
+        return;
       queueMicrotask(() => {
         let next = {};
         try {
