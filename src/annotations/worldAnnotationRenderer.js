@@ -302,6 +302,16 @@ export function createWorldAnnotationRenderer(viewer) {
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           }
         : undefined,
+      billboard:
+        point && anno.markerIcon
+          ? {
+              image: anno.markerIcon,
+              width: 24,
+              height: 24,
+              verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            }
+          : undefined,
       label: anno.label ? labelGraphic(anno, base) : undefined,
     });
   }

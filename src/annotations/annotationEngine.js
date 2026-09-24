@@ -862,6 +862,7 @@ export function createAnnotationEngine({
       id,
       type,
       color,
+      markerIcon: typeof spec?.markerIcon === 'string' ? spec.markerIcon : null,
       label,
       createdAt: now,
       ttlMs: persist ? null : Number(spec?.ttlMs) || DEFAULT_TTL_MS,
