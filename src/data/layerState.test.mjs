@@ -439,6 +439,18 @@ test('compact URL omits absent-meaning option state and still resolves to it', (
   assert.deepEqual(roundTrip.options.satellites.selectedSatTrackingId, null);
 });
 
+test('a fresh boot enables the weather overlays by default', () => {
+  const state = createDefaultLayerState();
+  assert.deepEqual(state.enabledLayerIds, [
+    'weather-lightning',
+    'weather-radar',
+    'weather-satellite',
+  ]);
+  assert.equal(state.options['weather-radar'].opacity, 'strong');
+  assert.equal(state.options['weather-satellite'].infrared, 'filtered');
+  assert.equal(state.options['weather-satellite'].product, 'clouds-regional');
+});
+
 test('a fresh boot starts 3D aircraft ON in proximity — codec, both layers, and the rail agree', async () => {
   // Owner directive 2026-08-22: the DISPLAY-rail 3D toggle defaults ON with mode
   // `proximity`, because proximity is itself the budget — models materialize only
@@ -973,6 +985,7 @@ test('share payload wins over local, passive restore writes nothing, and explici
   const share = shareSink();
   const coordinator = new LayerStateCoordinator(manager, share, { storage });
   const explicitEmpty = createDefaultLayerState();
+  explicitEmpty.enabledLayerIds = [];
   await coordinator.start({ shareLayerState: explicitEmpty });
 
   assert.equal(coordinator.source, 'share');
