@@ -95,6 +95,13 @@ export const DATA_CREDITS = [
       '<a href="https://inciweb.wildfire.gov/" target="_blank" rel="noopener">InciWeb</a>',
   },
   {
+    key: 'nws-alerts',
+    html:
+      'Weather alerts: ' +
+      '<a href="https://www.weather.gov/" target="_blank" rel="noopener">NOAA/National Weather Service</a> ' +
+      '· <a href="https://www.weather.gov/disclaimer" target="_blank" rel="noopener">NWS public-data terms</a>',
+  },
+  {
     key: 'overpass',
     html:
       'Road geometry (traffic): ' +

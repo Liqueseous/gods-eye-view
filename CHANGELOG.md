@@ -1,5 +1,20 @@
 # Changelog
 
+- Add the keyless **NWS Weather Alerts** layer to Events. It fetches active NOAA/NWS
+  alerts through a bounded same-origin proxy, renders severity-colored
+  Polygon/MultiPolygon hazard areas, and shows a selectable alert card with
+  headline, area, timing, sender, and instructions. Zone-only alerts without
+  inline geometry are intentionally omitted in this first version.
+- Weather alert cards now resolve colon-delimited NWS identifiers correctly and
+  show a type badge such as `TORNADO`, `FLOOD`, `WINTER`, or `HEAT` separately
+  from the severity accent.
+- Long weather-alert details now wrap inside a 360 px selected-card width cap
+  instead of expanding the card across the viewport.
+- The selected-card width cap is now preserved when entries pass through the
+  shared overlay host.
+- Uncapped selected cards, including fire perimeters, FIRMS, vessel, ALPR,
+  CCTV, radio, transit, bikeshare, directions, and launch cards, retain their
+  natural widths instead of inheriting the weather-alert cap.
 - Transit and Directions rows repaint as soon as their data lands again:
   `refreshLayerStats()` now lives on the layer lifecycle, not only on the
   compatibility facade. `scripts/qa-radio.mjs` uses it instead of a private

@@ -304,6 +304,32 @@ function trackDisplayText(entry) {
   return entry._overlayTrackDisplayText || '';
 }
 
+function wrapOverlayText(ctx, text, font, maxWidth) {
+  const value = String(text ?? '');
+  if (!value) return [''];
+  if (!Number.isFinite(maxWidth) || maxWidth <= 0) return [value];
+  const lines = [];
+  for (const paragraph of value.split(/\r?\n/)) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push('');
+      continue;
+    }
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (!line || measureWorldOverlayText(ctx, candidate, font) <= maxWidth) {
+        line = candidate;
+        continue;
+      }
+      lines.push(line);
+      line = word;
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
 /**
  * Measure the selected entry variant into a caller-owned layout object.
  * @param {CanvasRenderingContext2D} ctx
@@ -324,10 +350,29 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
     : selected
       ? WORLD_OVERLAY_STYLE.fontSelected
       : WORLD_OVERLAY_STYLE.fontTitle;
-  let titleWidth = measureWorldOverlayText(
-    ctx,
-    entry?.title || '',
-    variant === 'label' ? WORLD_OVERLAY_STYLE.fontLabel : titleFont,
+  const titleMeasureFont =
+    variant === 'label' ? WORLD_OVERLAY_STYLE.fontLabel : titleFont;
+  const detailFont = tracked
+    ? WORLD_OVERLAY_STYLE.fontTrackedDetail
+    : WORLD_OVERLAY_STYLE.fontDetail;
+  const maxWidth =
+    selected &&
+    entry?.maxWidth != null &&
+    Number.isFinite(Number(entry.maxWidth))
+      ? Math.max(80, Number(entry.maxWidth))
+      : null;
+  const textMaxWidth = maxWidth
+    ? Math.max(40, maxWidth - 24)
+    : Number.POSITIVE_INFINITY;
+  const titleLines =
+    selected && maxWidth
+      ? wrapOverlayText(ctx, entry?.title || '', titleMeasureFont, textMaxWidth)
+      : [String(entry?.title || '')];
+  let titleWidth = Math.max(
+    ...titleLines.map((line) =>
+      measureWorldOverlayText(ctx, line, titleMeasureFont),
+    ),
+    0,
   );
   if (variant === 'track' && details[0]) {
     titleWidth = measureWorldOverlayText(
@@ -336,19 +381,17 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
       WORLD_OVERLAY_STYLE.fontTrack,
     );
   }
-  let detailWidth = 0;
-  for (let i = 0; i < details.length; i++) {
-    detailWidth = Math.max(
-      detailWidth,
-      measureWorldOverlayText(
-        ctx,
-        details[i],
-        tracked
-          ? WORLD_OVERLAY_STYLE.fontTrackedDetail
-          : WORLD_OVERLAY_STYLE.fontDetail,
-      ),
-    );
-  }
+  const detailLines =
+    selected && maxWidth
+      ? details.flatMap((detail) =>
+          wrapOverlayText(ctx, detail, detailFont, textMaxWidth),
+        )
+      : details.map((detail) => String(detail));
+  const detailWidth = detailLines.reduce(
+    (width, line) =>
+      Math.max(width, measureWorldOverlayText(ctx, line, detailFont)),
+    0,
+  );
 
   out.padX = tracked
     ? 13
@@ -376,8 +419,13 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
           ? 11
           : 13;
   out.lineH = tracked ? 17 : selected ? 15 : 13;
+  if (selected && maxWidth) out.titleH = out.lineH * titleLines.length;
+  out.titleLines = titleLines;
+  out.detailLines = detailLines;
+  out.maxWidth = maxWidth;
   out.thumbW = 0;
   out.thumbH = 0;
+  out.badgeH = 0;
 
   if (variant === 'thumbnail') {
     out.padX = Math.max(0, Number(entry?.thumbnailPadX) || 0);
@@ -394,7 +442,12 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
     out.h = out.padY + out.thumbH + out.titleGap + out.titleH + out.padBottom;
   } else {
     out.w = Math.ceil(Math.max(titleWidth, detailWidth)) + out.padX * 2;
-    out.h = out.padY * 2 + out.titleH + details.length * out.lineH;
+    if (maxWidth) out.w = Math.min(out.w, maxWidth);
+    out.h = out.padY * 2 + out.titleH + detailLines.length * out.lineH;
+    if (selected && entry?.badge) {
+      out.badgeH = 18;
+      out.h += out.badgeH;
+    }
   }
   out.w = Math.max(8, out.w);
   out.h = Math.max(8, out.h);
@@ -644,20 +697,46 @@ function drawCardChrome(
 
 function drawCardText(ctx, entry, placement, selected = false, topOffset = 0) {
   const details = Array.isArray(entry.details) ? entry.details : [];
+  const layout = entry._overlayLayout || {};
+  const titleLines = Array.isArray(layout.titleLines)
+    ? layout.titleLines
+    : [String(entry.title || '')];
+  const detailLines = Array.isArray(layout.detailLines)
+    ? layout.detailLines
+    : details.map((detail) => String(detail));
   const x = placement.rect.x + (selected ? 12 : 9);
   let y = placement.rect.y + (selected ? 8 : 6) + topOffset;
+  if (selected && entry.badge) {
+    const badge = String(entry.badge);
+    ctx.font = WORLD_OVERLAY_STYLE.fontDetail;
+    const badgeWidth = measureWorldOverlayText(ctx, badge, ctx.font) + 10;
+    ctx.fillStyle = colorWithAlpha(
+      entry.badgeAccent || entry.accent || WORLD_OVERLAY_STYLE.accent,
+      0.9,
+    );
+    ctx.beginPath();
+    roundedRectPath(ctx, x, y, badgeWidth, 14, 3);
+    ctx.fill();
+    ctx.fillStyle = WORLD_OVERLAY_STYLE.title;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badge, x + 5, y + 7);
+    y += 18;
+  }
   ctx.fillStyle = WORLD_OVERLAY_STYLE.title;
   ctx.font = selected
     ? WORLD_OVERLAY_STYLE.fontSelected
     : WORLD_OVERLAY_STYLE.fontTitle;
   ctx.textBaseline = 'top';
-  ctx.fillText(String(entry.title || ''), x, y);
-  y += selected ? 15 : 13;
+  const lineH = selected ? 15 : 13;
+  for (const line of titleLines) {
+    ctx.fillText(line, x, y);
+    y += lineH;
+  }
   ctx.fillStyle = WORLD_OVERLAY_STYLE.detail;
   ctx.font = WORLD_OVERLAY_STYLE.fontDetail;
-  for (let i = 0; i < details.length; i++) {
-    ctx.fillText(String(details[i]), x, y);
-    y += selected ? 15 : 13;
+  for (const line of detailLines) {
+    ctx.fillText(line, x, y);
+    y += lineH;
   }
 }
 

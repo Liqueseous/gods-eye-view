@@ -477,6 +477,10 @@ export function normalizeOverlayEntry(sourceId, entry) {
     interactive: entry.interactive === true,
     accessibilityLabel: String(entry.accessibilityLabel || '').trim(),
     activate: typeof entry.activate === 'function' ? entry.activate : null,
+    maxWidth:
+      entry.maxWidth != null && Number.isFinite(Number(entry.maxWidth))
+        ? Math.max(80, Number(entry.maxWidth))
+        : null,
     minDistance: Number.isFinite(Number(entry.minDistance))
       ? Math.max(0, Number(entry.minDistance))
       : 0,

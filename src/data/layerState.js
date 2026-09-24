@@ -515,6 +515,11 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
     disposition: 'enabled-only',
   }),
   Object.freeze({
+    id: 'nws-alerts',
+    token: '3',
+    disposition: 'enabled-only',
+  }),
+  Object.freeze({
     id: 'radio',
     token: 'r',
     disposition: 'enabled+options',
@@ -964,7 +969,10 @@ export class LayerStateCoordinator {
         version: LAYER_STATE_VERSION,
         enabledLayerIds: [],
         options: Object.fromEntries(
-          OPTION_OWNER_IDS.map((ownerId) => [ownerId, defaultsForOwner(ownerId)]),
+          OPTION_OWNER_IDS.map((ownerId) => [
+            ownerId,
+            defaultsForOwner(ownerId),
+          ]),
         ),
       };
     }
