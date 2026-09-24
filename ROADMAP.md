@@ -39,12 +39,21 @@ Delivered capabilities:
 - severity-colored persistent incident markers
 - incident count and status feedback
 - incident list with Focus and Remove actions
+- incident status workflow: New, Investigating, Active, Contained, and Resolved
+- status filtering and update timestamps
+- status-aware incident pins with state labels and colors
+- severity remains the pin color while status remains visible in the label
+- status symbols provide a second at-a-glance pin and list cue
 - clear annotations control
 - shared pointer ownership and Escape-to-cancel placement
 
 Remaining follow-up capabilities:
 
 - [x] incident point overlays
+- [x] incident status workflow and filtering
+- [x] status-aware incident pin indicators
+- [x] severity-aware incident pin styling
+- [x] status symbol indicators
 - [ ] event polygons
 - [ ] safe-zone and exclusion-zone controls
 - [ ] route and proximity alerts

@@ -4,12 +4,60 @@ import { pickWorldFromScreen } from '../annotations/annotationResolver.js';
 import { claimPointer, releasePointer } from '../data/inputOwnership.js';
 
 const SEVERITIES = new Set(['low', 'medium', 'high', 'critical']);
-const COLORS = {
+const INCIDENT_STATUSES = [
+  'new',
+  'investigating',
+  'active',
+  'contained',
+  'resolved',
+];
+const INCIDENT_SEVERITIES = ['low', 'medium', 'high', 'critical'];
+const STATUS_COUNT_LABELS = {
+  new: 'NEW',
+  investigating: 'INV',
+  active: 'ACT',
+  contained: 'CNT',
+  resolved: 'RES',
+};
+const SEVERITY_COLORS = {
   low: 'cyan',
   medium: 'amber',
   high: 'red',
   critical: 'red',
 };
+const STATUS_ICON_MARKUP = {
+  new: '<path d="M24 14v20M14 24h20" stroke="COLOR" stroke-width="4" stroke-linecap="round"/>',
+  investigating:
+    '<path d="M18 18c0-4 2.5-6 6-6s6 2 6 5c0 3-2 4-5 6v2M24 32v.5" stroke="COLOR" stroke-width="4" stroke-linecap="round" fill="none"/>',
+  active:
+    '<path d="M24 12v18M24 36v.5" stroke="COLOR" stroke-width="4" stroke-linecap="round"/>',
+  contained:
+    '<path d="m14 25 7 7 13-15" stroke="COLOR" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  resolved: '<circle cx="24" cy="24" r="6" fill="COLOR"/>',
+};
+
+export function incidentMarkerSpec(incident) {
+  const color =
+    {
+      new: '#39d0ff',
+      investigating: '#ffb547',
+      active: '#ff6b6b',
+      contained: '#5dff9f',
+      resolved: '#8be9ff',
+    }[incident.status] || '#8be9ff';
+  const iconMarkup = (
+    STATUS_ICON_MARKUP[incident.status] || STATUS_ICON_MARKUP.resolved
+  ).replaceAll('COLOR', color);
+  return {
+    type: 'pin',
+    manual: true,
+    label: `[${incident.status.toUpperCase()}] [${incident.severity.toUpperCase()}] ${incident.label}`,
+    color: SEVERITY_COLORS[incident.severity] || 'amber',
+    markerIcon: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="#0b1622" stroke="${color}" stroke-width="4"/>${iconMarkup}</svg>`)}`,
+    latitude: incident.latitude,
+    longitude: incident.longitude,
+  };
+}
 
 function parseCoordinate(value, min, max) {
   const number = Number(value);
@@ -37,6 +85,13 @@ export function parseIncidentForm({ label, latitude, longitude, severity }) {
   };
 }
 
+function formatIncidentTime(value) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function initIncidentCommand({
   viewer,
   annotations,
@@ -47,9 +102,12 @@ export function initIncidentCommand({
   const form = document.getElementById('incident-form');
   const status = document.getElementById('command-mode-status');
   const count = document.getElementById('incident-count');
+  const statusCounts = document.getElementById('incident-status-counts');
+  const severityCounts = document.getElementById('incident-severity-counts');
   const clear = document.getElementById('incident-clear');
   const place = document.getElementById('incident-place');
   const list = document.getElementById('incident-list');
+  const filter = document.getElementById('incident-status-filter');
   if (!toggle || !panel || !form || !annotations || !viewer) return null;
 
   let active = false;
@@ -58,6 +116,7 @@ export function initIncidentCommand({
   const listeners = [];
   let placeHandler = null;
   let placeLease = null;
+  let statusFilter = 'all';
 
   const listen = (target, type, listener) => {
     target.addEventListener(type, listener);
@@ -74,15 +133,86 @@ export function initIncidentCommand({
     toggle.setAttribute('aria-pressed', String(active));
     panel.hidden = !active;
     document.body.classList.toggle('command-mode', active);
+    const visibleIncidents =
+      statusFilter === 'all'
+        ? incidents
+        : incidents.filter((incident) => incident.status === statusFilter);
     if (count) count.textContent = String(incidents.length);
+    const renderCounts = (target, values, className) => {
+      if (!target) return;
+      target.replaceChildren(
+        ...values.map((value) => {
+          const chip = document.createElement('span');
+          const total = incidents.filter(
+            (incident) => incident[className] === value,
+          ).length;
+          chip.className = `incident-count-chip ${className}-${value}`;
+          chip.setAttribute('aria-label', `${value}: ${total}`);
+          chip.title = `${value}: ${total}`;
+          chip.textContent = `${className === 'status' ? STATUS_COUNT_LABELS[value] : value} ${total}`;
+          return chip;
+        }),
+      );
+    };
+    renderCounts(statusCounts, INCIDENT_STATUSES, 'status');
+    renderCounts(severityCounts, INCIDENT_SEVERITIES, 'severity');
     if (list) {
       list.replaceChildren(
-        ...incidents.map((incident) => {
+        ...visibleIncidents.map((incident) => {
           const row = document.createElement('div');
-          row.className = `incident-list-item severity-${incident.severity}`;
-          row.innerHTML = `<span class="incident-list-severity">${incident.severity}</span><span class="incident-list-label"></span>`;
+          row.className = `incident-list-item severity-${incident.severity} status-${incident.status}`;
+          row.innerHTML = `<span class="incident-list-status-symbol" aria-hidden="true"></span><span class="incident-list-severity">${incident.severity}</span><span class="incident-list-label"></span><span class="incident-list-time"></span>`;
+          row.querySelector('.incident-list-status-symbol').textContent =
+            incident.status === 'active'
+              ? '!'
+              : incident.status === 'contained' ||
+                  incident.status === 'resolved'
+                ? '✓'
+                : incident.status === 'investigating'
+                  ? '?'
+                  : '+';
           row.querySelector('.incident-list-label').textContent =
             incident.label;
+          row.querySelector('.incident-list-time').textContent =
+            formatIncidentTime(incident.updatedAt);
+          const statusSelect = document.createElement('select');
+          statusSelect.className = 'pp-select incident-status';
+          statusSelect.setAttribute(
+            'aria-label',
+            `Status for ${incident.label}`,
+          );
+          statusSelect.replaceChildren(
+            ...INCIDENT_STATUSES.map((value) => {
+              const option = document.createElement('option');
+              option.value = value;
+              option.textContent = value;
+              option.selected = value === incident.status;
+              return option;
+            }),
+          );
+          statusSelect.addEventListener('change', async () => {
+            const previousStatus = incident.status;
+            const previousId = incident.annotationId;
+            incident.status = statusSelect.value;
+            incident.updatedAt = Date.now();
+            try {
+              if (previousId) annotations.remove?.(previousId);
+              const result = await annotations.annotate(
+                [incidentMarkerSpec(incident)],
+                { persist: true },
+              );
+              if (!result?.ok)
+                throw new Error('marker update returned no result');
+              incident.annotationId = result.ids?.[0] || null;
+              setStatus(`Status updated · ${incident.label}`);
+            } catch (error) {
+              incident.status = previousStatus;
+              incident.annotationId = previousId;
+              console.warn('[Command] Incident status marker failed:', error);
+              setStatus('Incident status marker could not be updated.', true);
+            }
+            sync();
+          });
           const focus = document.createElement('button');
           focus.type = 'button';
           focus.className = 'pp-mode-btn incident-focus';
@@ -109,12 +239,16 @@ export function initIncidentCommand({
             setStatus(`Incident removed · ${incident.label}`);
             sync();
           });
-          row.append(focus, remove);
+          row.append(statusSelect, focus, remove);
           return row;
         }),
       );
     }
     requestRender('command-mode');
+  };
+  const onFilter = () => {
+    statusFilter = filter?.value || 'all';
+    sync();
   };
   const onToggle = () => {
     active = !active;
@@ -136,21 +270,12 @@ export function initIncidentCommand({
       return;
     }
     const incident = parsed.incident;
+    incident.status = 'new';
     let result;
     try {
-      result = await annotations.annotate(
-        [
-          {
-            type: 'pin',
-            manual: true,
-            label: `[${incident.severity.toUpperCase()}] ${incident.label}`,
-            color: COLORS[incident.severity],
-            latitude: incident.latitude,
-            longitude: incident.longitude,
-          },
-        ],
-        { persist: true },
-      );
+      result = await annotations.annotate([incidentMarkerSpec(incident)], {
+        persist: true,
+      });
     } catch (error) {
       console.warn('[Command] Incident marker failed:', error);
       setStatus('Incident marker could not be placed.', true);
@@ -162,6 +287,8 @@ export function initIncidentCommand({
     }
     incidents.push(incident);
     incident.annotationId = result.ids?.[0] || null;
+    incident.createdAt = Date.now();
+    incident.updatedAt = incident.createdAt;
     form.reset();
     form.elements.severity.value = 'medium';
     setStatus(`Incident recorded · ${incident.label}`);
@@ -230,6 +357,7 @@ export function initIncidentCommand({
   listen(form, 'submit', onSubmit);
   if (clear) listen(clear, 'click', onClear);
   if (place) listen(place, 'click', onPlace);
+  if (filter) listen(filter, 'change', onFilter);
   listen(document, 'keydown', onKeyDown);
   sync();
 

@@ -235,6 +235,21 @@ export function createScreenAnnotationRenderer(
         r: anno.type === 'label' ? '4' : '5',
       });
       group.appendChild(parts.dot);
+      if (anno.markerIcon && anno.type !== 'label') {
+        parts.badge = svgEl('image', {
+          class: 'gev-anno-badge',
+          width: '28',
+          height: '28',
+          preserveAspectRatio: 'xMidYMid meet',
+        });
+        parts.badge.setAttributeNS(
+          'http://www.w3.org/1999/xlink',
+          'href',
+          anno.markerIcon,
+        );
+        parts.badge.setAttribute('href', anno.markerIcon);
+        group.appendChild(parts.badge);
+      }
       parts.leader = svgEl('line', {
         class: 'gev-anno-leader',
         stroke: c,
@@ -545,6 +560,13 @@ export function createScreenAnnotationRenderer(
             parts.dot.setAttribute('cx', p.x.toFixed(1));
             parts.dot.setAttribute('cy', p.y.toFixed(1));
             parts.dot.setAttribute('r', (baseDotR * mScale).toFixed(1));
+          }
+          if (parts.badge) {
+            const badgeSize = 28 * mScale;
+            parts.badge.setAttribute('x', (p.x - badgeSize / 2).toFixed(1));
+            parts.badge.setAttribute('y', (p.y - badgeSize / 2).toFixed(1));
+            parts.badge.setAttribute('width', badgeSize.toFixed(1));
+            parts.badge.setAttribute('height', badgeSize.toFixed(1));
           }
           if (parts.ringOuter) {
             parts.ringOuter.setAttribute('cx', p.x.toFixed(1));
