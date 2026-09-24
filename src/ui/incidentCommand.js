@@ -177,6 +177,19 @@ function writeStoredIncidents(incidents, storage) {
   }
 }
 
+function readStoredUiControl(id) {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const state = JSON.parse(
+      localStorage.getItem('godsEyeView.v1.uiMemory') || '{}',
+    )?.[id];
+    return state && typeof state === 'object' ? state : null;
+  } catch (error) {
+    console.warn('[Command] Saved UI state could not be read:', error);
+    return null;
+  }
+}
+
 export function initIncidentCommand({
   viewer,
   annotations,
@@ -197,7 +210,11 @@ export function initIncidentCommand({
   const filter = document.getElementById('incident-status-filter');
   if (!toggle || !panel || !form || !annotations || !viewer) return null;
 
-  let active = false;
+  const storedToggle = readStoredUiControl('command-mode-toggle');
+  let active =
+    toggle.classList.contains('active') ||
+    storedToggle?.active === true ||
+    storedToggle?.pressed === true;
   let destroyed = false;
   const incidents = [];
   const listeners = [];

@@ -61,6 +61,19 @@ const PREVIEW = {
   red: '#ff6b6b',
 };
 
+function readStoredUiControl(id) {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const state = JSON.parse(
+      localStorage.getItem('godsEyeView.v1.uiMemory') || '{}',
+    )?.[id];
+    return state && typeof state === 'object' ? state : null;
+  } catch (error) {
+    console.warn('[Draw] Saved UI state could not be read:', error);
+    return null;
+  }
+}
+
 /**
  * Wire the Draw control. Returns a handle with a `destroy()` the application
  * lifetime owns, plus the console/test seam (`window.__gevDrawTool`).
@@ -77,6 +90,11 @@ export function initDrawTool({ viewer, annotations }) {
   const hint = document.getElementById('draw-hint');
   if (!viewer || !annotations || !toggle) return null;
 
+  const storedToggle = readStoredUiControl('draw-toggle');
+  const restoreActive =
+    toggle.classList.contains('active') ||
+    storedToggle?.active === true ||
+    storedToggle?.pressed === true;
   let active = false;
   let destroyed = false;
   let session = null;
@@ -435,6 +453,26 @@ export function initDrawTool({ viewer, annotations }) {
       void finish();
     }
   });
+  const storedShape = [
+    ...(modeRow?.querySelectorAll('.pp-mode-btn[data-shape]') || []),
+  ]
+    .map((button) => ({
+      button,
+      state: readStoredUiControl(button.id),
+    }))
+    .find(({ state }) => state?.active === true)?.button;
+  const storedColor = readStoredUiControl(colorSelect?.id || '');
+  shape = normalizeShape(
+    modeRow?.querySelector('.pp-mode-btn[data-shape].active')?.dataset.shape ||
+      storedShape?.dataset.shape ||
+      shape,
+  );
+  color = COLORS.includes(colorSelect?.value)
+    ? colorSelect.value
+    : COLORS.includes(storedColor?.value)
+      ? storedColor.value
+      : color;
+  if (restoreActive) setActive(true);
   setHint(drawHint(null));
 
   const api = {
