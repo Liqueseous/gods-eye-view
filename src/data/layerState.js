@@ -658,7 +658,11 @@ validateLayerStateRegistry();
 export function createDefaultLayerState() {
   return {
     version: LAYER_STATE_VERSION,
-    enabledLayerIds: [],
+    enabledLayerIds: [
+      'weather-lightning',
+      'weather-radar',
+      'weather-satellite',
+    ],
     options: Object.fromEntries(
       OPTION_OWNER_IDS.map((ownerId) => [ownerId, defaultsForOwner(ownerId)]),
     ),
@@ -956,6 +960,13 @@ export class LayerStateCoordinator {
       // the exact legacy default-layer behavior. It must not inherit an
       // unrelated recipient's saved local layer preferences.
       this._source = 'legacy-share';
+      selected = {
+        version: LAYER_STATE_VERSION,
+        enabledLayerIds: [],
+        options: Object.fromEntries(
+          OPTION_OWNER_IDS.map((ownerId) => [ownerId, defaultsForOwner(ownerId)]),
+        ),
+      };
     }
     this._durableState = selected || createDefaultLayerState();
     this.shareLinkManager?.setLayerStateProvider?.(() =>
