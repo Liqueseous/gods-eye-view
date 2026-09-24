@@ -646,9 +646,31 @@
   border-color: rgba(190, 221, 230, 0.45);
 }
 
+.ui-memory-reset,
 .incident-place-btn {
   width: 100%;
   margin-top: 5px;
+}
+
+.pp-header-row .ui-memory-reset {
+  width: auto;
+  margin: 0 2px 0 auto;
+  padding: 3px 7px;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+}
+
+.incident-area-btn,
+.incident-area-finish {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.incident-area-btn.active,
+.ui-memory-reset:hover,
+.incident-area-finish {
+  border-color: #ffb547;
+  color: #ffb547;
 }
 
 .incident-list {
@@ -661,7 +683,7 @@
 
 .incident-list-item {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto;
   gap: 5px;
   align-items: center;
   padding: 4px 5px;
@@ -671,6 +693,38 @@
   font-family: var(--font-mono);
   font-size: 8px;
   text-transform: uppercase;
+}
+
+.incident-list-type {
+  position: relative;
+  width: 13px;
+  height: 13px;
+  border: 1px solid currentColor;
+  color: var(--text-dim);
+  opacity: 0.9;
+}
+
+.incident-list-type-point {
+  border-radius: 50%;
+}
+
+.incident-list-type-point::after {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.incident-list-type-area {
+  transform: rotate(45deg) scale(0.78);
+}
+
+.incident-list-type-area::after {
+  position: absolute;
+  inset: 3px;
+  border: 1px solid currentColor;
+  content: '';
 }
 
 .incident-filter-label {

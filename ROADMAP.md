@@ -48,6 +48,7 @@ Delivered capabilities:
 - browser-persisted incident memory across page refreshes
 - zoom-scaled incident badges that remain readable at distance
 - one-click incident creation when placing with a populated incident name
+- event-area polygon drawing with severity, status, list controls, and persistence
 - clear annotations control
 - shared pointer ownership and Escape-to-cancel placement
 
@@ -62,6 +63,7 @@ Remaining follow-up capabilities:
 - [x] persisted incident memory
 - [x] zoom-scaled incident badges
 - [x] click-to-create incident placement flow
+- [x] event area polygon drawing
 - [ ] event polygons
 - [ ] safe-zone and exclusion-zone controls
 - [ ] route and proximity alerts

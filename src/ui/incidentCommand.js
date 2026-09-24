@@ -49,6 +49,16 @@ export function incidentMarkerSpec(incident) {
   const iconMarkup = (
     STATUS_ICON_MARKUP[incident.status] || STATUS_ICON_MARKUP.resolved
   ).replaceAll('COLOR', color);
+  if (incident.kind === 'area') {
+    return {
+      type: 'area',
+      manual: true,
+      label: `[${incident.status.toUpperCase()}] [${incident.severity.toUpperCase()}] ${incident.label}`,
+      color: SEVERITY_COLORS[incident.severity] || 'amber',
+      ring: incident.ring,
+      markerIcon: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="#0b1622" stroke="${color}" stroke-width="4"/>${iconMarkup}</svg>`)}`,
+    };
+  }
   return {
     type: 'pin',
     manual: true,
@@ -93,6 +103,13 @@ function formatIncidentTime(value) {
   });
 }
 
+function ringCentroid(ring) {
+  return {
+    latitude: ring.reduce((sum, [, lat]) => sum + lat, 0) / ring.length,
+    longitude: ring.reduce((sum, [lon]) => sum + lon, 0) / ring.length,
+  };
+}
+
 export function readStoredIncidents(storage) {
   try {
     const raw = storage?.getItem(INCIDENT_STORAGE_KEY);
@@ -104,28 +121,43 @@ export function readStoredIncidents(storage) {
         (incident) =>
           incident &&
           typeof incident.label === 'string' &&
-          Number.isFinite(incident.latitude) &&
-          incident.latitude >= -90 &&
-          incident.latitude <= 90 &&
-          Number.isFinite(incident.longitude) &&
-          incident.longitude >= -180 &&
-          incident.longitude <= 180 &&
+          (incident.kind === 'area'
+            ? Array.isArray(incident.ring) &&
+              incident.ring.length >= 3 &&
+              incident.ring.every(
+                ([lon, lat]) =>
+                  Number.isFinite(lon) &&
+                  Number.isFinite(lat) &&
+                  Math.abs(lon) <= 180 &&
+                  Math.abs(lat) <= 90,
+              )
+            : Number.isFinite(incident.latitude) &&
+              incident.latitude >= -90 &&
+              incident.latitude <= 90 &&
+              Number.isFinite(incident.longitude) &&
+              incident.longitude >= -180 &&
+              incident.longitude <= 180) &&
           SEVERITIES.has(incident.severity) &&
           INCIDENT_STATUSES.includes(incident.status),
       )
-      .map((incident) => ({
-        label: incident.label.slice(0, 80),
-        latitude: incident.latitude,
-        longitude: incident.longitude,
-        severity: incident.severity,
-        status: incident.status,
-        createdAt: Number.isFinite(incident.createdAt)
-          ? incident.createdAt
-          : Date.now(),
-        updatedAt: Number.isFinite(incident.updatedAt)
-          ? incident.updatedAt
-          : Date.now(),
-      }));
+      .map((incident) => {
+        const areaRecord = incident.kind === 'area';
+        const centre = areaRecord ? ringCentroid(incident.ring) : null;
+        return {
+          label: incident.label.slice(0, 80),
+          ...(areaRecord ? { kind: 'area', ring: incident.ring } : {}),
+          latitude: centre?.latitude ?? incident.latitude,
+          longitude: centre?.longitude ?? incident.longitude,
+          severity: incident.severity,
+          status: incident.status,
+          createdAt: Number.isFinite(incident.createdAt)
+            ? incident.createdAt
+            : Date.now(),
+          updatedAt: Number.isFinite(incident.updatedAt)
+            ? incident.updatedAt
+            : Date.now(),
+        };
+      });
   } catch (error) {
     console.warn('[Command] Saved incidents could not be read:', error);
     return [];
@@ -160,6 +192,7 @@ export function initIncidentCommand({
   const severityCounts = document.getElementById('incident-severity-counts');
   const clear = document.getElementById('incident-clear');
   const place = document.getElementById('incident-place');
+  const area = document.getElementById('incident-area');
   const list = document.getElementById('incident-list');
   const filter = document.getElementById('incident-status-filter');
   if (!toggle || !panel || !form || !annotations || !viewer) return null;
@@ -170,6 +203,76 @@ export function initIncidentCommand({
   const listeners = [];
   let placeHandler = null;
   let placeLease = null;
+  let areaVertices = [];
+  let drawingArea = false;
+  let areaCursor = null;
+  const areaPreviewSource = new Cesium.CustomDataSource(
+    'gev-command-area-preview',
+  );
+  viewer.dataSources.add(areaPreviewSource);
+  const areaPreviewLine = areaPreviewSource.entities.add({
+    polyline: {
+      positions: new Cesium.CallbackProperty(() => {
+        const points = areaVertices.slice();
+        if (areaCursor) points.push(areaCursor);
+        if (points.length >= 3) points.push(points[0]);
+        if (points.length < 2) return [];
+        return Cesium.Cartesian3.fromDegreesArray(points.flat());
+      }, false),
+      width: 3,
+      material: new Cesium.PolylineDashMaterialProperty({
+        color: Cesium.Color.fromCssColorString('#ffb547').withAlpha(0.9),
+        dashLength: 14,
+      }),
+      clampToGround: true,
+    },
+    show: false,
+  });
+  const areaPreviewFill = areaPreviewSource.entities.add({
+    polygon: {
+      hierarchy: new Cesium.CallbackProperty(() => {
+        const points = areaVertices.slice();
+        if (areaCursor) points.push(areaCursor);
+        if (points.length < 3) return null;
+        return new Cesium.PolygonHierarchy(
+          Cesium.Cartesian3.fromDegreesArray(points.flat()),
+        );
+      }, false),
+      material: Cesium.Color.fromCssColorString('#ffb547').withAlpha(0.16),
+      classificationType: Cesium.ClassificationType.BOTH,
+    },
+    show: false,
+  });
+  const areaPreviewPoints = [];
+  const syncAreaPreview = () => {
+    const visible = drawingArea;
+    areaPreviewLine.show = visible;
+    areaPreviewFill.show =
+      visible && (areaVertices.length >= 2 || !!areaCursor);
+    while (areaPreviewPoints.length < areaVertices.length) {
+      areaPreviewPoints.push(
+        areaPreviewSource.entities.add({
+          position: Cesium.Cartesian3.ZERO,
+          point: {
+            pixelSize: 9,
+            color: Cesium.Color.fromCssColorString('#ffb547'),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          show: false,
+        }),
+      );
+    }
+    areaPreviewPoints.forEach((entity, index) => {
+      const point = areaVertices[index];
+      entity.show = visible;
+      if (point)
+        entity.position = Cesium.Cartesian3.fromDegrees(point[0], point[1]);
+    });
+    requestRender('command-area-preview');
+  };
   let statusFilter = 'all';
   const storedIncidents = readStoredIncidents(storage);
 
@@ -216,7 +319,16 @@ export function initIncidentCommand({
         ...visibleIncidents.map((incident) => {
           const row = document.createElement('div');
           row.className = `incident-list-item severity-${incident.severity} status-${incident.status}`;
-          row.innerHTML = `<span class="incident-list-status-symbol" aria-hidden="true"></span><span class="incident-list-severity">${incident.severity}</span><span class="incident-list-label"></span><span class="incident-list-time"></span>`;
+          row.innerHTML = `<span class="incident-list-status-symbol" aria-hidden="true"></span><span class="incident-list-type" aria-hidden="true"></span><span class="incident-list-severity">${incident.severity}</span><span class="incident-list-label"></span><span class="incident-list-time"></span>`;
+          const type = incident.kind === 'area' ? 'area' : 'point';
+          const typeIndicator = row.querySelector('.incident-list-type');
+          typeIndicator.classList.add(`incident-list-type-${type}`);
+          typeIndicator.title =
+            type === 'area' ? 'Event area' : 'Point incident';
+          typeIndicator.setAttribute(
+            'aria-label',
+            type === 'area' ? 'Event area' : 'Point incident',
+          );
           row.querySelector('.incident-list-status-symbol').textContent =
             incident.status === 'active'
               ? '!'
@@ -351,6 +463,57 @@ export function initIncidentCommand({
     setStatus(`Incident recorded · ${incident.label}`);
     sync();
   };
+  const createAreaFromForm = async () => {
+    const label = String(form.elements.label.value || '').trim();
+    if (!label) {
+      setStatus('Enter an incident name before drawing an area.', true);
+      form.elements.label.focus();
+      return;
+    }
+    if (areaVertices.length < 3) {
+      setStatus('Draw at least three points before finishing.', true);
+      return;
+    }
+    const centre = ringCentroid(areaVertices);
+    const incident = {
+      kind: 'area',
+      label: label.slice(0, 80),
+      ring: areaVertices.map(([lon, lat]) => [lon, lat]),
+      latitude: centre.latitude,
+      longitude: centre.longitude,
+      severity: SEVERITIES.has(form.elements.severity.value)
+        ? form.elements.severity.value
+        : 'medium',
+      status: 'new',
+      createdAt: Date.now(),
+    };
+    incident.updatedAt = incident.createdAt;
+    try {
+      const result = await annotations.annotate(
+        [incidentMarkerSpec(incident)],
+        {
+          persist: true,
+        },
+      );
+      if (!result?.ok) throw new Error('area marker returned no result');
+      incident.annotationId = result.ids?.[0] || null;
+      incidents.push(incident);
+      writeStoredIncidents(incidents, storage);
+      areaVertices = [];
+      areaCursor = null;
+      drawingArea = false;
+      area.classList.remove('active');
+      stopPlacing();
+      syncAreaPreview();
+      form.reset();
+      form.elements.severity.value = 'medium';
+      setStatus(`Event area recorded · ${incident.label}`);
+      sync();
+    } catch (error) {
+      console.warn('[Command] Event area failed:', error);
+      setStatus('Event area could not be created.', true);
+    }
+  };
   const onSubmit = async (event) => {
     event.preventDefault();
     await createIncidentFromForm();
@@ -376,8 +539,20 @@ export function initIncidentCommand({
     if (placeLease) releasePointer(placeLease);
     placeLease = null;
     if (place) place.classList.remove('active');
+    areaCursor = null;
+    syncAreaPreview();
   };
   const onPlace = () => {
+    if (drawingArea) {
+      drawingArea = false;
+      areaVertices = [];
+      areaCursor = null;
+      area.classList.remove('active');
+      stopPlacing();
+      setStatus('Event area cancelled.');
+      syncAreaPreview();
+      return;
+    }
     if (placeHandler) {
       stopPlacing();
       setStatus('Placement cancelled.');
@@ -415,14 +590,79 @@ export function initIncidentCommand({
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   };
-  const onKeyDown = (event) => {
-    if (event.key === 'Escape' && placeHandler) stopPlacing();
+  const onArea = () => {
+    if (drawingArea) {
+      drawingArea = false;
+      areaVertices = [];
+      areaCursor = null;
+      area.classList.remove('active');
+      stopPlacing();
+      setStatus('Event area cancelled.');
+      return;
+    }
+    placeLease = claimPointer('incident-command');
+    if (!placeLease) {
+      setStatus('Another map tool is using the pointer.', true);
+      return;
+    }
+    drawingArea = true;
+    areaVertices = [];
+    area.classList.add('active');
+    syncAreaPreview();
+    setStatus('Click three or more points, then finish the area.');
+    placeHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    placeHandler.setInputAction((event) => {
+      const canvas = viewer.scene.canvas;
+      const point = pickWorldFromScreen(
+        viewer,
+        event.position.x / (canvas.clientWidth || canvas.width || 1),
+        event.position.y / (canvas.clientHeight || canvas.height || 1),
+      );
+      if (!point) {
+        setStatus('Click on the globe surface.', true);
+        return;
+      }
+      areaVertices.push([point.lon, point.lat]);
+      syncAreaPreview();
+      setStatus(
+        `${areaVertices.length} area point${areaVertices.length === 1 ? '' : 's'} captured.`,
+      );
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    placeHandler.setInputAction((event) => {
+      const canvas = viewer.scene.canvas;
+      const point = pickWorldFromScreen(
+        viewer,
+        event.endPosition.x / (canvas.clientWidth || canvas.width || 1),
+        event.endPosition.y / (canvas.clientHeight || canvas.height || 1),
+      );
+      areaCursor = point ? [point.lon, point.lat] : null;
+      syncAreaPreview();
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+  };
+  const onKeyDown = async (event) => {
+    if (!drawingArea || !placeHandler) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      await createAreaFromForm();
+      return;
+    }
+    if (event.key !== 'Escape') return;
+    stopPlacing();
+    if (drawingArea) {
+      drawingArea = false;
+      areaVertices = [];
+      areaCursor = null;
+      area.classList.remove('active');
+      setStatus('Event area cancelled.');
+      syncAreaPreview();
+    }
   };
 
   listen(toggle, 'click', onToggle);
   listen(form, 'submit', onSubmit);
   if (clear) listen(clear, 'click', onClear);
   if (place) listen(place, 'click', onPlace);
+  if (area) listen(area, 'click', onArea);
   if (filter) listen(filter, 'change', onFilter);
   listen(document, 'keydown', onKeyDown);
   void (async () => {
@@ -466,6 +706,8 @@ export function initIncidentCommand({
         target.removeEventListener(type, listener),
       );
       document.body.classList.remove('command-mode');
+      areaPreviewSource.entities.removeAll();
+      viewer.dataSources.remove(areaPreviewSource, true);
     },
   };
   window.__gevIncidentCommand = api;

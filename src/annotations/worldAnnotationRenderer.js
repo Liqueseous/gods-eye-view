@@ -167,6 +167,15 @@ export function createWorldAnnotationRenderer(viewer) {
       const fillPositions = Cesium.Cartesian3.fromDegreesArray(
         anno.ring.flat(),
       );
+      const outlineRing =
+        anno.ring.length > 1 &&
+        anno.ring[0][0] === anno.ring.at(-1)[0] &&
+        anno.ring[0][1] === anno.ring.at(-1)[1]
+          ? anno.ring
+          : [...anno.ring, anno.ring[0]];
+      const outlinePositions = Cesium.Cartesian3.fromDegreesArray(
+        outlineRing.flat(),
+      );
       entities.push(
         dataSource.entities.add({
           polygon: {
@@ -185,7 +194,7 @@ export function createWorldAnnotationRenderer(viewer) {
       entities.push(
         dataSource.entities.add({
           polyline: {
-            positions: fillPositions,
+            positions: outlinePositions,
             width: 6,
             // Synthesized → DASHED outline (signals "approximate, not an authoritative
             // boundary", research §8.4/§8.6); real footprints → solid glow.
