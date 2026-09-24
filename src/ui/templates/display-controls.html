@@ -74,11 +74,13 @@
           </select>
           <button class="pp-mode-btn" type="submit">Add</button>
         </form>
+        <button class="pp-mode-btn incident-place-btn" id="incident-place" type="button">Place on globe</button>
         <div class="command-mode-meta">
           <span id="command-mode-status" aria-live="polite">Command mode offline</span>
           <span>INCIDENTS <strong id="incident-count">0</strong></span>
           <button class="pp-mode-btn draw-clear-btn" id="incident-clear" type="button">Clear annotations</button>
         </div>
+        <div id="incident-list" class="incident-list" aria-live="polite"></div>
       </div>
     </div>
     <div class="pp-toggle-group">

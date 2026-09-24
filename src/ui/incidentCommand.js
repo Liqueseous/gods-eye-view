@@ -1,4 +1,7 @@
 import { governorRequestRender } from '../renderGovernor.js';
+import * as Cesium from 'cesium';
+import { pickWorldFromScreen } from '../annotations/annotationResolver.js';
+import { claimPointer, releasePointer } from '../data/inputOwnership.js';
 
 const SEVERITIES = new Set(['low', 'medium', 'high', 'critical']);
 const COLORS = {
@@ -35,6 +38,7 @@ export function parseIncidentForm({ label, latitude, longitude, severity }) {
 }
 
 export function initIncidentCommand({
+  viewer,
   annotations,
   requestRender = governorRequestRender,
 } = {}) {
@@ -44,12 +48,16 @@ export function initIncidentCommand({
   const status = document.getElementById('command-mode-status');
   const count = document.getElementById('incident-count');
   const clear = document.getElementById('incident-clear');
-  if (!toggle || !panel || !form || !annotations) return null;
+  const place = document.getElementById('incident-place');
+  const list = document.getElementById('incident-list');
+  if (!toggle || !panel || !form || !annotations || !viewer) return null;
 
   let active = false;
   let destroyed = false;
   const incidents = [];
   const listeners = [];
+  let placeHandler = null;
+  let placeLease = null;
 
   const listen = (target, type, listener) => {
     target.addEventListener(type, listener);
@@ -67,6 +75,45 @@ export function initIncidentCommand({
     panel.hidden = !active;
     document.body.classList.toggle('command-mode', active);
     if (count) count.textContent = String(incidents.length);
+    if (list) {
+      list.replaceChildren(
+        ...incidents.map((incident) => {
+          const row = document.createElement('div');
+          row.className = `incident-list-item severity-${incident.severity}`;
+          row.innerHTML = `<span class="incident-list-severity">${incident.severity}</span><span class="incident-list-label"></span>`;
+          row.querySelector('.incident-list-label').textContent =
+            incident.label;
+          const focus = document.createElement('button');
+          focus.type = 'button';
+          focus.className = 'pp-mode-btn incident-focus';
+          focus.textContent = 'Focus';
+          focus.addEventListener('click', () => {
+            viewer.camera.flyTo({
+              destination: Cesium.Cartesian3.fromDegrees(
+                incident.longitude,
+                incident.latitude,
+                1200,
+              ),
+              duration: 0.8,
+            });
+          });
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'pp-mode-btn incident-remove';
+          remove.textContent = 'Remove';
+          remove.addEventListener('click', () => {
+            if (incident.annotationId)
+              annotations.remove?.(incident.annotationId);
+            const index = incidents.indexOf(incident);
+            if (index >= 0) incidents.splice(index, 1);
+            setStatus(`Incident removed · ${incident.label}`);
+            sync();
+          });
+          row.append(focus, remove);
+          return row;
+        }),
+      );
+    }
     requestRender('command-mode');
   };
   const onToggle = () => {
@@ -114,6 +161,7 @@ export function initIncidentCommand({
       return;
     }
     incidents.push(incident);
+    incident.annotationId = result.ids?.[0] || null;
     form.reset();
     form.elements.severity.value = 'medium';
     setStatus(`Incident recorded · ${incident.label}`);
@@ -124,15 +172,65 @@ export function initIncidentCommand({
       setStatus('No incidents to clear.');
       return;
     }
-    annotations.clear();
+    const ids = incidents
+      .map((incident) => incident.annotationId)
+      .filter(Boolean);
+    if (typeof annotations.remove === 'function') annotations.remove(ids);
+    else annotations.clear();
     incidents.length = 0;
     setStatus('Annotation board cleared.');
     sync();
+  };
+  const stopPlacing = () => {
+    placeHandler?.destroy();
+    placeHandler = null;
+    if (placeLease) releasePointer(placeLease);
+    placeLease = null;
+    if (place) place.classList.remove('active');
+  };
+  const onPlace = () => {
+    if (placeHandler) {
+      stopPlacing();
+      setStatus('Placement cancelled.');
+      return;
+    }
+    placeLease = claimPointer('incident-command');
+    if (!placeLease) {
+      setStatus('Another map tool is using the pointer.', true);
+      return;
+    }
+    setStatus('Click the globe to place the incident.');
+    place.classList.add('active');
+    placeHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    placeHandler.setInputAction((event) => {
+      const canvas = viewer.scene.canvas;
+      const width = canvas.clientWidth || canvas.width || 1;
+      const height = canvas.clientHeight || canvas.height || 1;
+      const point = pickWorldFromScreen(
+        viewer,
+        event.position.x / width,
+        event.position.y / height,
+      );
+      if (!point) {
+        setStatus('Click on the globe surface.', true);
+        return;
+      }
+      form.elements.latitude.value = point.lat.toFixed(5);
+      form.elements.longitude.value = point.lon.toFixed(5);
+      stopPlacing();
+      setStatus('Coordinates captured. Add an incident name.');
+      form.elements.label.focus();
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  };
+  const onKeyDown = (event) => {
+    if (event.key === 'Escape' && placeHandler) stopPlacing();
   };
 
   listen(toggle, 'click', onToggle);
   listen(form, 'submit', onSubmit);
   if (clear) listen(clear, 'click', onClear);
+  if (place) listen(place, 'click', onPlace);
+  listen(document, 'keydown', onKeyDown);
   sync();
 
   const api = {
@@ -145,6 +243,7 @@ export function initIncidentCommand({
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      stopPlacing();
       listeners.forEach(([target, type, listener]) =>
         target.removeEventListener(type, listener),
       );

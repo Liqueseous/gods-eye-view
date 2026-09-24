@@ -42,3 +42,14 @@ test('incident form parsing rejects invalid coordinates and labels', () => {
     false,
   );
 });
+
+test('incident form parsing falls back to medium for unknown severity', () => {
+  const result = parseIncidentForm({
+    label: 'Road closure',
+    latitude: '0',
+    longitude: '0',
+    severity: 'urgent',
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.incident.severity, 'medium');
+});
