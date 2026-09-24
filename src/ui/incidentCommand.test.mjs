@@ -125,6 +125,26 @@ test('incident form parsing falls back to medium for unknown severity', () => {
       'red',
     );
   });
+
+  test('event area marker specs preserve the drawn ring', () => {
+    const ring = [
+      [-97.75, 30.26],
+      [-97.74, 30.26],
+      [-97.74, 30.27],
+    ];
+    const spec = incidentMarkerSpec({
+      kind: 'area',
+      label: 'Flood zone',
+      severity: 'high',
+      status: 'new',
+      ring,
+    });
+    assert.equal(spec.type, 'area');
+    assert.equal(spec.manual, true);
+    assert.deepEqual(spec.ring, ring);
+    assert.equal(spec.color, 'red');
+    assert.match(spec.markerIcon, /^data:image\/svg\+xml/);
+  });
   assert.equal(result.ok, true);
   assert.equal(result.incident.severity, 'medium');
 });

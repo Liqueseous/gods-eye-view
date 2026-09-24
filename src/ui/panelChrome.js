@@ -30,6 +30,7 @@ const COCKPIT_ENTRY_COLLAPSE_PANEL_IDS = Object.freeze([
   'global-context-panel',
   'radio-panel',
 ]);
+const UI_MEMORY_KEY = 'godsEyeView.v1.uiMemory';
 
 /** Own panel disclosure, docking, persistence and Cockpit rail restoration. */
 export class PanelChrome {
@@ -142,7 +143,94 @@ export class PanelChrome {
     });
     this._initCommandDockPins();
     this._initCommandDockTrayMetrics();
+    this._initUiMemory();
     this._maybeNotifyLayoutReset();
+  }
+
+  _initUiMemory() {
+    const reset = document.getElementById('ui-memory-reset');
+    this._lifetime.listen(reset, 'click', () => {
+      try {
+        Object.keys(localStorage)
+          .filter(
+            (key) =>
+              key.startsWith('godsEyeView.') ||
+              key === 'gev:detection-allocation:v1',
+          )
+          .forEach((key) => localStorage.removeItem(key));
+      } catch (error) {
+        console.warn('[UI memory] Unable to clear saved UI state', error);
+      }
+      for (const panel of document.querySelectorAll(
+        '.panel-collapsible[data-panel-id]',
+      )) {
+        this.setPanelCollapsed(panel.id, true, {
+          persist: false,
+          syncShare: false,
+        });
+      }
+      const hash = window.location.hash.replace(
+        /([#&])ui=[^&]*/i,
+        (match, prefix) => (prefix === '#' ? '#' : ''),
+      );
+      window.location.assign(
+        `${window.location.pathname}${window.location.search}${hash}`,
+      );
+    });
+
+    let saved = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(UI_MEMORY_KEY) || '{}');
+    } catch (error) {
+      console.warn('[UI memory] Ignoring malformed saved UI state', error);
+      saved = {};
+    }
+    for (const control of document.querySelectorAll(
+      '.panel-collapsible [id]',
+    )) {
+      const state = saved[control.id];
+      if (!state) continue;
+      if ('value' in control && state.value !== undefined)
+        control.value = state.value;
+      if (typeof state.checked === 'boolean') control.checked = state.checked;
+      if (typeof state.active === 'boolean')
+        control.classList.toggle('active', state.active);
+      if (typeof state.pressed === 'boolean')
+        control.setAttribute('aria-pressed', String(state.pressed));
+      if (typeof state.checkedRadio === 'boolean')
+        control.setAttribute('aria-checked', String(state.checkedRadio));
+    }
+    const save = (event) => {
+      const control = event.target.closest?.('.panel-collapsible [id]');
+      if (!control || control.id === 'ui-memory-reset') return;
+      queueMicrotask(() => {
+        let next = {};
+        try {
+          next = JSON.parse(localStorage.getItem(UI_MEMORY_KEY) || '{}');
+        } catch (error) {
+          console.warn(
+            '[UI memory] Ignoring malformed saved control state',
+            error,
+          );
+          next = {};
+        }
+        next[control.id] = {
+          value: 'value' in control ? control.value : undefined,
+          checked: 'checked' in control ? control.checked : undefined,
+          active: control.classList.contains('active'),
+          pressed: control.getAttribute('aria-pressed') === 'true',
+          checkedRadio: control.getAttribute('aria-checked') === 'true',
+        };
+        try {
+          localStorage.setItem(UI_MEMORY_KEY, JSON.stringify(next));
+        } catch (error) {
+          console.warn('[UI memory] Unable to save control state', error);
+        }
+      });
+    };
+    this._lifetime.listen(document, 'change', save);
+    this._lifetime.listen(document, 'input', save);
+    this._lifetime.listen(document, 'click', save);
   }
 
   _collapsePanelOnEscape(event, panelId) {

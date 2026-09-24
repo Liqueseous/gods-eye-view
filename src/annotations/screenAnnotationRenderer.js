@@ -246,7 +246,7 @@ export function createScreenAnnotationRenderer(
         r: anno.type === 'label' ? '4' : '5',
       });
       group.appendChild(parts.dot);
-      if (anno.markerIcon && anno.type !== 'label') {
+      if (anno.markerIcon) {
         parts.badge = svgEl('image', {
           class: 'gev-anno-badge',
           width: '28',
