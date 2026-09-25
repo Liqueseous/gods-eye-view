@@ -340,7 +340,7 @@ export function createGevActionRunner({
   const _layerEnabledAt = new Map();
   let analystEngine;
   const resolveRegionRing = (name) =>
-    annotationResolver.resolveRegionRingForQuery(name, undefined, placeSearch);
+    resolveRegionRingWithFallback(name, placeSearch, annotationResolver);
   installViewTargetPrewarm(viewer);
   initCameraVerbs(viewer, getViewTargetCartesian);
   return async function runGevAction(name, rawArgs = {}, runOptions = {}) {
@@ -4209,18 +4209,72 @@ function activeContactsWindow(dataManager) {
   }
 }
 
-function analystProviders(
+/** A place with coordinates but no admin boundary still answers as an
+ *  approximate box — the geocoder's own viewport, or this fixed radius. */
+const NAMED_PLACE_FALLBACK_RADIUS_KM = 40;
+const KM_PER_DEGREE_LAT = 111;
+
+/** Bounding-box ring from a `{southwest,northeast}` geocode viewport, or null. */
+function ringFromViewport(viewport) {
+  const sw = viewport?.southwest;
+  const ne = viewport?.northeast;
+  if (![sw?.lat, sw?.lng, ne?.lat, ne?.lng].every(Number.isFinite)) return null;
+  return [
+    [sw.lng, sw.lat],
+    [ne.lng, sw.lat],
+    [ne.lng, ne.lat],
+    [sw.lng, ne.lat],
+  ];
+}
+
+/** Square ring of the given half-width (km) centred on a point. */
+function squareRingAroundPoint(lat, lon, radiusKm) {
+  const dLat = radiusKm / KM_PER_DEGREE_LAT;
+  const cos = Math.cos((lat * Math.PI) / 180);
+  const dLon = radiusKm / (KM_PER_DEGREE_LAT * (Math.abs(cos) > 0.01 ? cos : 0.01));
+  return [
+    [lon - dLon, lat - dLat],
+    [lon + dLon, lat - dLat],
+    [lon + dLon, lat + dLat],
+    [lon - dLon, lat + dLat],
+  ];
+}
+
+/**
+ * Region resolution for the analyst: the full admin-boundary pipeline first
+ * (Natural Earth pack, then geocode + Overpass boundary), and — because that
+ * pipeline only draws boundaries for country/state/county/city/neighborhood —
+ * a plain geocode as a fallback so a named place with NO resolvable boundary
+ * (a landmark, a neighborhood Overpass doesn't carry, a name geocoded but not
+ * classified) still answers over an approximate area instead of failing.
+ */
+export async function resolveRegionRingWithFallback(
+  name,
+  placeSearch,
+  annotationResolver = defaultAnnotationResolver,
+) {
+  const admin = await annotationResolver
+    .resolveRegionRingForQuery(name, undefined, placeSearch)
+    .catch(() => null);
+  if (admin?.ring?.length >= 3) return admin;
+  const { place } = await placeSearch
+    .geocode(name, {})
+    .catch(() => ({ place: null }));
+  if (!Number.isFinite(place?.lat) || !Number.isFinite(place?.lng)) return null;
+  const ring =
+    ringFromViewport(place.viewport) ||
+    squareRingAroundPoint(place.lat, place.lng, NAMED_PLACE_FALLBACK_RADIUS_KM);
+  return { name: place.label || place.name || name, ring };
+}
+
+export function analystProviders(
   viewer,
   dataManager,
   {
     recordLimitByLayer = null,
     placeSearch = unavailablePlaceSearch,
     resolveRegionRing = (name) =>
-      defaultAnnotationResolver.resolveRegionRingForQuery(
-        name,
-        undefined,
-        placeSearch,
-      ),
+      resolveRegionRingWithFallback(name, placeSearch),
   } = {},
 ) {
   return {

@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased — Natural-Language Analyst Assistant
+
+### Added
+
+- A compact **Analyst** control in the command dock, styled to match the
+  existing Location / Voice / Visual Presets controls. Opens a typed query
+  panel with example prompts, results, and a status line.
+- Typed queries and voice queries now share one engine and one set of live
+  providers (`analystProviders` / `resolveRegionRingWithFallback` in
+  `src/voice/gevActions.js`), so a spoken and a typed version of the same
+  question answer identically.
+- Natural-language parsing (`src/data/analystPrompt.js`) for flights, military
+  flights, ships, fires, fire perimeters, earthquakes, satellites, dams,
+  datacenters, and ALPR cameras (OpenStreetMap-tagged license-plate-reader
+  cameras — newly wired into the analyst query engine).
+- Region, radius, and in-view scoping, including a geocode fallback so a
+  named place without a resolvable admin boundary (e.g. a city Overpass can't
+  match) still answers over an approximate area instead of failing outright.
+- Attribute filters: ship destination, altitude in feet, speed in knots, and
+  earthquake magnitude. Ranked results ("biggest", "highest", "closest") per
+  layer.
+
+### Fixed
+
+- The 3D aircraft toggle's first-paint markup contract, and the Material
+  Symbols icon subset (a missing `shield` glyph and false positives from a
+  status-symbol ternary).
+- ALPR's "in view" count now matches what is actually rendered: it previously
+  counted the wider, snapped-outward Overpass fetch cache kept warm across
+  small pans, then a ground-radius box that could be several times larger
+  than the camera's real view cone. It now counts only records that project
+  onto the current canvas (`src/layers/alpr/presentation.js`).
+- Analyst region resolution ("Boston", etc.) previously failed outright when
+  the full admin-boundary pipeline couldn't resolve a boundary, even though
+  every call site bypassed the fallback that was supposed to catch this.
+
+### Validation
+
+- Focused analyst, ALPR, voice, and icon-subset tests pass.
+- Production build passes.
+
 - Transit and Directions rows repaint as soon as their data lands again:
   `refreshLayerStats()` now lives on the layer lifecycle, not only on the
   compatibility facade. `scripts/qa-radio.mjs` uses it instead of a private

@@ -1,7 +1,7 @@
 /* ── Compact accordion command dock ──────────── */
 #command-dock {
   --dock-side-compact: clamp(9.5rem, 12vw, 10.5rem);
-  --dock-location-open: clamp(28rem, 40vw, 33rem);
+  --dock-location-open: min(48rem, calc(100vw - 2rem));
   --dock-presets-open: clamp(25rem, 36vw, 29rem);
   --dock-voice-width: clamp(13.5rem, 17vw, 15rem);
   display: flex;
@@ -42,6 +42,10 @@
   border: 0;
   transition: flex-basis 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+
+#command-dock > #location-bar { order: 1; }
+#command-dock > #gev-voice-control { order: 2; }
+#command-dock > #control-panel { order: 4; }
 
 #command-dock > #location-bar:not(.collapsed) {
   flex-basis: var(--dock-location-open);
@@ -123,7 +127,7 @@
 #command-dock .location-city-row {
   flex-wrap: nowrap;
   gap: 0.35rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 #command-dock .location-search-wrap {
@@ -145,6 +149,8 @@
 }
 
 #command-dock .location-pills {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   gap: 0.3rem;
   overflow-x: auto;

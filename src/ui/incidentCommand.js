@@ -346,15 +346,15 @@ export function initIncidentCommand({
             'aria-label',
             type === 'area' ? 'Event area' : 'Point incident',
           );
-          row.querySelector('.incident-list-status-symbol').textContent =
+          const statusSymbol =
             incident.status === 'active'
               ? '!'
-              : incident.status === 'contained' ||
-                  incident.status === 'resolved'
+              : ['contained', 'resolved'].includes(incident.status)
                 ? '✓'
                 : incident.status === 'investigating'
                   ? '?'
                   : '+';
+          row.querySelector('.incident-list-status-symbol').textContent = statusSymbol;
           row.querySelector('.incident-list-label').textContent =
             incident.label;
           row.querySelector('.incident-list-time').textContent =
