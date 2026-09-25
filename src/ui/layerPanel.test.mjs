@@ -91,6 +91,24 @@ test('partial feed controls distinguish incomplete records from stale data and o
   assert.equal(button.textContent, 'OFF');
 });
 
+test('unavailable layers keep an unavailable label while a request is pending', async () => {
+  const { LayerPanel } = await import('./layerPanel.js');
+  const layer = {
+    id: 'traffic',
+    name: 'Street Traffic',
+    source: 'OpenStreetMap',
+    enabled: true,
+    stats: {
+      count: 0,
+      lastUpdate: null,
+      status: 'unavailable',
+      loading: true,
+      loadingLabel: 'OSM road data unavailable',
+    },
+  };
+  assert.equal(LayerPanel.prototype._buildMetaText(layer), 'UNAVAILABLE · OpenStreetMap · OSM road data unavailable');
+});
+
 test('readout rows contain only toggles and metadata; ordinary rows retain controls', async () => {
   const { LayerPanel } = await import('./layerPanel.js');
   const { railFixture } = await import('./railTestFixture.mjs');

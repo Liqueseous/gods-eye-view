@@ -222,7 +222,12 @@ function harness(
       },
     },
     scene: {
-      canvas: { addEventListener() {}, removeEventListener() {} },
+      canvas: {
+        width: 100,
+        height: 100,
+        addEventListener() {},
+        removeEventListener() {},
+      },
       globe: { ellipsoid: Cesium.Ellipsoid.WGS84 },
       pick: () => undefined,
       requestRenderMode: false,
@@ -402,6 +407,23 @@ function harness(
     },
   };
 }
+
+test('transit coverage follows the center-screen ground point, not the view-rectangle midpoint', (t) => {
+  const app = harness(t, { at: { lat: 39.7392, lon: -104.9903 } });
+  app.viewer.camera.pickEllipsoid = () =>
+    Cesium.Cartesian3.fromDegrees(BOSTON.lon, BOSTON.lat);
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot('mbta', 'MBTA', [], { fetchedAt: Date.now() }),
+  }));
+
+  app.layer.enable(app.viewer);
+
+  const center = app.layer._transitPartsForTest().viewport.getCameraCenterLatLon();
+  assert.ok(Math.abs(center.lat - BOSTON.lat) < 1e-6);
+  assert.ok(Math.abs(center.lon - BOSTON.lon) < 1e-6);
+  assert.ok(app.state()._activeFeeds.has('mbta'));
+});
 
 test('a vehicle is played back a fixed lag behind its fixes, at 1x', async (t) => {
   const app = harness(t);

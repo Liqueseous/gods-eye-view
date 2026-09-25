@@ -56,6 +56,15 @@
         </div>
         <div id="map-stack-chips" class="map-stack-chip-row" role="group" aria-label="Map source"></div>
       </section>
+      <section class="developer-mode-section" aria-labelledby="developer-mode-label">
+        <label class="developer-mode-toggle" for="developer-mode-toggle">
+          <span class="developer-mode-copy">
+            <span id="developer-mode-label">DEVELOPER MODE</span>
+            <small>Analyst console and QA tools</small>
+          </span>
+          <input id="developer-mode-toggle" type="checkbox" role="switch" aria-checked="false" />
+        </label>
+      </section>
       </div>
       <div id="style-mini-status" class="panel-mini-status" aria-live="polite">
         <span class="panel-mini-label">Style</span>
@@ -94,14 +103,14 @@
       </div>
     </div>
   </div>
-  <section id="analyst-console" class="analyst-console collapsed" data-state="idle" aria-label="Analyst query console">
+  <section id="analyst-console" class="analyst-console collapsed" data-state="idle" aria-label="Analyst query console" hidden>
     <button id="analyst-console-toggle" class="analyst-console-toggle" type="button" aria-expanded="false" aria-controls="analyst-console-popover" aria-label="Ask the analyst" title="Ask the analyst">
       <span class="material-symbols-outlined analyst-console-mark" aria-hidden="true">radar</span>
     </button>
     <div id="analyst-console-popover" class="analyst-console-popover">
       <div class="analyst-console-heading"><span>LOCAL-FIRST QUERY</span><span class="analyst-console-scope">ENABLED LAYERS</span></div>
       <form class="analyst-query-form">
-        <input id="analyst-query" type="text" autocomplete="off" spellcheck="false" placeholder="Ask about flights, ships, fires..." aria-label="Ask the analyst a question" />
+        <input id="analyst-query" type="text" autocomplete="off" spellcheck="false" placeholder="Ask about flights, landmarks, history..." aria-label="Ask the analyst a question" />
         <button type="submit" aria-label="Run analyst query" title="Run analyst query">RUN</button>
       </form>
       <div class="analyst-examples" aria-label="Example analyst queries">
@@ -111,9 +120,26 @@
         <button type="button" data-analyst-example="How many military flights over Texas?">MILITARY / REGION</button>
         <button type="button" data-analyst-example="Earthquakes above magnitude 5 in view">EARTHQUAKES / MAGNITUDE</button>
         <button type="button" data-analyst-example="How many ALPR cameras in view?">ALPR / VIEW</button>
+        <button type="button" data-analyst-example="What am I looking at?">LANDMARK / VIEW</button>
+        <button type="button" data-analyst-example="Tell me about the Golden Gate Bridge">LANDMARK / HISTORY</button>
       </div>
       <div id="analyst-status" class="analyst-status" aria-live="polite">Ask a question about data already loaded on the globe.</div>
       <ol id="analyst-results" class="analyst-results"></ol>
     </div>
   </section>
+  <aside id="developer-tools-panel" class="developer-tools-panel" aria-label="Developer diagnostics panel" hidden>
+    <div class="developer-tools-header">
+      <span>DEV TOOLS</span>
+      <span class="developer-tools-scope">LIVE STATE</span>
+      <button id="developer-diagnostics-export" type="button" title="Download a local JSON snapshot including camera coordinates and source diagnostics">EXPORT JSON</button>
+    </div>
+    <div class="developer-tools-list">
+      <div class="developer-tool-row"><span>CAMERA</span><strong id="developer-camera-readout">—</strong></div>
+      <div class="developer-tool-row"><span>RENDER</span><strong id="developer-render-readout">—</strong></div>
+      <div class="developer-tool-row"><span>LAYERS</span><strong id="developer-layers-readout">—</strong></div>
+      <div class="developer-tool-row"><span>VOICE</span><strong id="developer-voice-readout">—</strong></div>
+    </div>
+    <div class="developer-assets-heading">SOURCES · IN VIEW / LOADED</div>
+    <div id="developer-assets-list" class="developer-assets-list" aria-live="polite"></div>
+  </aside>
   </div>

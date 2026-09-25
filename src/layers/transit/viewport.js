@@ -23,17 +23,35 @@ export function createViewport({ state, services, parts }) {
   }
 
   function getCameraCenterLatLon(viewer = state._viewer) {
-    const rect = viewer?.camera?.computeViewRectangle?.(
-      viewer.scene.globe?.ellipsoid,
-    );
-    if (rect) {
-      const center = Cesium.Rectangle.center(rect);
-      return {
-        lat: Cesium.Math.toDegrees(center.latitude),
-        lon: Cesium.Math.toDegrees(center.longitude),
-      };
+    const camera = viewer?.camera;
+    const canvas = viewer?.scene?.canvas;
+    const width = canvas?.clientWidth || canvas?.width;
+    const height = canvas?.clientHeight || canvas?.height;
+    if (
+      typeof camera?.pickEllipsoid === 'function' &&
+      Number.isFinite(width) &&
+      width > 0 &&
+      Number.isFinite(height) &&
+      height > 0
+    ) {
+      try {
+        const hit = camera.pickEllipsoid(
+          new Cesium.Cartesian2(width / 2, height / 2),
+          Cesium.Ellipsoid.WGS84,
+        );
+        const center = hit && Cesium.Cartographic.fromCartesian(hit);
+        if (center) {
+          return {
+            lat: Cesium.Math.toDegrees(center.latitude),
+            lon: Cesium.Math.toDegrees(center.longitude),
+          };
+        }
+      } catch {
+        // A sky-facing center pixel has no ellipsoid hit; use camera nadir.
+      }
     }
-    const carto = viewer?.camera?.positionCartographic;
+
+    const carto = camera?.positionCartographic;
     if (carto) {
       return {
         lat: Cesium.Math.toDegrees(carto.latitude),

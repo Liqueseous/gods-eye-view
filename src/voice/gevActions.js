@@ -1043,6 +1043,10 @@ export function createGevActionRunner({
       );
     }
 
+    if (name === 'get_landmark_info') {
+      return await getLandmarkInformation(args, placeSearch);
+    }
+
     if (name === 'set_hud') {
       const out = { ok: true, action: 'set_hud' };
       if (args.layout != null) {
@@ -3597,10 +3601,96 @@ function nearbyKnownLandmarks(latitude, longitude, cameraHeightM) {
         latitude: poi.lat,
         longitude: poi.lon,
         distanceKm: Number(distanceKm.toFixed(3)),
+        // Include historical metadata if available
+        description: poi.description,
+        yearBuilt: poi.yearBuilt,
+        architect: poi.architect,
+        style: poi.style,
       });
     }
   }
   return matches.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 5);
+}
+
+/**
+ * Get landmark information (historical context, description, etc.).
+ * Searches CITY_POIS for static info, falls back to Wikipedia API.
+ * @param {object} args - Tool arguments with name and optional cityId
+ * @param {object} placeSearch - Place search service for resolving locations
+ * @returns {Promise<object>} Landmark information result
+ */
+async function getLandmarkInformation(args, placeSearch) {
+  const { name, cityId } = args;
+
+  if (!name || typeof name !== 'string') {
+    return {
+      ok: false,
+      action: 'get_landmark_info',
+      error: 'Landmark name is required',
+    };
+  }
+
+  // First, try to find in CITY_POIS
+  const poiMatch = findPoiByName(name, cityId);
+  if (poiMatch?.poi) {
+    const poi = poiMatch.poi;
+    const hasHistoricalData = poi.description || poi.history;
+    
+    if (hasHistoricalData) {
+      return {
+        ok: true,
+        action: 'get_landmark_info',
+        source: 'static',
+        name: poi.name,
+        description: poi.description || '',
+        history: poi.history || '',
+        yearBuilt: poi.yearBuilt,
+        architect: poi.architect,
+        style: poi.style,
+        city: CITY_POIS[poiMatch.cityId]?.name,
+        coordinates: {
+          latitude: poi.lat,
+          longitude: poi.lon,
+        },
+      };
+    }
+  }
+
+  // Fallback to Wikipedia
+  try {
+    const response = await fetch(
+      `/api/wikipedia/summary?name=${encodeURIComponent(name)}`,
+    );
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      return {
+        ok: false,
+        action: 'get_landmark_info',
+        error:
+          data.error === 'not_found'
+            ? 'No information found for this landmark'
+            : 'Unable to retrieve landmark information',
+      };
+    }
+
+    return {
+      ok: true,
+      action: 'get_landmark_info',
+      source: 'wikipedia',
+      name,
+      description: data.description || '',
+      extract: data.extract || '',
+      url: data.url,
+      thumbnail: data.thumbnail,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      action: 'get_landmark_info',
+      error: 'Failed to fetch landmark information',
+    };
+  }
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {

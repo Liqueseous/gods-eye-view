@@ -13,6 +13,24 @@ test('parses a regional flight question', () => {
   });
 });
 
+test('parses a named landmark explanation', () => {
+  const parsed = parseAnalystPrompt('Tell me about the Golden Gate Bridge');
+  assert.equal(parsed.kind, 'landmark');
+  assert.equal(parsed.landmarkName, 'the Golden Gate Bridge');
+});
+
+test('parses a direct landmark identification question', () => {
+  const parsed = parseAnalystPrompt('What is the Eiffel Tower?');
+  assert.equal(parsed.kind, 'landmark');
+  assert.equal(parsed.landmarkName, 'the Eiffel Tower');
+});
+
+test('parses a current-view landmark explanation without a name', () => {
+  const parsed = parseAnalystPrompt('What am I looking at?');
+  assert.equal(parsed.kind, 'landmark');
+  assert.equal(parsed.landmarkName, '');
+});
+
 test('parses a distance query and converts miles to kilometers', () => {
   const parsed = parseAnalystPrompt('Show flights within 25 miles');
   assert.equal(parsed.spec.layers[0], 'flights');

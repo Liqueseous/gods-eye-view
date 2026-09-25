@@ -98,6 +98,18 @@ export function parseAnalystPrompt(input) {
   const prompt = clean(input);
   if (!prompt) return { ok: false, error: 'Enter a question for the analyst.' };
 
+  const landmarkMatch = prompt.match(
+    /^(?:what am i looking at|what(?:'s| is) (?:currently )?(?:in view|this)|what is(?!\s+(?:happening|going|the situation|near|over|around)\b)|tell me about|explain|what(?:'s| is) the history of|history of)\s*(.*)$/i,
+  );
+  if (landmarkMatch) {
+    return {
+      ok: true,
+      kind: 'landmark',
+      landmarkName: clean(landmarkMatch[1]),
+      layerLabel: 'landmark',
+    };
+  }
+
   const layer = parseLayer(prompt);
   if (!layer) {
     return {
