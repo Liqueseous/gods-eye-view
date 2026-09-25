@@ -265,6 +265,27 @@ function invoke(handler, body) {
   });
 }
 
+test('HTTP refusal logs the upstream status and stale-cache outcome without query text', async (t) => {
+  const handler = proxyHandler();
+  const query = `[out:json][timeout:12];node(around:10,30.27,-97.74)["name"="${randomUUID()}"];out;`;
+  const body = `data=${encodeURIComponent(query)}`;
+  const warnings = [];
+  const warn = t.mock.method(console, 'warn', (...args) => warnings.push(args.join(' ')));
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response('upstream unavailable', { status: 403 }),
+  );
+
+  const response = await invoke(handler, body);
+
+  assert.equal(response.status, 403);
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(warnings[0], /\[Overpass Proxy\] upstream 403/);
+  assert.match(warnings[0], /attempts: .*overpass-api\.de=403/);
+  assert.match(warnings[0], /private\.coffee=403/);
+  assert.match(warnings[0], /no stale cache available/);
+  assert.equal(warnings[0].includes(query), false);
+});
+
 test('coalesced outage callers both receive last-good data, never a cached refusal', async (t) => {
   const handler = proxyHandler();
   for (const status of [406, 503, 429]) {

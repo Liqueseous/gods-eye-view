@@ -48,6 +48,31 @@ function sendOverpassResponse(res, payload, cacheStatus = 'MISS') {
   res.end(payload.body || '');
 }
 
+function warnOverpassUnavailable(payload, staleServed, error = null) {
+  const status = Number(payload?.status) || 'network failure';
+  const attempts = payload?.attempts || error?.upstreamAttempts || [];
+  const mirrors = attempts
+    .map(({ endpoint, status: attemptStatus, outcome }) => {
+      let host = 'unknown mirror';
+      try {
+        host = new URL(endpoint).host;
+      } catch {
+        // Do not print malformed endpoint values into the server log.
+      }
+      return `${host}=${attemptStatus ?? outcome ?? 'failed'}`;
+    })
+    .join(', ');
+  const endpoint = payload?.endpoint
+    ? new URL(payload.endpoint).host
+    : 'all upstream mirrors';
+  const fallback = staleServed
+    ? 'serving stale cached data'
+    : 'no stale cache available';
+  console.warn(
+    `[Overpass Proxy] upstream ${status} (${endpoint})${mirrors ? `; attempts: ${mirrors}` : ''}; ${fallback}`,
+  );
+}
+
 /**
  * Vite plugin: Overpass API proxy with response caching and request coalescing.
  *
@@ -115,6 +140,7 @@ function overpassProxy({ routing = {} } = {}) {
           allowUpstream: () => _overpassRateLimiter(clientKey(req)),
         });
         if (preflight.source === 'RATE_LIMITED') {
+          console.warn('[Overpass Proxy] local request rate limit reached');
           res.writeHead(429, {
             'Content-Type': 'application/json',
             'Retry-After': '5',
@@ -127,6 +153,7 @@ function overpassProxy({ routing = {} } = {}) {
           // and must get the same last-good fallback, not the raw refusal.
           if (!overpassPayloadIsData(preflight.payload)) {
             const stale = await readStaleOverpass(cacheKey);
+            warnOverpassUnavailable(preflight.payload, Boolean(stale));
             if (stale) {
               sendOverpassResponse(res, stale, 'STALE');
               return;
@@ -143,6 +170,7 @@ function overpassProxy({ routing = {} } = {}) {
         // From here onward the request is genuinely upstream-bound and has
         // consumed one local limiter slot. Cache and dedupe hits above do not.
         if (_overpassConcurrent >= OVERPASS_MAX_CONCURRENT) {
+          console.warn('[Overpass Proxy] local concurrency limit reached');
           res.writeHead(503, {
             'Content-Type': 'application/json',
             'Retry-After': '2',
@@ -181,6 +209,7 @@ function overpassProxy({ routing = {} } = {}) {
         // memory or disk at ANY age before surfacing the failure.
         if (!overpassPayloadIsData(payload)) {
           const stale = await readStaleOverpass(cacheKey);
+          warnOverpassUnavailable(payload, Boolean(stale));
           if (stale) {
             sendOverpassResponse(res, stale, 'STALE');
             return;
@@ -190,6 +219,7 @@ function overpassProxy({ routing = {} } = {}) {
       } catch (e) {
         // Every mirror threw (network-level). Same serve-stale rule.
         const stale = cacheKey ? await readStaleOverpass(cacheKey) : null;
+        warnOverpassUnavailable(null, Boolean(stale), e);
         if (stale) {
           sendOverpassResponse(res, stale, 'STALE');
           return;
