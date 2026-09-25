@@ -576,4 +576,23 @@ export const ACTION_DESCRIPTIONS = {
       'Predict the next pass in 24 hours for one satellite in the loaded catalog, identified by exact NORAD ID or name. Ambiguous names return candidates: ask for a choice rather than selecting one. Defaults to geometric passes; visibleOnly requires estimated illumination and a dark observer sky, which does not guarantee naked-eye visibility. Uses camera location unless coordinates are supplied.',
     $position: 1,
   },
+  get_landmark_info: {
+    description:
+      'Get historical information, description, and context about a landmark or point of interest. Returns static curated info for known landmarks, or fetches from Wikipedia for others. Use when the user asks "what is this", "tell me about", "explain", or "what\'s the history of" a landmark.',
+    $position: 1,
+    parameters: {
+      properties: {
+        name: {
+          description:
+            'Name of the landmark or place to look up, e.g. "Golden Gate Bridge", "Eiffel Tower", "Texas State Capitol".',
+          $position: 1,
+        },
+        cityId: {
+          description:
+            'Optional city ID if the landmark is in CITY_POIS (austin, sf, nyc, tokyo, london, paris, dubai, dc, tallinn). Helps prioritize static info.',
+          $position: 2,
+        },
+      },
+    },
+  },
 };

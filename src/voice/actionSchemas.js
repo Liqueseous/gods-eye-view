@@ -302,6 +302,25 @@ const schemas = [
     },
   },
   {
+    name: 'get_landmark_info',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name of the landmark or place to look up',
+        },
+        cityId: {
+          type: 'string',
+          enum: ['austin', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc', 'tallinn'],
+          description: 'Optional city ID if the landmark is in CITY_POIS',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
     name: 'set_hud',
     parameters: {
       type: 'object',
