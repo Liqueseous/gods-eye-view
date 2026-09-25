@@ -101,6 +101,55 @@ function fixture() {
   };
 }
 
+test('right-panel layout repairs a rail nested inside Display before reparenting', () => {
+  const f = fixture();
+  try {
+    const rail = f.nodes.get('right-context-rail');
+    const display = f.nodes.get('pp-toggles');
+    const shell = globalThis.document.body;
+    display.style.removeProperty = () => {};
+    const attach = (parent, child, before = null) => {
+      parent.children ??= [];
+      const previous = child.parentElement;
+      if (previous)
+        previous.children = previous.children.filter((entry) => entry !== child);
+      const index = before ? parent.children.indexOf(before) : -1;
+      if (index >= 0) parent.children.splice(index, 0, child);
+      else parent.children.push(child);
+      child.parentElement = parent;
+    };
+    for (const node of [shell, rail, display]) {
+      node.contains = (candidate) => {
+        const visit = (current) =>
+          current === candidate || current.children?.some(visit) || false;
+        return visit(node);
+      };
+      node.prepend = (child) => attach(node, child, node.children?.[0] || null);
+      node.insertBefore = (child, before) => attach(node, child, before);
+    }
+    shell.append = (...children) => children.forEach((child) => attach(shell, child));
+    // Reproduce the invalid state that used to make `rail.prepend(display)`
+    // throw "The new child element contains the parent".
+    attach(shell, display);
+    attach(display, rail);
+
+    const owner = new PanelLayoutController({
+      readHud: () => ({}),
+      scheduleCockpitLayout() {},
+      readDisplayScrollTop: () => 0,
+      syncPanelCollapseButton() {},
+    });
+    owner._initRightPanelAdaptiveLayout();
+
+    assert.equal(rail.parentElement, shell);
+    assert.equal(display.parentElement, rail);
+    assert.equal(display.contains(rail), false);
+    owner.destroy();
+  } finally {
+    f.restore();
+  }
+});
+
 test('UI lifetime revokes listeners and nested presentation work synchronously', () => {
   const f = fixture();
   try {

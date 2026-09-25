@@ -150,15 +150,21 @@ export function createAlprPresentation({ state, services, source }) {
     const canvas = viewer?.scene?.canvas;
     const width = canvas?.clientWidth || canvas?.width;
     const height = canvas?.clientHeight || canvas?.height;
-    if (!width || !height) return false;
+    if (!width || !height) return true;
     const position = Cesium.Cartesian3.fromDegrees(
       record.longitude,
       record.latitude,
     );
-    const screen = Cesium.SceneTransforms.worldToWindowCoordinates(
-      viewer.scene,
-      position,
-    );
+    let screen;
+    try {
+      screen = Cesium.SceneTransforms.worldToWindowCoordinates(
+        viewer.scene,
+        position,
+      );
+    } catch {
+      // Before the renderer is ready, preserve the viewport-box fallback.
+      return true;
+    }
     return (
       Number.isFinite(screen?.x) &&
       Number.isFinite(screen?.y) &&
