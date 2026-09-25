@@ -67,7 +67,11 @@ function fixture() {
     hidden: false,
     getElementById: (id) => nodes.get(id) || null,
     querySelectorAll: () => [],
-    body: element(),
+    body: Object.assign(element(), {
+      append(...children) {
+        this.appended = [...(this.appended || []), ...children];
+      },
+    }),
   });
   globalThis.window = Object.assign(new EventTarget(), {
     innerWidth: 600,

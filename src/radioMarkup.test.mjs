@@ -25,17 +25,18 @@ const css = readStylesheet(new URL('../style.css', import.meta.url));
 
 function realtimeTools() { return GEV_REALTIME_TOOLS; }
 
-test('Realtime schema exposes the authoritative 30-tool inventory', () => {
+test('Realtime schema exposes the authoritative 31-tool inventory', () => {
   const tools = realtimeTools();
-  assert.equal(tools.length, 30);
+  assert.equal(tools.length, 31);
   const names = tools.map((tool) => tool.name);
-  assert.equal(new Set(names).size, 30, 'tool names are unique');
+  assert.equal(new Set(names).size, 31, 'tool names are unique');
   assert.ok(names.includes('set_context_mode'));
   assert.ok(names.includes('control_cockpit'));
   assert.ok(names.includes('select_nearest_aircraft'));
   assert.ok(names.includes('control_radio'));
   assert.ok(names.includes('next_satellite_pass'));
   assert.ok(names.includes('next_iss_pass'));
+  assert.ok(names.includes('get_landmark_info'));
   // Every tool closes its parameter object: an open schema lets the model
   // invent arguments the runner silently drops.
   for (const tool of tools) {
@@ -182,6 +183,7 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     'select_nearest_aircraft',
     'set_map_stack',
     'analyst_query',
+    'get_landmark_info',
     'next_iss_pass',
     'next_satellite_pass',
     // Local ADS-B adds one layer enum value and its common-name mapping.

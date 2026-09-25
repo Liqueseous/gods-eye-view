@@ -29,7 +29,7 @@ test('the complete Realtime tool payload pins the additive analyst, satellite, L
     digest,
     // Re-derived for the additive `local-adsb` set_layer_visibility value and
     // the Cyber HUD layout; the separate sonar tool is excluded above.
-    '590d537d93e132ac64ac5e211ad5bb9d7d1b1f22e2dd963dda5465fab4510a3b',
+    '526221853aa810fb59624d4a6fae2ba1711873e3c95d5d7e8645298c362599db',
   );
 });
 
@@ -53,10 +53,20 @@ test('descriptions customize wording without changing immutable shared arguments
   assert.throws(() => {
     GEV_ACTION_SCHEMAS[0].parameters.properties.query.type = 'number';
   }, TypeError);
-  assert.equal(
-    JSON.stringify(GEV_ACTION_SCHEMAS).includes('"description"'),
-    false,
+  const landmark = GEV_ACTION_SCHEMAS.find(
+    (schema) => schema.name === 'get_landmark_info',
   );
+  assert.equal(
+    landmark.parameters.properties.name.description,
+    'Name of the landmark or place to look up',
+  );
+  assert.equal(
+    landmark.parameters.properties.cityId.description,
+    'Optional city ID if the landmark is in CITY_POIS',
+  );
+  assert.throws(() => {
+    landmark.parameters.properties.name.description = 'Changed';
+  }, TypeError);
 });
 
 test('metadata cannot add tools, fields, types or enum values', () => {
@@ -87,7 +97,10 @@ test('metadata cannot add tools, fields, types or enum values', () => {
 
 test('all legacy action arguments are byte-identical after removing the deliberate additions', () => {
   const legacy = structuredClone(GEV_ACTION_SCHEMAS).filter(
-    (tool) => !['next_satellite_pass', 'set_cyber_sonar'].includes(tool.name),
+    (tool) =>
+      !['next_satellite_pass', 'set_cyber_sonar', 'get_landmark_info'].includes(
+        tool.name,
+      ),
   );
   const layers = legacy.find((tool) => tool.name === 'analyst_query').parameters
     .properties.layers.items;
