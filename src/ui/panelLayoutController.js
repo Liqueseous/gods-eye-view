@@ -1,5 +1,6 @@
 /** Own rail measurement, layout scheduling and dock tray observation. */
 import { layoutLeftPanelRail, layoutRightPanelRail } from './panelRails.js';
+import { syncRadioPanelPlacement } from './radioPanelPlacement.js';
 const COCKPIT_LAYOUT_SETTLE_MS = 240;
 /**
  * Fixed UI regions that can occupy the left accordion's vertical lane.
@@ -194,7 +195,16 @@ export class PanelLayoutController {
     this._ppToggles.style.removeProperty('z-index');
     this._ppToggles.classList.remove('panel-draggable', 'panel-dragging');
     this._ppToggles.querySelector('.pp-header-row')?.removeAttribute('title');
-    stack.prepend(this._ppToggles);
+    // A stale/template-transition layout can nest either fixed rail inside a
+    // panel. Restore both rails to the document root before placing Display
+    // at the right-rail head; fixed rails must not inherit a panel transform.
+    const documentBody = stack.ownerDocument?.body || document.body;
+    if (documentBody) {
+      documentBody.append(stack);
+      if (this._leftPanelStack && this._leftPanelStack !== documentBody)
+        documentBody.append(this._leftPanelStack);
+    }
+    if (stack !== this._ppToggles.parentElement) stack.prepend(this._ppToggles);
     const globalContextPanel = document.getElementById('global-context-panel');
     for (const panel of [
       this._cctvPanel,
@@ -229,6 +239,7 @@ export class PanelLayoutController {
         this._weatherPanel,
         this._recentImageryPanel,
         globalContextPanel,
+        document.getElementById('radio-panel'),
       ]) {
         if (panel) this._rightStackResizeObserver.observe(panel);
       }
@@ -301,6 +312,7 @@ export class PanelLayoutController {
 
   _syncRightPanelAdaptiveLayout() {
     if (this.destroyed) return;
+    syncRadioPanelPlacement(document);
     layoutRightPanelRail({
       stack: this._rightPanelStack,
       obstacles: document.querySelectorAll(RIGHT_STACK_OBSTACLE_SELECTOR),

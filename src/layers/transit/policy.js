@@ -91,6 +91,8 @@ export const ROTATION_REFRESH_MS = 200;
  * fleet once a frame — which is the cost it exists to avoid.
  */
 export const VISIBILITY_REFRESH_MS = 250;
+/** Consecutive missed sweeps tolerated before hiding an already-rendered marker. */
+export const VISIBILITY_EXIT_GRACE_SWEEPS = 1;
 /**
  * How much wider than the camera's own view rectangle a vehicle still counts as
  * on screen. Generous on purpose: a vehicle that crosses the edge mid-glide

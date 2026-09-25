@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import { createTrafficLayer } from './index.js';
+import { layerFeedState } from '../../data/feedState.js';
 
 function deferred() {
   let resolve;
@@ -95,6 +96,16 @@ function roads(bounds) {
     }),
   };
 }
+
+test('enabled traffic without a successful road snapshot reports unavailable', (t) => {
+  const { layer, viewer } = setup(t, async () => new Promise(() => {}));
+  layer.enable(viewer);
+
+  const stats = layer.getStats();
+  assert.equal(stats.status, 'unavailable');
+  assert.equal(stats.loadingLabel, 'OSM road data unavailable');
+  assert.equal(layerFeedState(stats), 'unavailable');
+});
 
 test('traffic recovers a failed destination request after another city has loaded', async (t) => {
   let londonCalls = 0;

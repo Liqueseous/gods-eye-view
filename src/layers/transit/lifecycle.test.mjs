@@ -222,7 +222,12 @@ function harness(
       },
     },
     scene: {
-      canvas: { addEventListener() {}, removeEventListener() {} },
+      canvas: {
+        width: 100,
+        height: 100,
+        addEventListener() {},
+        removeEventListener() {},
+      },
       globe: { ellipsoid: Cesium.Ellipsoid.WGS84 },
       pick: () => undefined,
       requestRenderMode: false,
@@ -402,6 +407,25 @@ function harness(
     },
   };
 }
+
+test('transit coverage follows the center-screen ground point, not the view-rectangle midpoint', (t) => {
+  const app = harness(t, { at: { lat: 39.7392, lon: -104.9903 } });
+  app.viewer.camera.pickEllipsoid = () =>
+    Cesium.Cartesian3.fromDegrees(BOSTON.lon, BOSTON.lat);
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot('mbta', 'MBTA', [], { fetchedAt: Date.now() }),
+  }));
+
+  app.layer.enable(app.viewer);
+
+  const center = app.layer
+    ._transitPartsForTest()
+    .viewport.getCameraCenterLatLon();
+  assert.ok(Math.abs(center.lat - BOSTON.lat) < 1e-6);
+  assert.ok(Math.abs(center.lon - BOSTON.lon) < 1e-6);
+  assert.ok(app.state()._activeFeeds.has('mbta'));
+});
 
 test('a vehicle is played back a fixed lag behind its fixes, at 1x', async (t) => {
   const app = harness(t);
@@ -775,6 +799,36 @@ test('a vehicle waits for its floor rather than standing on the ellipsoid', asyn
   }));
   await app.layer.update();
   assert.notEqual(app.vehicles()[0].heightCell, cellBefore);
+});
+
+test('a rendered transit marker stays visible through a transient missing motion sample', async (t) => {
+  const app = harness(t);
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot(
+      'mbta',
+      'MBTA',
+      [vehicle('bus-1', 42.36, -71.06, reported())],
+      { fetchedAt: Date.now() },
+    ),
+  }));
+  app.layer.enable(app.viewer);
+  await app.layer.update();
+  app.settle();
+
+  const entry = app.vehicles()[0];
+  const parts = app.layer._transitPartsForTest();
+  const lastPosition = Cesium.Cartesian3.clone(entry.marker.position);
+  const samplePosition = parts.trails.samplePosition;
+  parts.trails.samplePosition = () => null;
+  parts.rendering.placeSample(entry);
+  assert.equal(entry.marker.show, true);
+  assert.ok(Cesium.Cartesian3.equals(entry.marker.position, lastPosition));
+
+  app.advance(250);
+  parts.rendering.refreshVisibility();
+  assert.equal(entry.marker.show, true);
+  parts.trails.samplePosition = samplePosition;
 });
 
 test('the render hold follows real motion, and is released when everything settles', async (t) => {
@@ -2758,9 +2812,85 @@ test('missing rectangle still rejects the far side, and frustum rejection wins',
   };
   app.advance(250);
   app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(
+    app.state()._visible.size,
+    1,
+    'one missed sweep does not blink it off',
+  );
+  assert.equal(app.vehicles()[0].marker.show, true);
+  app.viewer.camera.frustum = null;
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(
+    app.state()._visible.size,
+    1,
+    'a recovery resets the miss count',
+  );
+  app.viewer.camera.frustum = {
+    computeCullingVolume: () => ({
+      computeVisibility: () => Cesium.Intersect.OUTSIDE,
+    }),
+  };
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(
+    app.state()._visible.size,
+    1,
+    'an alternating miss remains visible',
+  );
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
   assert.equal(app.state()._visible.size, 0);
   assert.equal(app.state()._moving.size, 0);
   assert.equal(app.holds().includes('transit'), false);
+});
+
+test('visibility culling includes the rendered icon footprint at the frustum edge', async (t) => {
+  const app = harness(t, { altitude: 100_000 });
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot(
+      'mbta',
+      'MBTA',
+      [vehicle('edge', 42.36, -71.06, reported())],
+      { fetchedAt: Date.now() },
+    ),
+  }));
+  app.layer.enable(app.viewer);
+  await app.layer.update();
+  app.settle();
+
+  const entry = app.vehicles()[0];
+  app.viewer.camera.getPixelSize = () => 2;
+  let outsideDistance = 10;
+  app.viewer.camera.frustum = {
+    computeCullingVolume: () => ({
+      planes: [
+        {
+          x: 1,
+          y: 0,
+          z: 0,
+          w: -entry.marker.position.x - outsideDistance,
+        },
+      ],
+    }),
+  };
+
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(entry.marker.show, true, 'the icon still overlaps the frustum');
+
+  outsideDistance = entry.marker.width + 10;
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(entry.marker.show, true, 'one missed sweep is tolerated');
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(
+    entry.marker.show,
+    false,
+    'the full icon stays outside the frustum',
+  );
 });
 
 test('motion transitions migrate billboards and update cached positions; disable clears owners', async (t) => {
@@ -2807,6 +2937,54 @@ test('motion transitions migrate billboards and update cached positions; disable
   assert.equal(entry.wakeTimer, null);
   assert.equal(app.state()._inFlight.size, 0);
   assert.equal(parts.trails.requestDiagnostics().pending, false);
+});
+
+test('a visible transit icon stays up until its replacement billboard is ready', async (t) => {
+  const app = harness(t);
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot(
+      'mbta',
+      'MBTA',
+      [vehicle('bus', 42.36, -71.06, reported())],
+      { fetchedAt: Date.now() },
+    ),
+  }));
+  app.layer.enable(app.viewer);
+  await app.layer.update();
+  app.settle();
+
+  const entry = app.vehicles()[0];
+  const original = entry.marker;
+  const parts = app.layer._transitPartsForTest();
+  app.viewer.scene.context = {};
+  entry.sample.phase = 'playing';
+  entry.sample.segmentSpeedMps = 1;
+  parts.rendering.schedulePlayback(entry);
+
+  const pending = entry.pendingMigration.marker;
+  assert.equal(entry.marker, original);
+  assert.equal(original.show, true);
+  assert.equal(pending.show, false);
+  assert.equal(pending.image, entry.spriteImage);
+
+  Object.defineProperty(pending, 'ready', { value: true });
+  parts.rendering.maintainPresentation();
+  assert.equal(entry.marker, pending);
+  assert.equal(entry.markerCollection, app.state()._animatedMarkers);
+  assert.equal(entry.marker.show, true);
+  assert.equal(entry.pendingMigration, null);
+
+  entry.sample.phase = 'held';
+  entry.sample.segmentSpeedMps = 0;
+  entry.sample.nextWakeMonoMs = Infinity;
+  parts.rendering.schedulePlayback(entry);
+  assert.ok(entry.pendingMigration);
+  parts.ingestion.removeVehicle(entry.key);
+  assert.equal(entry.pendingMigration, null);
+  assert.equal(app.state()._vehicles.has(entry.key), false);
+  assert.equal(app.state()._animatedMarkers.length, 0);
+  assert.equal(app.state()._markers.length, 0);
 });
 
 test('every styling path retains the mode palette and exact unpadded size', async (t) => {
@@ -2881,7 +3059,15 @@ test('visible motion is recullable without a camera event and releases its hold 
       computeVisibility: () => Cesium.Intersect.OUTSIDE,
     }),
   };
-  app.layer._transitPartsForTest().rendering.maintainPresentation();
+  const rendering = app.layer._transitPartsForTest().rendering;
+  rendering.maintainPresentation();
+  app.advance(250);
+  assert.equal(
+    app.state()._moving.size,
+    1,
+    'one missed sweep keeps motion alive',
+  );
+  rendering.maintainPresentation();
   app.advance(250);
   assert.equal(app.state()._moving.size, 0);
   assert.equal(app.state()._renderHeld, false);

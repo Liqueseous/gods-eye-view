@@ -82,6 +82,7 @@ async function fetchOverpassPayload(
   let lastError = null;
   let lastRateLimitPayload = null;
   let lastRefusalPayload = null;
+  const attempts = [];
 
   for (const endpoint of endpoints) {
     const controller = new AbortController();
@@ -102,6 +103,7 @@ async function fetchOverpassPayload(
       const contentType =
         upstream.headers.get('content-type') || 'application/json';
       const status = upstream.status;
+      attempts.push({ endpoint, status });
       const rateLimited =
         status === 429 || overpassLooksRateLimited(responseBody);
       const runtimeError = overpassLooksRuntimeError(responseBody);
@@ -145,14 +147,20 @@ async function fetchOverpassPayload(
       return payload;
     } catch (error) {
       lastError = error;
+      attempts.push({
+        endpoint,
+        outcome: error?.name === 'AbortError' ? 'timeout' : 'network error',
+      });
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
-  if (lastRateLimitPayload) return lastRateLimitPayload;
-  if (lastRefusalPayload) return lastRefusalPayload;
-  throw lastError || new Error('All Overpass upstreams failed');
+  if (lastRateLimitPayload) return { ...lastRateLimitPayload, attempts };
+  if (lastRefusalPayload) return { ...lastRefusalPayload, attempts };
+  const error = lastError || new Error('All Overpass upstreams failed');
+  error.upstreamAttempts = attempts;
+  throw error;
 }
 
 export { overpassPayloadIsData, fetchOverpassPayload };

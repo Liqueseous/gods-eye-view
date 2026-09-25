@@ -18,7 +18,7 @@
  *
  * Providers (injected — keeps the engine pure and node-testable):
  *   getRecords(layerKey) → Array<record>            (layer accessor snapshot)
- *   resolveRegionRing(name) → Promise<{ring, name}|null>  (NE pack / admin boundary)
+ *   resolveRegionRing(name) → Promise<{ring, name}|{error:'region-timeout'}|null>
  *   getViewContext() → {lat, lon, viewRadiusKm, bounds?}  (camera-derived)
  *
  * @module data/analystEngine
@@ -80,6 +80,11 @@ export const ANALYST_LAYERS = {
   'fire-perimeters': {
     numeric: ['acres', 'containedPct', 'personnel', 'costToDate'],
     text: ['name', 'state', 'county', 'cause', 'behavior', 'complexity'],
+    flags: [],
+  },
+  'alpr-cameras': {
+    numeric: ['directionDeg'],
+    text: ['operator', 'manufacturer', 'cameraType', 'zone'],
     flags: [],
   },
 };
@@ -234,6 +239,14 @@ export function createAnalystEngine(providers) {
     const scope = spec.scope || { kind: 'view' };
     if (scope.kind === 'region' && scope.name) {
       const region = await providers.resolveRegionRing(scope.name);
+      if (region?.error === 'region-timeout') {
+        return {
+          ok: false,
+          code: 'region-timeout',
+          error: `Looking up the boundary for "${scope.name}" is taking too long — ask again in a moment.`,
+          coverage: { layersQueried, scope: `region:${scope.name}:timeout` },
+        };
+      }
       if (!region?.ring) {
         return {
           ok: false,

@@ -78,18 +78,33 @@ Best fit:
 
 ### 2) Natural-Language Analyst Assistant
 
-Add conversational analysis directly to the live globe.
+**Status: In progress.** The first operational slice is implemented as the Analyst control in the command dock.
 
-Example prompts:
-- "Show flights within 25 km of the wildfire"
-- "List dams and power plants near this storm"
-- "Which ships are heading toward the port?"
+Delivered capabilities:
+- compact Analyst control in the command dock, matching the dock's visual style
+- typed natural-language query console with example prompts
+- the same query engine and providers wired into voice's existing `analyst_query` action, so typed and spoken questions share one answer
+- natural-language parsing for flights, military flights, ships, fires, fire perimeters, earthquakes, satellites, dams, datacenters, and ALPR cameras
+- region, radius, and in-view scoping, with a geocode fallback when a named place has no resolvable admin boundary
+- attribute filters: destination, altitude (feet), speed (knots), magnitude
+- ranked results: biggest/highest/closest per layer
+- honest "in view" counts — ALPR's spoken/typed count matches what is actually rendered on screen, not a wider cached fetch
 
-Planned capabilities:
-- natural-language filtering and ranking
-- view-aware context queries
-- incident summarization
-- source state explanations for stale or fallback data
+Remaining follow-up capabilities:
+
+- [x] typed query console
+- [x] voice integration sharing the same engine
+- [x] natural-language filtering and ranking
+- [x] view-aware, region-aware, and radius-aware scope queries
+- [x] geocode fallback for named places without an admin boundary
+- [ ] incident summarization
+- [ ] source state explanations for stale or fallback data surfaced directly in the Analyst console (voice already reports warm-up/provenance)
+
+Best fit:
+- local monitoring
+- research
+- city operations
+- custom dashboards
 
 ### 3) Custom Live Data Ingestion and User-Defined Layers
 

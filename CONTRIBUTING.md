@@ -25,7 +25,7 @@ the Keychain; on any platform you can pass them as env vars or use a `.env`.
 People who only want to run the app can instead install the repository directly
 through Pinokio; the terminal path above remains the contributor path.
 
-Open `http://localhost:4173`. Before sending a PR run `npm run build`, `npm test`, and `npm run test:track` (dev server must be up) — **all three must stay green.**
+Open `http://localhost:4173`. Before sending a PR, run `npm run test:all` — it runs all source/server unit tests, the production build, and tracking regression with its own temporary dev server. Also run `npm run format:check` and `npm run check:boundaries`. **The full gate must stay green.**
 
 ## Checking a built app locally
 

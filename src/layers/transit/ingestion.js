@@ -73,6 +73,7 @@ export function createIngestion({ state, services, parts, source }) {
     const entry = state._vehicles.get(key);
     if (!entry) return;
     if (state._selectedKey === key) parts.selection.clearSelection();
+    parts.rendering.cancelMarkerMigration(entry);
     if (entry.marker) entry.markerCollection?.remove(entry.marker);
     entry.marker = null;
     entry.detectContact = null;

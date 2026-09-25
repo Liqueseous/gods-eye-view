@@ -140,6 +140,41 @@ export function createAlprPresentation({ state, services, source }) {
     governorRequestRender('alpr-credit');
   }
 
+  // The Overpass query box is deliberately generous (a ground-radius square
+  // kept warm across small pans) so it always covers more area than the
+  // camera's actual view cone — a near-vertical high-altitude view sees a
+  // much narrower footprint than "2x range" in every direction. Counting box
+  // membership as "visible" therefore over-counts by a wide margin; a record
+  // is only actually on screen if it projects inside the canvas.
+  function isRecordOnScreen(viewer, record) {
+    const canvas = viewer?.scene?.canvas;
+    const width = canvas?.clientWidth || canvas?.width;
+    const height = canvas?.clientHeight || canvas?.height;
+    if (!width || !height) return true;
+    const position = Cesium.Cartesian3.fromDegrees(
+      record.longitude,
+      record.latitude,
+    );
+    let screen;
+    try {
+      screen = Cesium.SceneTransforms.worldToWindowCoordinates(
+        viewer.scene,
+        position,
+      );
+    } catch {
+      // Before the renderer is ready, preserve the viewport-box fallback.
+      return true;
+    }
+    return (
+      Number.isFinite(screen?.x) &&
+      Number.isFinite(screen?.y) &&
+      screen.x >= 0 &&
+      screen.x <= width &&
+      screen.y >= 0 &&
+      screen.y <= height
+    );
+  }
+
   function renderRecords() {
     const selectedContext = getSelectedEntityContext();
     const box = viewportBox(state.viewer);
@@ -153,6 +188,7 @@ export function createAlprPresentation({ state, services, source }) {
               east: record.longitude,
             }),
           )
+          .filter((record) => isRecordOnScreen(state.viewer, record))
           .slice(0, MAX_RENDERED)
       : [];
     visibleRecords = visible;
@@ -458,5 +494,10 @@ export function createAlprPresentation({ state, services, source }) {
     clearSelection,
     updateSelectedAnchor,
     installInteraction,
+    // The subset of the fetched cache that passed the current-viewport filter
+    // in the last renderRecords() pass — i.e. what is actually on screen. The
+    // fetch cache (state.records) can be a wider, snapped-outward box kept warm
+    // across small pans, so it must never stand in for "what is visible now".
+    getVisibleRecords: () => visibleRecords,
   };
 }

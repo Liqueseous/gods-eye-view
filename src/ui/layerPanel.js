@@ -222,6 +222,7 @@ export class LayerPanel {
       left.className = 'data-toggle-left';
       const icon = document.createElement('span');
       icon.className = 'data-icon';
+      icon.setAttribute('aria-hidden', 'true');
       icon.textContent = layer.icon;
       const name = document.createElement('span');
       name.className = 'data-name';
@@ -545,6 +546,13 @@ export class LayerPanel {
       stats.statusMessage.trim()
     ) {
       return `${source} · ${stats.statusMessage.trim()}`;
+    }
+    if (feedState === 'unavailable') {
+      const detail =
+        typeof stats.loadingLabel === 'string' && stats.loadingLabel.trim()
+          ? stats.loadingLabel.trim()
+          : 'data unavailable';
+      return `${stateLabel} · ${source} · ${detail}`;
     }
     const ago = stats.lastUpdate ? this._timeAgo(stats.lastUpdate) : 'never';
     if (stats.loading) {

@@ -15,6 +15,7 @@ import {
   alprRetryDelayMs,
   validateAlprSnapshot,
   alprCreditMarkup,
+  mapAnalystRecord,
 } from './model.js';
 import { createAlprPresentation } from './presentation.js';
 
@@ -81,6 +82,7 @@ export function createAlprCamerasLayer({ source, services } = {}) {
     clearSelection,
     updateSelectedAnchor,
     installInteraction,
+    getVisibleRecords,
   } = createAlprPresentation({ state, services, source });
 
   function setAlprStatus(status, error = null) {
@@ -332,6 +334,28 @@ export function createAlprCamerasLayer({ source, services } = {}) {
         ],
       };
     },
+    /**
+     * Snapshot in-memory ALPR camera records as plain JSON-safe objects for
+     * the analyst query engine. On-demand only — no per-frame cost. Returns
+     * [] while the layer is disabled or has nothing loaded yet.
+     *
+     * Reads the RENDERED subset, not the raw fetch cache: the cache is
+     * snapped outward to a grid and kept warm across small pans (so a pan
+     * back a few hundred metres reuses it), which can hold many more records
+     * than the current viewport actually contains. Counting the cache would
+     * answer "how many did we ever fetch nearby", not "how many are in view".
+     * @param {number} [maxCount=2000] Maximum records to return (truncation).
+     * @returns {Array<Object>} See mapAnalystRecord for the record shape.
+     */
+    getAnalystRecords(maxCount = 2000) {
+      if (!state.enabled) return [];
+      const visible = getVisibleRecords();
+      if (!visible.length) return [];
+      const limit = Number.isFinite(maxCount)
+        ? Math.max(1, Math.floor(maxCount))
+        : 2000;
+      return visible.slice(0, limit).map(mapAnalystRecord);
+    },
     getStats() {
       return {
         count: state.dataSource?.entities.values.length || 0,
@@ -377,6 +401,7 @@ export {
   isAlprSurveillanceType,
   normalizeAlprNode,
   buildOverpassQuery,
+  mapAnalystRecord,
 } from './model.js';
 export {
   QUERY_LIMIT,

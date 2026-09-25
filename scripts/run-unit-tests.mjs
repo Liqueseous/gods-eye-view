@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -7,6 +7,7 @@ export const ALLOCATION_TEST_FILES = Object.freeze([
   'src/data/focusAllocations.test.mjs',
   'src/overlays/worldOverlayAllocation.test.mjs',
 ]);
+const UNIT_TEST_ROOTS = Object.freeze(['src', 'server']);
 
 /** Whether this runtime matches the one the allocation budgets were calibrated on. */
 export function isCalibratedAllocationRuntime(version = process.versions.node) {
@@ -21,9 +22,8 @@ export function assertNode24AllocationRuntime(version = process.versions.node) {
   return version;
 }
 
-/** Discover repository unit tests in stable path order. */
+/** Discover application and server unit tests in stable path order. */
 export function discoverUnitTestFiles(root = process.cwd()) {
-  const sourceRoot = path.join(root, 'src');
   const files = [];
   const visit = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -34,7 +34,10 @@ export function discoverUnitTestFiles(root = process.cwd()) {
       }
     }
   };
-  visit(sourceRoot);
+  for (const testRoot of UNIT_TEST_ROOTS) {
+    const absoluteRoot = path.join(root, testRoot);
+    if (existsSync(absoluteRoot)) visit(absoluteRoot);
+  }
   return files.sort();
 }
 

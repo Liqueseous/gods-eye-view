@@ -1,3 +1,5 @@
+import { HUD_LAYOUTS } from '../hudLayoutPolicy.js';
+
 // Canonical action arguments. Descriptive wording is supplied separately.
 const schemas = [
   {
@@ -302,6 +304,35 @@ const schemas = [
     },
   },
   {
+    name: 'get_landmark_info',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name of the landmark or place to look up',
+        },
+        cityId: {
+          type: 'string',
+          enum: [
+            'austin',
+            'sf',
+            'nyc',
+            'tokyo',
+            'london',
+            'paris',
+            'dubai',
+            'dc',
+            'tallinn',
+          ],
+          description: 'Optional city ID if the landmark is in CITY_POIS',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
     name: 'set_hud',
     parameters: {
       type: 'object',
@@ -313,8 +344,23 @@ const schemas = [
         },
         layout: {
           type: 'string',
-          enum: ['tactical', 'operator', 'minimal'],
+          enum: [...HUD_LAYOUTS],
         },
+      },
+    },
+  },
+  {
+    name: 'set_cyber_sonar',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        enabled: { type: 'boolean' },
+        rings: { type: 'integer', minimum: 3, maximum: 12 },
+        rangePct: { type: 'integer', minimum: 60, maximum: 120 },
+        intensityPct: { type: 'integer', minimum: 0, maximum: 100 },
+        opacityPct: { type: 'integer', minimum: 35, maximum: 100 },
+        sectorDeg: { type: 'integer', minimum: 8, maximum: 60 },
       },
     },
   },

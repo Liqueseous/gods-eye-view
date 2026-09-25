@@ -2,6 +2,7 @@ import { defaultSourceRoot } from './common/source-root.js';
 import { handleHudSummary } from './openai/hud-summary.js';
 import { createDebugLogHandler } from './openai/debug-log.js';
 import { createRealtimeTokenHandler } from './openai/realtime.js';
+import { wikipediaProxy } from './wikipedia/wikipedia.js';
 
 /**
  * Vite plugin: OpenAI Realtime ephemeral client secret.
@@ -26,6 +27,9 @@ function openAiRealtimeProxy({
       '/api/realtime/token',
       createRealtimeTokenHandler({ ...realtime, annotationGuidance }),
     );
+
+    // Install Wikipedia landmark info endpoint
+    wikipediaProxy().install(middlewares);
   }
 
   return {

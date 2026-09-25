@@ -340,7 +340,7 @@ export function createGevActionRunner({
   const _layerEnabledAt = new Map();
   let analystEngine;
   const resolveRegionRing = (name) =>
-    annotationResolver.resolveRegionRingForQuery(name, undefined, placeSearch);
+    resolveRegionRingWithFallback(name, placeSearch, annotationResolver);
   installViewTargetPrewarm(viewer);
   initCameraVerbs(viewer, getViewTargetCartesian);
   return async function runGevAction(name, rawArgs = {}, runOptions = {}) {
@@ -1043,6 +1043,10 @@ export function createGevActionRunner({
       );
     }
 
+    if (name === 'get_landmark_info') {
+      return await getLandmarkInformation(args, placeSearch);
+    }
+
     if (name === 'set_hud') {
       const out = { ok: true, action: 'set_hud' };
       if (args.layout != null) {
@@ -1056,6 +1060,17 @@ export function createGevActionRunner({
         Object.assign(out, result);
       }
       return { ...out, hud: styleManager.getControlState().hud };
+    }
+
+    if (name === 'set_cyber_sonar') {
+      if (typeof styleManager?.setCyberSonar !== 'function') {
+        return {
+          ok: false,
+          action: 'set_cyber_sonar',
+          error: 'Cyber sonar controls are unavailable.',
+        };
+      }
+      return { action: 'set_cyber_sonar', ...styleManager.setCyberSonar(args) };
     }
 
     if (name === 'set_detection') {
@@ -3586,10 +3601,96 @@ function nearbyKnownLandmarks(latitude, longitude, cameraHeightM) {
         latitude: poi.lat,
         longitude: poi.lon,
         distanceKm: Number(distanceKm.toFixed(3)),
+        // Include historical metadata if available
+        description: poi.description,
+        yearBuilt: poi.yearBuilt,
+        architect: poi.architect,
+        style: poi.style,
       });
     }
   }
   return matches.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 5);
+}
+
+/**
+ * Get landmark information (historical context, description, etc.).
+ * Searches CITY_POIS for static info, falls back to Wikipedia API.
+ * @param {object} args - Tool arguments with name and optional cityId
+ * @param {object} placeSearch - Place search service for resolving locations
+ * @returns {Promise<object>} Landmark information result
+ */
+async function getLandmarkInformation(args, placeSearch) {
+  const { name, cityId } = args;
+
+  if (!name || typeof name !== 'string') {
+    return {
+      ok: false,
+      action: 'get_landmark_info',
+      error: 'Landmark name is required',
+    };
+  }
+
+  // First, try to find in CITY_POIS
+  const poiMatch = findPoiByName(name, cityId);
+  if (poiMatch?.poi) {
+    const poi = poiMatch.poi;
+    const hasHistoricalData = poi.description || poi.history;
+
+    if (hasHistoricalData) {
+      return {
+        ok: true,
+        action: 'get_landmark_info',
+        source: 'static',
+        name: poi.name,
+        description: poi.description || '',
+        history: poi.history || '',
+        yearBuilt: poi.yearBuilt,
+        architect: poi.architect,
+        style: poi.style,
+        city: CITY_POIS[poiMatch.cityId]?.name,
+        coordinates: {
+          latitude: poi.lat,
+          longitude: poi.lon,
+        },
+      };
+    }
+  }
+
+  // Fallback to Wikipedia
+  try {
+    const response = await fetch(
+      `/api/wikipedia/summary?name=${encodeURIComponent(name)}`,
+    );
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      return {
+        ok: false,
+        action: 'get_landmark_info',
+        error:
+          data.error === 'not_found'
+            ? 'No information found for this landmark'
+            : 'Unable to retrieve landmark information',
+      };
+    }
+
+    return {
+      ok: true,
+      action: 'get_landmark_info',
+      source: 'wikipedia',
+      name,
+      description: data.description || '',
+      extract: data.extract || '',
+      url: data.url,
+      thumbnail: data.thumbnail,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      action: 'get_landmark_info',
+      error: 'Failed to fetch landmark information',
+    };
+  }
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -4209,18 +4310,73 @@ function activeContactsWindow(dataManager) {
   }
 }
 
-function analystProviders(
+/** A place with coordinates but no admin boundary still answers as an
+ *  approximate box — the geocoder's own viewport, or this fixed radius. */
+const NAMED_PLACE_FALLBACK_RADIUS_KM = 40;
+const KM_PER_DEGREE_LAT = 111;
+
+/** Bounding-box ring from a `{southwest,northeast}` geocode viewport, or null. */
+function ringFromViewport(viewport) {
+  const sw = viewport?.southwest;
+  const ne = viewport?.northeast;
+  if (![sw?.lat, sw?.lng, ne?.lat, ne?.lng].every(Number.isFinite)) return null;
+  return [
+    [sw.lng, sw.lat],
+    [ne.lng, sw.lat],
+    [ne.lng, ne.lat],
+    [sw.lng, ne.lat],
+  ];
+}
+
+/** Square ring of the given half-width (km) centred on a point. */
+function squareRingAroundPoint(lat, lon, radiusKm) {
+  const dLat = radiusKm / KM_PER_DEGREE_LAT;
+  const cos = Math.cos((lat * Math.PI) / 180);
+  const dLon =
+    radiusKm / (KM_PER_DEGREE_LAT * (Math.abs(cos) > 0.01 ? cos : 0.01));
+  return [
+    [lon - dLon, lat - dLat],
+    [lon + dLon, lat - dLat],
+    [lon + dLon, lat + dLat],
+    [lon - dLon, lat + dLat],
+  ];
+}
+
+/**
+ * Region resolution for the analyst: the full admin-boundary pipeline first
+ * (Natural Earth pack, then geocode + Overpass boundary), and — because that
+ * pipeline only draws boundaries for country/state/county/city/neighborhood —
+ * a plain geocode as a fallback so a named place with NO resolvable boundary
+ * (a landmark, a neighborhood Overpass doesn't carry, a name geocoded but not
+ * classified) still answers over an approximate area instead of failing.
+ */
+export async function resolveRegionRingWithFallback(
+  name,
+  placeSearch,
+  annotationResolver = defaultAnnotationResolver,
+) {
+  const admin = await annotationResolver
+    .resolveRegionRingForQuery(name, undefined, placeSearch)
+    .catch(() => null);
+  if (admin?.ring?.length >= 3) return admin;
+  const { place } = await placeSearch
+    .geocode(name, {})
+    .catch(() => ({ place: null }));
+  if (!Number.isFinite(place?.lat) || !Number.isFinite(place?.lng)) return null;
+  const ring =
+    ringFromViewport(place.viewport) ||
+    squareRingAroundPoint(place.lat, place.lng, NAMED_PLACE_FALLBACK_RADIUS_KM);
+  return { name: place.label || place.name || name, ring };
+}
+
+export function analystProviders(
   viewer,
   dataManager,
   {
     recordLimitByLayer = null,
     placeSearch = unavailablePlaceSearch,
     resolveRegionRing = (name) =>
-      defaultAnnotationResolver.resolveRegionRingForQuery(
-        name,
-        undefined,
-        placeSearch,
-      ),
+      resolveRegionRingWithFallback(name, placeSearch),
   } = {},
 ) {
   return {
@@ -4312,6 +4468,7 @@ async function runAnalystQuery(
     return {
       ok: false,
       action: 'analyst_query',
+      ...(result.code ? { code: result.code } : {}),
       error: result.error,
       coverage: result.coverage,
     };

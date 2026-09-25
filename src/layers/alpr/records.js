@@ -110,6 +110,29 @@ export function normalizeDirection(value) {
 }
 
 /**
+ * Map one ALPR camera record to a JSON-safe analyst record (analyst query
+ * engine seam). Pure — no Cesium types. The layer's own record already uses
+ * `latitude`/`longitude`; the engine's spatial helpers read `lat`/`lon`.
+ * @param {Object|null|undefined} raw - A record from `normalizeAlprNode`.
+ * @returns {{id: string, lat: number|null, lon: number|null, operator: string|null,
+ *   manufacturer: string|null, cameraType: string|null, zone: string|null,
+ *   directionDeg: number|null}}
+ */
+export function mapAnalystRecord(raw) {
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  return {
+    id: textTag(raw?.id) || 'ALPR camera',
+    lat: num(raw?.latitude),
+    lon: num(raw?.longitude),
+    operator: textTag(raw?.operator),
+    manufacturer: textTag(raw?.manufacturer),
+    cameraType: textTag(raw?.cameraType),
+    zone: textTag(raw?.zone),
+    directionDeg: num(raw?.directionDeg),
+  };
+}
+
+/**
  * Overpass QL for the viewport. The tag match is a case-insensitive regex, not
  * an exact `="ALPR"`, because OSM semicolon multi-values such as
  * `surveillance:type=camera;ALPR` are common and an exact match drops them.

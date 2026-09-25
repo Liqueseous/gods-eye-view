@@ -964,7 +964,10 @@ export class LayerStateCoordinator {
         version: LAYER_STATE_VERSION,
         enabledLayerIds: [],
         options: Object.fromEntries(
-          OPTION_OWNER_IDS.map((ownerId) => [ownerId, defaultsForOwner(ownerId)]),
+          OPTION_OWNER_IDS.map((ownerId) => [
+            ownerId,
+            defaultsForOwner(ownerId),
+          ]),
         ),
       };
     }

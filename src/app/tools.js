@@ -3,6 +3,8 @@ import { initAnnotations } from '../annotations/index.js';
 import { initDrawTool } from '../annotations/drawTool.js';
 import { initImageryBoxTool } from '../ui/imageryBoxTool.js';
 import { initIncidentCommand } from '../ui/incidentCommand.js';
+import { initAnalystConsole } from '../ui/analystConsole.js';
+import { initDeveloperMode } from '../ui/developerMode.js';
 import { createRecentImageryPanel } from '../ui/recentImagery.js';
 import { initGevVoiceCommands } from '../voice/gevRealtime.js';
 import { installScopeMask, destroyScopeMask } from '../scopeMask.js';
@@ -31,6 +33,8 @@ export function createApplicationTools({
   const { viewer, tileset, mapStackController, operations } = scene;
   const { styleManager, weatherEffects, cockpitCloudEffects } = controls;
   const { dataManager } = data;
+  const developerMode = initDeveloperMode();
+  defer(() => developerMode?.destroy());
   const sceneDirector = new SceneDirector(viewer, styleManager, dataManager, {
     dataPacks: sceneDataPacks,
     isMapStackAvailable: (id) =>
@@ -62,6 +66,13 @@ export function createApplicationTools({
       delete window.__gevIncidentCommand;
     incidentCommand?.destroy();
   });
+  const analystConsole = initAnalystConsole({
+    viewer,
+    dataManager,
+    placeSearch,
+    annotationResolver: operations.annotationResolver,
+  });
+  defer(() => analystConsole?.destroy());
   // DATA ▸ Recent Imagery: the box tool claims the pointer like Draw and the
   // panel lives on the right rail, so both belong to the application
   // lifetime. The tileset lets the layer drape while the globe is hidden.
@@ -184,5 +195,12 @@ export function createApplicationTools({
   });
   debug.voiceCommands = voiceCommands;
   debug.incidentCommand = incidentCommand;
-  return { sceneDirector, annotations, voiceCommands, incidentCommand };
+  debug.analystConsole = analystConsole;
+  return {
+    sceneDirector,
+    annotations,
+    voiceCommands,
+    incidentCommand,
+    analystConsole,
+  };
 }

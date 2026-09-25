@@ -182,6 +182,29 @@ export const ACTION_DESCRIPTIONS = {
       },
     },
   },
+  set_cyber_sonar: {
+    description:
+      'Adjust Cyber-only sonar controls. Requires the Cyber HUD layout; never switches layout or HUD visibility. Omitted fields stay unchanged. Returns actual settings and separate map/contact sweep activity. A saved setting does not mean the effect is active.',
+    $position: 1,
+    parameters: {
+      properties: {
+        enabled: { description: 'Explicitly turn sonar on or off.' },
+        rings: { description: 'Number of decorative sonar rings, 3–12.' },
+        rangePct: {
+          description:
+            'Visual ring range, 60–120 percent; not geographic distance.',
+        },
+        intensityPct: {
+          description: 'Sonar Power slider, 0–100 percent. Zero is valid.',
+        },
+        opacityPct: {
+          description:
+            'Contact opacity floor between passes, 35–100 percent; labels have a derived floor. Not whole-scene dimming.',
+        },
+        sectorDeg: { description: 'Sonar sweep sector width, 8–60 degrees.' },
+      },
+    },
+  },
   set_detection: {
     description:
       'Control the detection overlay: on/off, density-derived Sparse/Balanced/Dense profile, and Elastic/Weighted layer allocation.',
@@ -575,5 +598,24 @@ export const ACTION_DESCRIPTIONS = {
     description:
       'Predict the next pass in 24 hours for one satellite in the loaded catalog, identified by exact NORAD ID or name. Ambiguous names return candidates: ask for a choice rather than selecting one. Defaults to geometric passes; visibleOnly requires estimated illumination and a dark observer sky, which does not guarantee naked-eye visibility. Uses camera location unless coordinates are supplied.',
     $position: 1,
+  },
+  get_landmark_info: {
+    description:
+      'Get historical information, description, and context about a landmark or point of interest. Returns static curated info for known landmarks, or fetches from Wikipedia for others. Use when the user asks "what is this", "tell me about", "explain", or "what\'s the history of" a landmark.',
+    $position: 1,
+    parameters: {
+      properties: {
+        name: {
+          description:
+            'Name of the landmark or place to look up, e.g. "Golden Gate Bridge", "Eiffel Tower", "Texas State Capitol".',
+          $position: 1,
+        },
+        cityId: {
+          description:
+            'Optional city ID if the landmark is in CITY_POIS (austin, sf, nyc, tokyo, london, paris, dubai, dc, tallinn). Helps prioritize static info.',
+          $position: 2,
+        },
+      },
+    },
   },
 };

@@ -342,6 +342,12 @@ async function main() {
           : input?.url;
         const url = new URL(requestUrl, window.location.href);
         const isAppRequest = url.origin === appOrigin;
+        // Provider Settings is not under test here. Return the empty, hidden
+        // surface shape so host-specific loopback admission cannot leak a 403
+        // into the tracking harness's browser-console assertions.
+        if (isAppRequest && url.pathname === '/api/setup/status') {
+          return Promise.resolve(jsonResponse({ keys: [], setCount: 0, total: 0 }));
+        }
         // OpenSky (commercial flights): { states: [ state-vector[] ] }
         if (isAppRequest && url.pathname === '/api/opensky') {
           window.__SYNTH_HITS.opensky++;
