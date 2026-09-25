@@ -2,9 +2,28 @@
 
 > [!NOTE]
 > This is a **manual field-test scenario script** for the June-2026 whiteboard +
-> tracking work. The AUTOMATED gates live elsewhere: `npm test` (unit),
-> `npm run test:track` (tracking invariants), and the headless harnesses under
-> `scripts/qa-*.mjs` — together these are the full automated test surface.
+> tracking work. Run `npm run test:all` for the single-command automated gate;
+> feature-specific headless harnesses under `scripts/qa-*.mjs` remain separate
+> because some require provider credentials or fixtures.
+
+## One-command full gate
+
+```sh
+npm run test:all
+```
+
+This runs every `*.test.mjs` file under `src/` and `server/`, the production
+build, and the headless tracking regression. The command starts a temporary Vite
+server on an available local port for tracking and shuts it down afterward.
+`npm test` continues to run only the source and server unit tests. Allocation
+benchmarks run on Node 24; on other supported Node versions they are skipped
+unless `GEV_REQUIRE_ALLOCATION_GATE=1` is set. Setup, formatting, and boundary
+checks remain available as `npm run doctor`, `npm run format:check`, and
+`npm run check:boundaries`.
+
+The `scripts/qa-*.mjs` feature harnesses are not all part of this baseline gate:
+run the entrypoint for the feature you changed, following its header for server,
+fixture, browser, and credential requirements.
 
 This guide covers the work hardened over **4 adversarial-review batches** on
 `feat/annotate-hybrid`. Record a voice note + screenshots as you go; each scenario
