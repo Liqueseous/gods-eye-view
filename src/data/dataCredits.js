@@ -97,7 +97,7 @@ export const DATA_CREDITS = [
   {
     key: 'overpass',
     html:
-      'Road geometry (traffic): ' +
+      'Road and tunnel geometry: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
       '(ODbL 1.0)',
   },

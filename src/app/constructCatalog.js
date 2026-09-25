@@ -11,6 +11,7 @@ import { createApplicationVessels } from './layers/aisLiveVessels.js';
 import { createApplicationCctv } from './layers/cctv.js';
 import { createApplicationRadio } from './layers/radio.js';
 import { createApplicationTraffic } from './layers/traffic.js';
+import { createApplicationTunnels } from './layers/tunnels.js';
 import { createApplicationBikeshare } from './layers/bikeshare.js';
 import { createApplicationDirections } from './layers/directions.js';
 import { createApplicationRecentImagery } from './layers/recentImagery.js';
@@ -43,6 +44,7 @@ const SOURCE_METHODS = Object.freeze({
     'getFlowSessionStats',
     'resetFlowTileCache',
   ],
+  tunnels: ['requestTunnels'],
   bikeshare: ['getStations'],
   installations: ['getMappedSites', 'searchNearby'],
   satellites: ['readGroup'],
@@ -151,6 +153,7 @@ export function createApplicationCatalog({
         satellites,
         createApplicationLaunches({ source: sources.launches, satellites }),
         createApplicationTraffic({ source: sources.traffic }),
+        createApplicationTunnels({ source: sources.tunnels }),
         createApplicationCctv({ surface, source: sources.cctv }),
         createApplicationRadio({ surface, source: sources.radio }),
         createApplicationTransit({ surface, source: sources.transit }),
