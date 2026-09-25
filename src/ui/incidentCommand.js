@@ -354,7 +354,8 @@ export function initIncidentCommand({
                 : incident.status === 'investigating'
                   ? '?'
                   : '+';
-          row.querySelector('.incident-list-status-symbol').textContent = statusSymbol;
+          row.querySelector('.incident-list-status-symbol').textContent =
+            statusSymbol;
           row.querySelector('.incident-list-label').textContent =
             incident.label;
           row.querySelector('.incident-list-time').textContent =

@@ -419,7 +419,9 @@ test('transit coverage follows the center-screen ground point, not the view-rect
 
   app.layer.enable(app.viewer);
 
-  const center = app.layer._transitPartsForTest().viewport.getCameraCenterLatLon();
+  const center = app.layer
+    ._transitPartsForTest()
+    .viewport.getCameraCenterLatLon();
   assert.ok(Math.abs(center.lat - BOSTON.lat) < 1e-6);
   assert.ok(Math.abs(center.lon - BOSTON.lon) < 1e-6);
   assert.ok(app.state()._activeFeeds.has('mbta'));
@@ -2810,12 +2812,20 @@ test('missing rectangle still rejects the far side, and frustum rejection wins',
   };
   app.advance(250);
   app.layer._transitPartsForTest().rendering.refreshVisibility();
-  assert.equal(app.state()._visible.size, 1, 'one missed sweep does not blink it off');
+  assert.equal(
+    app.state()._visible.size,
+    1,
+    'one missed sweep does not blink it off',
+  );
   assert.equal(app.vehicles()[0].marker.show, true);
   app.viewer.camera.frustum = null;
   app.advance(250);
   app.layer._transitPartsForTest().rendering.refreshVisibility();
-  assert.equal(app.state()._visible.size, 1, 'a recovery resets the miss count');
+  assert.equal(
+    app.state()._visible.size,
+    1,
+    'a recovery resets the miss count',
+  );
   app.viewer.camera.frustum = {
     computeCullingVolume: () => ({
       computeVisibility: () => Cesium.Intersect.OUTSIDE,
@@ -2823,7 +2833,11 @@ test('missing rectangle still rejects the far side, and frustum rejection wins',
   };
   app.advance(250);
   app.layer._transitPartsForTest().rendering.refreshVisibility();
-  assert.equal(app.state()._visible.size, 1, 'an alternating miss remains visible');
+  assert.equal(
+    app.state()._visible.size,
+    1,
+    'an alternating miss remains visible',
+  );
   app.advance(250);
   app.layer._transitPartsForTest().rendering.refreshVisibility();
   assert.equal(app.state()._visible.size, 0);
@@ -3048,7 +3062,11 @@ test('visible motion is recullable without a camera event and releases its hold 
   const rendering = app.layer._transitPartsForTest().rendering;
   rendering.maintainPresentation();
   app.advance(250);
-  assert.equal(app.state()._moving.size, 1, 'one missed sweep keeps motion alive');
+  assert.equal(
+    app.state()._moving.size,
+    1,
+    'one missed sweep keeps motion alive',
+  );
   rendering.maintainPresentation();
   app.advance(250);
   assert.equal(app.state()._moving.size, 0);

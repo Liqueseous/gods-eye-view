@@ -156,8 +156,7 @@ async function fetchOverpassPayload(
     }
   }
 
-  if (lastRateLimitPayload)
-    return { ...lastRateLimitPayload, attempts };
+  if (lastRateLimitPayload) return { ...lastRateLimitPayload, attempts };
   if (lastRefusalPayload) return { ...lastRefusalPayload, attempts };
   const error = lastError || new Error('All Overpass upstreams failed');
   error.upstreamAttempts = attempts;

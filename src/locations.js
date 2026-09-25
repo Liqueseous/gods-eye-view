@@ -34,8 +34,10 @@ export const CITY_POIS = {
         pitch: -28,
         heading: 180,
         buildingHeight: 35,
-        description: 'Seat of Texas government and iconic pink granite capitol building',
-        history: 'Completed in 1888, designed by Elijah E. Myers in Renaissance Revival style. Built with locally sourced sunset red granite from Granite Mountain. At 308 feet tall, it stands 15 feet taller than the U.S. Capitol.',
+        description:
+          'Seat of Texas government and iconic pink granite capitol building',
+        history:
+          'Completed in 1888, designed by Elijah E. Myers in Renaissance Revival style. Built with locally sourced sunset red granite from Granite Mountain. At 308 feet tall, it stands 15 feet taller than the U.S. Capitol.',
         yearBuilt: 1888,
         architect: 'Elijah E. Myers',
         style: 'Renaissance Revival',
@@ -94,8 +96,10 @@ export const CITY_POIS = {
         pitch: -20,
         heading: 45,
         buildingHeight: 100,
-        description: 'Iconic suspension bridge connecting San Francisco to Marin County',
-        history: 'Completed in 1937, it was the longest suspension bridge span (4,200 feet) in the world until 1964. Designed by Joseph Strauss with consulting by Leon Moisseiff and Irving Morrow. Its International Orange color was chosen for visibility in fog.',
+        description:
+          'Iconic suspension bridge connecting San Francisco to Marin County',
+        history:
+          'Completed in 1937, it was the longest suspension bridge span (4,200 feet) in the world until 1964. Designed by Joseph Strauss with consulting by Leon Moisseiff and Irving Morrow. Its International Orange color was chosen for visibility in fog.',
         yearBuilt: 1937,
         architect: 'Joseph Strauss, Irving Morrow, Leon Moisseiff',
         style: 'Art Deco',
@@ -108,8 +112,10 @@ export const CITY_POIS = {
         pitch: -25,
         heading: 30,
         buildingHeight: 85,
-        description: 'Distinctive pyramid-shaped skyscraper and SF skyline icon',
-        history: 'Completed in 1972, designed by William Pereira. At 853 feet, it was the tallest building in San Francisco until 2018. The pyramid shape was innovative for earthquake resistance and providing light to street level.',
+        description:
+          'Distinctive pyramid-shaped skyscraper and SF skyline icon',
+        history:
+          'Completed in 1972, designed by William Pereira. At 853 feet, it was the tallest building in San Francisco until 2018. The pyramid shape was innovative for earthquake resistance and providing light to street level.',
         yearBuilt: 1972,
         architect: 'William Pereira',
         style: 'Structural Expressionism',
@@ -159,8 +165,10 @@ export const CITY_POIS = {
         pitch: -25,
         heading: 315,
         buildingHeight: 45,
-        description: 'Colossal neoclassical sculpture symbolizing freedom and democracy',
-        history: 'A gift from France, dedicated in 1886. Designed by Frédéric Auguste Bartholdi with structural engineering by Gustave Eiffel. The copper statue stands 305 feet tall including the pedestal. Lady Liberty holds a torch and tablet inscribed with the date of American independence.',
+        description:
+          'Colossal neoclassical sculpture symbolizing freedom and democracy',
+        history:
+          'A gift from France, dedicated in 1886. Designed by Frédéric Auguste Bartholdi with structural engineering by Gustave Eiffel. The copper statue stands 305 feet tall including the pedestal. Lady Liberty holds a torch and tablet inscribed with the date of American independence.',
         yearBuilt: 1886,
         architect: 'Frédéric Auguste Bartholdi',
         style: 'Neoclassical',
@@ -175,7 +183,8 @@ export const CITY_POIS = {
         buildingHeight: 130,
         buildingBounds: { height: 443, width: 130, depth: 75 },
         description: 'Iconic Art Deco skyscraper and symbol of New York City',
-        history: 'Completed in 1931 during the Great Depression in just 410 days. Designed by Shreve, Lamb & Harmon. At 1,454 feet, it was the world\'s tallest building for nearly 40 years. The building has appeared in over 250 films.',
+        history:
+          "Completed in 1931 during the Great Depression in just 410 days. Designed by Shreve, Lamb & Harmon. At 1,454 feet, it was the world's tallest building for nearly 40 years. The building has appeared in over 250 films.",
         yearBuilt: 1931,
         architect: 'Shreve, Lamb & Harmon',
         style: 'Art Deco',
@@ -225,8 +234,10 @@ export const CITY_POIS = {
         pitch: -25,
         heading: 0,
         buildingHeight: 110,
-        description: 'Communications and observation tower inspired by the Eiffel Tower',
-        history: 'Completed in 1958, it was built as a symbol of Japan\'s post-war rebirth. At 1,092 feet, it was the tallest structure in Japan until 2010. Designed by Tachū Naitō, it uses less steel than the Eiffel Tower due to modern construction techniques.',
+        description:
+          'Communications and observation tower inspired by the Eiffel Tower',
+        history:
+          "Completed in 1958, it was built as a symbol of Japan's post-war rebirth. At 1,092 feet, it was the tallest structure in Japan until 2010. Designed by Tachū Naitō, it uses less steel than the Eiffel Tower due to modern construction techniques.",
         yearBuilt: 1958,
         architect: 'Tachū Naitō',
         style: 'Lattice Tower',
@@ -285,8 +296,10 @@ export const CITY_POIS = {
         pitch: -25,
         heading: 270,
         buildingHeight: 65,
-        description: 'Iconic Victorian bascule and suspension bridge over the River Thames',
-        history: 'Completed in 1894 after 8 years of construction. Designed by Horace Jones and engineered by John Wolfe Barry. The bridge\'s distinctive twin towers and Gothic Victorian style make it one of London\'s most recognizable landmarks. The bascule mechanism still raises for tall ships.',
+        description:
+          'Iconic Victorian bascule and suspension bridge over the River Thames',
+        history:
+          "Completed in 1894 after 8 years of construction. Designed by Horace Jones and engineered by John Wolfe Barry. The bridge's distinctive twin towers and Gothic Victorian style make it one of London's most recognizable landmarks. The bascule mechanism still raises for tall ships.",
         yearBuilt: 1894,
         architect: 'Horace Jones, John Wolfe Barry',
         style: 'Victorian Gothic',
@@ -346,7 +359,8 @@ export const CITY_POIS = {
         heading: 315,
         buildingHeight: 150,
         description: 'Iconic wrought-iron lattice tower and symbol of Paris',
-        history: 'Built for the 1889 World\'s Fair, completed in 1889. Designed by Gustave Eiffel\'s company. At 1,083 feet, it was the world\'s tallest structure until 1930. Initially criticized by Paris intellectuals, it\'s now one of the most visited paid monuments in the world.',
+        history:
+          "Built for the 1889 World's Fair, completed in 1889. Designed by Gustave Eiffel's company. At 1,083 feet, it was the world's tallest structure until 1930. Initially criticized by Paris intellectuals, it's now one of the most visited paid monuments in the world.",
         yearBuilt: 1889,
         architect: 'Gustave Eiffel',
         style: 'Structural Iron',
@@ -405,8 +419,9 @@ export const CITY_POIS = {
         pitch: -20,
         heading: 200,
         buildingHeight: 270,
-        description: 'World\'s tallest building at 2,717 feet',
-        history: 'Completed in 2010, designed by Adrian Smith of Skidmore, Owings & Merrill. At 828 meters (2,717 feet), it has held the title of world\'s tallest building since 2010. The design is inspired by Islamic architecture and the desert flower Hymenocallis.',
+        description: "World's tallest building at 2,717 feet",
+        history:
+          "Completed in 2010, designed by Adrian Smith of Skidmore, Owings & Merrill. At 828 meters (2,717 feet), it has held the title of world's tallest building since 2010. The design is inspired by Islamic architecture and the desert flower Hymenocallis.",
         yearBuilt: 2010,
         architect: 'Adrian Smith (SOM)',
         style: 'Neo-futurism',
@@ -465,8 +480,10 @@ export const CITY_POIS = {
         pitch: -25,
         heading: 270,
         buildingHeight: 45,
-        description: 'Home of the United States Congress and legislative branch',
-        history: 'Construction began in 1793, with the current dome completed in 1866. Designed originally by William Thornton, with later expansions by Thomas U. Walter who designed the iconic cast-iron dome. The Capitol sits atop Capitol Hill at the eastern end of the National Mall.',
+        description:
+          'Home of the United States Congress and legislative branch',
+        history:
+          'Construction began in 1793, with the current dome completed in 1866. Designed originally by William Thornton, with later expansions by Thomas U. Walter who designed the iconic cast-iron dome. The Capitol sits atop Capitol Hill at the eastern end of the National Mall.',
         yearBuilt: 1800,
         architect: 'William Thornton, Thomas U. Walter',
         style: 'Neoclassical',
@@ -479,8 +496,10 @@ export const CITY_POIS = {
         pitch: -30,
         heading: 0,
         buildingHeight: 85,
-        description: 'Marble obelisk honoring George Washington, first U.S. President',
-        history: 'Construction began in 1848 but was halted during the Civil War, finally completed in 1884. At 555 feet, it was the world\'s tallest structure until the Eiffel Tower. Designed by Robert Mills. The color change halfway up marks where construction resumed with different marble.',
+        description:
+          'Marble obelisk honoring George Washington, first U.S. President',
+        history:
+          "Construction began in 1848 but was halted during the Civil War, finally completed in 1884. At 555 feet, it was the world's tallest structure until the Eiffel Tower. Designed by Robert Mills. The color change halfway up marks where construction resumed with different marble.",
         yearBuilt: 1884,
         architect: 'Robert Mills',
         style: 'Neoclassical',

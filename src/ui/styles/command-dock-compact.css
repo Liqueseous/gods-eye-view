@@ -43,9 +43,15 @@
   transition: flex-basis 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-#command-dock > #location-bar { order: 1; }
-#command-dock > #gev-voice-control { order: 2; }
-#command-dock > #control-panel { order: 4; }
+#command-dock > #location-bar {
+  order: 1;
+}
+#command-dock > #gev-voice-control {
+  order: 2;
+}
+#command-dock > #control-panel {
+  order: 4;
+}
 
 #command-dock > #location-bar:not(.collapsed) {
   flex-basis: var(--dock-location-open);

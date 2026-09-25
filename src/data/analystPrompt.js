@@ -2,13 +2,22 @@
 // (e.g. "fire perimeters", "military flights") must be tested before the
 // generic one its words overlap with ("fires", "flights").
 const LAYER_ALIASES = [
-  { layer: 'ais-live-vessels', pattern: /\b(?:ships?|vessels?)\b/i, label: 'ships' },
+  {
+    layer: 'ais-live-vessels',
+    pattern: /\b(?:ships?|vessels?)\b/i,
+    label: 'ships',
+  },
   {
     layer: 'fire-perimeters',
-    pattern: /\b(?:fire\s*perimeters?|wildfire\s*perimeters?|burn\s*(?:areas?|scars?))\b/i,
+    pattern:
+      /\b(?:fire\s*perimeters?|wildfire\s*perimeters?|burn\s*(?:areas?|scars?))\b/i,
     label: 'fire perimeters',
   },
-  { layer: 'local-firms', pattern: /\b(?:fires?|wildfires?|hotspots?)\b/i, label: 'fires' },
+  {
+    layer: 'local-firms',
+    pattern: /\b(?:fires?|wildfires?|hotspots?)\b/i,
+    label: 'fires',
+  },
   { layer: 'local-dams', pattern: /\b(?:dams?|reservoirs?)\b/i, label: 'dams' },
   {
     layer: 'local-datacenters',
@@ -17,7 +26,8 @@ const LAYER_ALIASES = [
   },
   {
     layer: 'alpr-cameras',
-    pattern: /\b(?:alpr|license[- ]plate\s*(?:readers?|cameras?)|plate\s*readers?)\b/i,
+    pattern:
+      /\b(?:alpr|license[- ]plate\s*(?:readers?|cameras?)|plate\s*readers?)\b/i,
     label: 'ALPR cameras',
   },
   {
@@ -27,10 +37,15 @@ const LAYER_ALIASES = [
   },
   {
     layer: 'military',
-    pattern: /\b(?:military\s*(?:flights?|aircraft|jets?|planes?)|warplanes?|fighter\s*jets?)\b/i,
+    pattern:
+      /\b(?:military\s*(?:flights?|aircraft|jets?|planes?)|warplanes?|fighter\s*jets?)\b/i,
     label: 'military flights',
   },
-  { layer: 'flights', pattern: /\b(?:flights?|aircraft|planes?)\b/i, label: 'flights' },
+  {
+    layer: 'flights',
+    pattern: /\b(?:flights?|aircraft|planes?)\b/i,
+    label: 'flights',
+  },
   { layer: 'satellites', pattern: /\bsatellites?\b/i, label: 'satellites' },
 ];
 
@@ -48,11 +63,15 @@ const SORT_FIELD_BY_LAYER = {
 const ALTITUDE_LAYERS = new Set(['flights', 'military', 'satellites']);
 
 function clean(value) {
-  return String(value || '').trim().replace(/[?.!,]+$/, '');
+  return String(value || '')
+    .trim()
+    .replace(/[?.!,]+$/, '');
 }
 
 function parseDistance(prompt) {
-  const match = prompt.match(/\b(?:within|inside|under)\s+(\d+(?:\.\d+)?)\s*(km|kilometers?|mi|miles?)\b/i);
+  const match = prompt.match(
+    /\b(?:within|inside|under)\s+(\d+(?:\.\d+)?)\s*(km|kilometers?|mi|miles?)\b/i,
+  );
   if (!match) return null;
   const amount = Number(match[1]);
   return {
@@ -67,8 +86,12 @@ function parseLayer(prompt) {
 /** Altitude filter ("above/over 40,000 feet", "below 10,000 ft") for flight-like layers. */
 function parseAltitudeFilter(prompt, layerKey) {
   if (!ALTITUDE_LAYERS.has(layerKey)) return null;
-  const above = prompt.match(/\b(?:above|over|higher than)\s+([\d,]+)\s*(?:ft|feet)\b/i);
-  const below = prompt.match(/\b(?:below|under|lower than)\s+([\d,]+)\s*(?:ft|feet)\b/i);
+  const above = prompt.match(
+    /\b(?:above|over|higher than)\s+([\d,]+)\s*(?:ft|feet)\b/i,
+  );
+  const below = prompt.match(
+    /\b(?:below|under|lower than)\s+([\d,]+)\s*(?:ft|feet)\b/i,
+  );
   const match = above || below;
   if (!match) return null;
   const feet = Number(match[1].replace(/,/g, ''));
@@ -80,7 +103,9 @@ function parseAltitudeFilter(prompt, layerKey) {
 /** Speed filter ("faster than 15 knots") for the vessels layer. */
 function parseSpeedFilter(prompt, layerKey) {
   if (layerKey !== 'ais-live-vessels') return null;
-  const match = prompt.match(/\b(?:faster than|above|over)\s+(\d+(?:\.\d+)?)\s*(?:knots|kts)\b/i);
+  const match = prompt.match(
+    /\b(?:faster than|above|over)\s+(\d+(?:\.\d+)?)\s*(?:knots|kts)\b/i,
+  );
   if (!match) return null;
   return { field: 'speedKts', op: 'gt', value: Number(match[1]) };
 }
@@ -88,7 +113,9 @@ function parseSpeedFilter(prompt, layerKey) {
 /** Magnitude filter ("above magnitude 5", "greater than 6") for earthquakes. */
 function parseMagnitudeFilter(prompt, layerKey) {
   if (layerKey !== 'earthquakes') return null;
-  const match = prompt.match(/\b(?:above|over|greater than)\s+(?:magnitude\s+)?(\d+(?:\.\d+)?)\b/i);
+  const match = prompt.match(
+    /\b(?:above|over|greater than)\s+(?:magnitude\s+)?(\d+(?:\.\d+)?)\b/i,
+  );
   if (!match) return null;
   return { field: 'magnitude', op: 'gt', value: Number(match[1]) };
 }
@@ -120,19 +147,30 @@ export function parseAnalystPrompt(input) {
   }
 
   const distance = parseDistance(prompt);
-  const distanceTarget = prompt.match(/\b(?:within|inside|under)\s+\d+(?:\.\d+)?\s*(?:km|kilometers?|mi|miles?)\s+(?:of|from)\s+(.+)$/i);
+  const distanceTarget = prompt.match(
+    /\b(?:within|inside|under)\s+\d+(?:\.\d+)?\s*(?:km|kilometers?|mi|miles?)\s+(?:of|from)\s+(.+)$/i,
+  );
   if (distance && distanceTarget) {
     return {
       ok: false,
-      error: 'Targeted radius queries are not available yet. Ask for a radius in view or name a region instead.',
+      error:
+        'Targeted radius queries are not available yet. Ask for a radius in view or name a region instead.',
     };
   }
-  const scopeMatch = prompt.match(/\b(?:over|near|around|in)\s+(.+?)(?=\s+(?:within|inside|under)\b|$)/i);
-  const destinationMatch = prompt.match(/\b(?:headed|heading|bound)\s+(?:to|for)\s+(.+)$/i);
+  const scopeMatch = prompt.match(
+    /\b(?:over|near|around|in)\s+(.+?)(?=\s+(?:within|inside|under)\b|$)/i,
+  );
+  const destinationMatch = prompt.match(
+    /\b(?:headed|heading|bound)\s+(?:to|for)\s+(.+)$/i,
+  );
   const filters = [];
 
   if (destinationMatch && layer.layer === 'ais-live-vessels') {
-    filters.push({ field: 'destination', op: 'contains', value: clean(destinationMatch[1]) });
+    filters.push({
+      field: 'destination',
+      op: 'contains',
+      value: clean(destinationMatch[1]),
+    });
   }
   const altitudeFilter = parseAltitudeFilter(prompt, layer.layer);
   if (altitudeFilter) filters.push(altitudeFilter);

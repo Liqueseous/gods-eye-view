@@ -106,7 +106,10 @@ test('unavailable layers keep an unavailable label while a request is pending', 
       loadingLabel: 'OSM road data unavailable',
     },
   };
-  assert.equal(LayerPanel.prototype._buildMetaText(layer), 'UNAVAILABLE · OpenStreetMap · OSM road data unavailable');
+  assert.equal(
+    LayerPanel.prototype._buildMetaText(layer),
+    'UNAVAILABLE · OpenStreetMap · OSM road data unavailable',
+  );
 });
 
 test('readout rows contain only toggles and metadata; ordinary rows retain controls', async () => {

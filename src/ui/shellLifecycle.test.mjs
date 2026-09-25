@@ -116,7 +116,9 @@ test('right-panel layout repairs a rail nested inside Display before reparenting
       parent.children ??= [];
       const previous = child.parentElement;
       if (previous)
-        previous.children = previous.children.filter((entry) => entry !== child);
+        previous.children = previous.children.filter(
+          (entry) => entry !== child,
+        );
       const index = before ? parent.children.indexOf(before) : -1;
       if (index >= 0) parent.children.splice(index, 0, child);
       else parent.children.push(child);
@@ -131,7 +133,8 @@ test('right-panel layout repairs a rail nested inside Display before reparenting
       node.prepend = (child) => attach(node, child, node.children?.[0] || null);
       node.insertBefore = (child, before) => attach(node, child, before);
     }
-    shell.append = (...children) => children.forEach((child) => attach(shell, child));
+    shell.append = (...children) =>
+      children.forEach((child) => attach(shell, child));
     // Reproduce the invalid state that used to make `rail.prepend(display)`
     // throw "The new child element contains the parent".
     attach(shell, display);

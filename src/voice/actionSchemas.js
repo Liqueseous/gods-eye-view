@@ -315,7 +315,17 @@ const schemas = [
         },
         cityId: {
           type: 'string',
-          enum: ['austin', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc', 'tallinn'],
+          enum: [
+            'austin',
+            'sf',
+            'nyc',
+            'tokyo',
+            'london',
+            'paris',
+            'dubai',
+            'dc',
+            'tallinn',
+          ],
           description: 'Optional city ID if the landmark is in CITY_POIS',
         },
       },

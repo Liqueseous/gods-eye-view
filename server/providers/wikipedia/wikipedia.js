@@ -1,7 +1,7 @@
 /**
  * Wikipedia integration for landmark information lookup.
  * Provides extract summaries and basic metadata for landmarks not in CITY_POIS.
- * 
+ *
  * @module server/providers/wikipedia
  */
 
@@ -62,7 +62,9 @@ export async function fetchWikipediaSummary(name, { fetchImpl = fetch } = {}) {
     const result = {
       ok: true,
       extract: data.extract || '',
-      url: data.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodedTitle}`,
+      url:
+        data.content_urls?.desktop?.page ||
+        `https://en.wikipedia.org/wiki/${encodedTitle}`,
       description: data.description || '',
       thumbnail: data.thumbnail?.source,
     };
@@ -108,9 +110,10 @@ export async function getLandmarkInfo(name, staticInfo = null, options = {}) {
   if (!wiki.ok) {
     return {
       ok: false,
-      error: wiki.error === 'not_found' 
-        ? 'No information available for this landmark'
-        : 'Unable to fetch landmark information',
+      error:
+        wiki.error === 'not_found'
+          ? 'No information available for this landmark'
+          : 'Unable to fetch landmark information',
     };
   }
 
@@ -151,13 +154,19 @@ export function wikipediaProxy({ fetchImpl = fetch } = {}) {
       if (!name) {
         res.statusCode = 400;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ ok: false, error: 'name parameter is required' }));
+        res.end(
+          JSON.stringify({ ok: false, error: 'name parameter is required' }),
+        );
         return;
       }
 
       const result = await fetchWikipediaSummary(name, { fetchImpl });
 
-      res.statusCode = result.ok ? 200 : (result.error === 'not_found' ? 404 : 500);
+      res.statusCode = result.ok
+        ? 200
+        : result.error === 'not_found'
+          ? 404
+          : 500;
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.end(JSON.stringify(result));

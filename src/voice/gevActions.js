@@ -3635,7 +3635,7 @@ async function getLandmarkInformation(args, placeSearch) {
   if (poiMatch?.poi) {
     const poi = poiMatch.poi;
     const hasHistoricalData = poi.description || poi.history;
-    
+
     if (hasHistoricalData) {
       return {
         ok: true,
@@ -4332,7 +4332,8 @@ function ringFromViewport(viewport) {
 function squareRingAroundPoint(lat, lon, radiusKm) {
   const dLat = radiusKm / KM_PER_DEGREE_LAT;
   const cos = Math.cos((lat * Math.PI) / 180);
-  const dLon = radiusKm / (KM_PER_DEGREE_LAT * (Math.abs(cos) > 0.01 ? cos : 0.01));
+  const dLon =
+    radiusKm / (KM_PER_DEGREE_LAT * (Math.abs(cos) > 0.01 ? cos : 0.01));
   return [
     [lon - dLon, lat - dLat],
     [lon + dLon, lat - dLat],
