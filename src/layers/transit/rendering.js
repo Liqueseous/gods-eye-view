@@ -101,7 +101,8 @@ export function createRendering({ state, services, parts }) {
     );
     entry.surfaceReady = !!known;
     entry.heightPending = !known;
-    entry.marker.show = !!known && vehicleInView(entry);
+    entry.marker.show =
+      (!!known || !!entry.hasRendered) && vehicleInView(entry);
     if (known) {
       entry.marker.position = state._scratchCartesian;
       entry.hasRendered = true;
@@ -118,29 +119,65 @@ export function createRendering({ state, services, parts }) {
     if (entry.wakeTimer != null) clearTimeout(entry.wakeTimer);
     entry.wakeTimer = null;
   }
+  function finishMarkerMigration(entry) {
+    const pending = entry.pendingMigration;
+    if (!pending) return false;
+    const { collection, marker } = pending;
+    const old = entry.marker;
+    if (!old) {
+      collection.remove(marker);
+      entry.pendingMigration = null;
+      return false;
+    }
+    if (state._viewer?.scene?.context && marker.ready === false) return false;
+    marker.position = old.position;
+    marker.width = old.width;
+    marker.height = old.height;
+    marker.color = old.color;
+    marker.scaleByDistance = old.scaleByDistance;
+    marker.rotation = old.rotation;
+    marker.alignedAxis = old.alignedAxis;
+    marker.show = old.show;
+    marker.disableDepthTestDistance = old.disableDepthTestDistance;
+    entry.markerCollection.remove(old);
+    entry.marker = marker;
+    entry.markerCollection = collection;
+    entry.pendingMigration = null;
+    entry.markerRevision = (entry.markerRevision || 0) + 1;
+    if (entry.detectContact) entry.detectContact.position = marker.position;
+    return true;
+  }
+  function cancelMarkerMigration(entry) {
+    const pending = entry.pendingMigration;
+    if (!pending) return;
+    pending.collection.remove(pending.marker);
+    entry.pendingMigration = null;
+  }
   function migrateMarker(entry, animated) {
     const collection = animated ? state._animatedMarkers : state._markers;
-    if (!entry.marker || entry.markerCollection === collection) return;
+    if (!entry.marker) return;
+    if (entry.markerCollection === collection) {
+      cancelMarkerMigration(entry);
+      return;
+    }
+    if (entry.pendingMigration?.collection === collection) return;
+    cancelMarkerMigration(entry);
     const old = entry.marker;
     const marker = collection.add({
       id: entry.key,
       position: old.position,
-      image: old.image,
+      image: entry.spriteImage || old.image,
       width: old.width,
       height: old.height,
       color: old.color,
       scaleByDistance: old.scaleByDistance,
       rotation: old.rotation,
       alignedAxis: old.alignedAxis,
-      show: old.show,
+      show: false,
       disableDepthTestDistance: old.disableDepthTestDistance,
     });
-    entry.markerCollection.remove(old);
-    entry.marker = marker;
-    entry.markerCollection = collection;
-    entry.markerRevision = (entry.markerRevision || 0) + 1;
-    // Cached contacts and card getters must follow the replacement billboard.
-    if (entry.detectContact) entry.detectContact.position = marker.position;
+    entry.pendingMigration = { marker, collection };
+    finishMarkerMigration(entry);
   }
   function schedulePlayback(entry) {
     cancelWake(entry);
@@ -233,13 +270,16 @@ export function createRendering({ state, services, parts }) {
     const displayPx = basePx * presetSpriteScale(style, selected);
     const frame = haloFrame(halo, displayPx);
     const px = displayPx * frame.ratio;
-    marker.image = transitIcon(
+    const image = transitIcon(
       entry.mode,
       selected ? SELECTED_ICON_PX : undefined,
       {
         style,
       },
     );
+    entry.spriteImage = image;
+    marker.image = image;
+    if (entry.pendingMigration) entry.pendingMigration.marker.image = image;
     marker.width = px;
     marker.height = px;
     if (entry.detectContact) {
@@ -501,6 +541,16 @@ export function createRendering({ state, services, parts }) {
               entry.heightM,
               candidatePosition,
             );
+      const canvas = viewer.scene.canvas;
+      const pixelSize = camera.getPixelSize?.(
+        sphere,
+        viewer.scene.drawingBufferWidth || canvas?.width || 1,
+        viewer.scene.drawingBufferHeight || canvas?.height || 1,
+      );
+      sphere.radius =
+        Number.isFinite(pixelSize) && pixelSize > 0
+          ? Math.max(5, pixelSize * (entry.marker.width / 2 + 2))
+          : 5;
       // A settled geographic rectangle can lag setView or miss an oblique
       // view. The current frustum is authoritative; the horizon still rejects
       // the far side when the rectangle is missing or stale.
@@ -544,7 +594,9 @@ export function createRendering({ state, services, parts }) {
         }
       }
       entry.marker.show =
-        visible && !entry.heightPending && entry.surfaceReady !== false;
+        visible &&
+        (entry.hasRendered ||
+          (!entry.heightPending && entry.surfaceReady !== false));
       visibility.heightPending = !!entry.heightPending;
       visibility.surfaceReady = entry.surfaceReady ?? null;
       schedulePlayback(entry);
@@ -579,6 +631,11 @@ export function createRendering({ state, services, parts }) {
   // Text and membership refreshes are bounded timer work, never paint work.
   function maintainPresentation() {
     if (!state._enabled) return;
+    let migrated = false;
+    for (const entry of state._vehicles.values()) {
+      if (finishMarkerMigration(entry)) migrated = true;
+    }
+    if (migrated) governorRequestRender('transit-marker-ready');
     if (state._moving.size) requestVisibility();
     parts.queries.refreshDetectCache();
     parts.selection.refreshSelectedCard(false);
@@ -596,6 +653,7 @@ export function createRendering({ state, services, parts }) {
     requestVisibility,
     sampleIdle,
     cancelWake,
+    cancelMarkerMigration,
     schedulePlayback,
     placeSample,
     cartesianFor,

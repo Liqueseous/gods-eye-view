@@ -237,6 +237,7 @@ export function createLifecycle({ state, services, parts }) {
       state._feedStatus.clear();
       for (const entry of state._vehicles.values()) {
         entry.detectContact = null;
+        parts.rendering.cancelMarkerMigration(entry);
         parts.rendering.cancelWake(entry);
         destroyTrack(entry.track);
       }

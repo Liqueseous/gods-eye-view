@@ -799,6 +799,36 @@ test('a vehicle waits for its floor rather than standing on the ellipsoid', asyn
   assert.notEqual(app.vehicles()[0].heightCell, cellBefore);
 });
 
+test('a rendered transit marker stays visible through a transient missing motion sample', async (t) => {
+  const app = harness(t);
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot(
+      'mbta',
+      'MBTA',
+      [vehicle('bus-1', 42.36, -71.06, reported())],
+      { fetchedAt: Date.now() },
+    ),
+  }));
+  app.layer.enable(app.viewer);
+  await app.layer.update();
+  app.settle();
+
+  const entry = app.vehicles()[0];
+  const parts = app.layer._transitPartsForTest();
+  const lastPosition = Cesium.Cartesian3.clone(entry.marker.position);
+  const samplePosition = parts.trails.samplePosition;
+  parts.trails.samplePosition = () => null;
+  parts.rendering.placeSample(entry);
+  assert.equal(entry.marker.show, true);
+  assert.ok(Cesium.Cartesian3.equals(entry.marker.position, lastPosition));
+
+  app.advance(250);
+  parts.rendering.refreshVisibility();
+  assert.equal(entry.marker.show, true);
+  parts.trails.samplePosition = samplePosition;
+});
+
 test('the render hold follows real motion, and is released when everything settles', async (t) => {
   const app = harness(t);
   const start = Date.now();
@@ -2785,6 +2815,51 @@ test('missing rectangle still rejects the far side, and frustum rejection wins',
   assert.equal(app.holds().includes('transit'), false);
 });
 
+test('visibility culling includes the rendered icon footprint at the frustum edge', async (t) => {
+  const app = harness(t, { altitude: 100_000 });
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot(
+      'mbta',
+      'MBTA',
+      [vehicle('edge', 42.36, -71.06, reported())],
+      { fetchedAt: Date.now() },
+    ),
+  }));
+  app.layer.enable(app.viewer);
+  await app.layer.update();
+  app.settle();
+
+  const entry = app.vehicles()[0];
+  app.viewer.camera.getPixelSize = () => 2;
+  let outsideDistance = 10;
+  app.viewer.camera.frustum = {
+    computeCullingVolume: () => ({
+      planes: [
+        {
+          x: 1,
+          y: 0,
+          z: 0,
+          w: -entry.marker.position.x - outsideDistance,
+        },
+      ],
+    }),
+  };
+
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(entry.marker.show, true, 'the icon still overlaps the frustum');
+
+  outsideDistance = entry.marker.width + 10;
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(
+    entry.marker.show,
+    false,
+    'the full icon is outside the frustum',
+  );
+});
+
 test('motion transitions migrate billboards and update cached positions; disable clears owners', async (t) => {
   const app = harness(t);
   let latitude = 42.36;
@@ -2829,6 +2904,54 @@ test('motion transitions migrate billboards and update cached positions; disable
   assert.equal(entry.wakeTimer, null);
   assert.equal(app.state()._inFlight.size, 0);
   assert.equal(parts.trails.requestDiagnostics().pending, false);
+});
+
+test('a visible transit icon stays up until its replacement billboard is ready', async (t) => {
+  const app = harness(t);
+  app.serve('mbta', () => ({
+    status: 200,
+    body: snapshot(
+      'mbta',
+      'MBTA',
+      [vehicle('bus', 42.36, -71.06, reported())],
+      { fetchedAt: Date.now() },
+    ),
+  }));
+  app.layer.enable(app.viewer);
+  await app.layer.update();
+  app.settle();
+
+  const entry = app.vehicles()[0];
+  const original = entry.marker;
+  const parts = app.layer._transitPartsForTest();
+  app.viewer.scene.context = {};
+  entry.sample.phase = 'playing';
+  entry.sample.segmentSpeedMps = 1;
+  parts.rendering.schedulePlayback(entry);
+
+  const pending = entry.pendingMigration.marker;
+  assert.equal(entry.marker, original);
+  assert.equal(original.show, true);
+  assert.equal(pending.show, false);
+  assert.equal(pending.image, entry.spriteImage);
+
+  Object.defineProperty(pending, 'ready', { value: true });
+  parts.rendering.maintainPresentation();
+  assert.equal(entry.marker, pending);
+  assert.equal(entry.markerCollection, app.state()._animatedMarkers);
+  assert.equal(entry.marker.show, true);
+  assert.equal(entry.pendingMigration, null);
+
+  entry.sample.phase = 'held';
+  entry.sample.segmentSpeedMps = 0;
+  entry.sample.nextWakeMonoMs = Infinity;
+  parts.rendering.schedulePlayback(entry);
+  assert.ok(entry.pendingMigration);
+  parts.ingestion.removeVehicle(entry.key);
+  assert.equal(entry.pendingMigration, null);
+  assert.equal(app.state()._vehicles.has(entry.key), false);
+  assert.equal(app.state()._animatedMarkers.length, 0);
+  assert.equal(app.state()._markers.length, 0);
 });
 
 test('every styling path retains the mode palette and exact unpadded size', async (t) => {
