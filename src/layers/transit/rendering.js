@@ -26,6 +26,7 @@ import {
   VISIBILITY_REFRESH_MS,
   SELECTED_PIXEL_SIZE,
   TRANSIT_MODE_COLORS,
+  VISIBILITY_EXIT_GRACE_SWEEPS,
   vehicleNearView,
 } from './policy.js';
 
@@ -569,7 +570,7 @@ export function createRendering({ state, services, parts }) {
       } else if (frustum)
         inFrustum =
           frustum.computeVisibility(sphere) !== Cesium.Intersect.OUTSIDE;
-      const visible = (frustum || bounds) && horizon && inFrustum;
+      const rawVisible = (frustum || bounds) && horizon && inFrustum;
       const visibility = (entry.visibility ||= {});
       visibility.bounds = bounds;
       visibility.boundsApplied = !frustum;
@@ -578,6 +579,18 @@ export function createRendering({ state, services, parts }) {
       visibility.noSample = noSample;
       const wasShown = entry.marker.show;
       const wasVisible = state._visible.has(entry);
+      entry.visibilityMisses = rawVisible
+        ? 0
+        : Math.min(
+            (entry.visibilityMisses || 0) + 1,
+            VISIBILITY_EXIT_GRACE_SWEEPS + 1,
+          );
+      const visible =
+        rawVisible ||
+        (wasVisible &&
+          entry.hasRendered &&
+          entry.visibilityMisses <= VISIBILITY_EXIT_GRACE_SWEEPS);
+      visibility.exitGrace = visible && !rawVisible;
       if (visible) state._visible.add(entry);
       else state._visible.delete(entry);
       if (visible && entry.track?.count) {

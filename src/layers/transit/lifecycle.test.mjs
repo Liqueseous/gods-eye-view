@@ -2810,6 +2810,22 @@ test('missing rectangle still rejects the far side, and frustum rejection wins',
   };
   app.advance(250);
   app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(app.state()._visible.size, 1, 'one missed sweep does not blink it off');
+  assert.equal(app.vehicles()[0].marker.show, true);
+  app.viewer.camera.frustum = null;
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(app.state()._visible.size, 1, 'a recovery resets the miss count');
+  app.viewer.camera.frustum = {
+    computeCullingVolume: () => ({
+      computeVisibility: () => Cesium.Intersect.OUTSIDE,
+    }),
+  };
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(app.state()._visible.size, 1, 'an alternating miss remains visible');
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
   assert.equal(app.state()._visible.size, 0);
   assert.equal(app.state()._moving.size, 0);
   assert.equal(app.holds().includes('transit'), false);
@@ -2853,10 +2869,13 @@ test('visibility culling includes the rendered icon footprint at the frustum edg
   outsideDistance = entry.marker.width + 10;
   app.advance(250);
   app.layer._transitPartsForTest().rendering.refreshVisibility();
+  assert.equal(entry.marker.show, true, 'one missed sweep is tolerated');
+  app.advance(250);
+  app.layer._transitPartsForTest().rendering.refreshVisibility();
   assert.equal(
     entry.marker.show,
     false,
-    'the full icon is outside the frustum',
+    'the full icon stays outside the frustum',
   );
 });
 
@@ -3026,7 +3045,11 @@ test('visible motion is recullable without a camera event and releases its hold 
       computeVisibility: () => Cesium.Intersect.OUTSIDE,
     }),
   };
-  app.layer._transitPartsForTest().rendering.maintainPresentation();
+  const rendering = app.layer._transitPartsForTest().rendering;
+  rendering.maintainPresentation();
+  app.advance(250);
+  assert.equal(app.state()._moving.size, 1, 'one missed sweep keeps motion alive');
+  rendering.maintainPresentation();
   app.advance(250);
   assert.equal(app.state()._moving.size, 0);
   assert.equal(app.state()._renderHeld, false);
