@@ -142,6 +142,10 @@ export function createControls({ state: layerState, services, parts, source }) {
       // TomTom request in flight after the roads have settled, and the shared
       // loading batch has to stay open long enough to announce its failure.
       const loading = layerState._fetching || layerState._flowPending > 0;
+      const roadDataUnavailable =
+        layerState._enabled &&
+        layerState._count === 0 &&
+        !layerState._lastUpdate;
       const feed = parts.model.trafficFeedPresentation({
         liveMode: layerState._liveMode,
         fetching: loading,
@@ -152,6 +156,7 @@ export function createControls({ state: layerState, services, parts, source }) {
       return {
         count: layerState._count,
         lastUpdate: layerState._lastUpdate,
+        ...(roadDataUnavailable ? { status: 'unavailable' } : {}),
         loading,
         mode: feed.mode,
         error: layerState._roadError || feed.error,
@@ -180,7 +185,9 @@ export function createControls({ state: layerState, services, parts, source }) {
         // in one had better be the honest one. This is also where LIVE vs
         // SIMULATED mode is surfaced, and it must never imply a live feed the
         // layer does not have.
-        loadingLabel: feed.loadingLabel,
+        loadingLabel: roadDataUnavailable
+          ? 'OSM road data unavailable'
+          : feed.loadingLabel,
       };
     },
   };

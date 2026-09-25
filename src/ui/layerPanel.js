@@ -546,6 +546,13 @@ export class LayerPanel {
     ) {
       return `${source} · ${stats.statusMessage.trim()}`;
     }
+    if (feedState === 'unavailable') {
+      const detail =
+        typeof stats.loadingLabel === 'string' && stats.loadingLabel.trim()
+          ? stats.loadingLabel.trim()
+          : 'data unavailable';
+      return `${stateLabel} · ${source} · ${detail}`;
+    }
     const ago = stats.lastUpdate ? this._timeAgo(stats.lastUpdate) : 'never';
     if (stats.loading) {
       const loadingLabel =
