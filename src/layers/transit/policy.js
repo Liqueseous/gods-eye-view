@@ -13,6 +13,12 @@ export const TRANSIT_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
   collisionCapacity: 0,
   moving: true,
 });
+export const TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID = 'transit-route-selected';
+export const TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
+  cohortLimit: 1,
+  collisionCapacity: 0,
+  moving: true,
+});
 
 // --- Polling / activation ---
 /** Poll interval (ms). */

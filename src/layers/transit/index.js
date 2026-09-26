@@ -48,7 +48,11 @@ export function createTransitLayer({
   const parts = {};
   const context = { state, services, parts, source, routeSource };
   parts.trails = createTrails(context);
-  parts.routes = createTransitRouteLines(context);
+  parts.routes = createTransitRouteLines({
+    ...context,
+    onSelectRoute: (route) => parts.selection?.selectRoute(route),
+    onRoutesUpdated: () => parts.selection?.refreshSelectedRouteCard(),
+  });
   parts.height = createHeight(context);
   parts.selection = createSelection(context);
   parts.rendering = createRendering(context);
@@ -62,6 +66,7 @@ export function createTransitLayer({
   return Object.assign(
     {
       updateInterval: TRANSIT_POLL_MS,
+      raiseRouteLinesToTop: parts.routes.raiseRouteLinesToTop,
       getTransitRouteDiagnostics: (options) =>
         parts.routes.diagnostics(options),
     },

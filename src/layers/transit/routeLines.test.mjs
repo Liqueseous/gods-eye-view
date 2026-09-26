@@ -8,6 +8,7 @@ test('route lines render with a contrast outline and route color, then release o
   const sourceCalls = [];
   const prefetchStarted = Promise.withResolvers();
   const releasePrefetch = Promise.withResolvers();
+  let selectedRoute = null;
   const viewer = {
     scene: { requestRender() {} },
     entities: {
@@ -24,6 +25,9 @@ test('route lines render with a contrast outline and route color, then release o
     },
   };
   const layer = createTransitRouteLines({
+    onSelectRoute(route) {
+      selectedRoute = route;
+    },
     routeSource: {
       async requestRoutes(bounds) {
         sourceCalls.push(bounds);
@@ -47,7 +51,14 @@ test('route lines render with a contrast outline and route color, then release o
               routes: [
                 {
                   id: '12:99',
+                  routeId: '12',
+                  name: 'Blue Line',
+                  ref: 'A',
+                  type: 'light_rail',
                   color: '#1267B1',
+                  stops: [
+                    { id: '1', role: 'stop', name: 'Central', lat: 42.35, lon: -71.1 },
+                  ],
                   lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
                 },
               ],
@@ -85,13 +96,29 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(layer.diagnostics().count, 1, 'in-view routes draw before prefetch');
   assert.equal(layer.diagnostics().requestStage, 'prefetch');
   assert.deepEqual(layer.diagnostics().coverageBounds, sourceCalls[0]);
+  assert.equal(layer.selectFromPick(sceneEntities[0].id), true);
+  assert.equal(selectedRoute.routeId, '12');
+  assert.equal(selectedRoute.name, 'Blue Line');
+  assert.deepEqual(selectedRoute.stops.map(({ name }) => name), ['Central']);
   releasePrefetch.resolve();
   await update;
 
   assert.deepEqual(sceneEntities[0].polyline.material, Cesium.Color.fromCssColorString('#07131B'));
   assert.deepEqual(sceneEntities[1].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
+  assert.ok(
+    sceneEntities.every((entity) => entity.polyline.zIndex > 11),
+    'transit route lines are ordered above tunnel fallback lines',
+  );
   const routeDiagnostics = layer.diagnostics({ includeGeometry: true });
   assert.equal(routeDiagnostics.count, 1);
+  assert.equal(routeDiagnostics.routes[0].stopCount, 1);
+  assert.deepEqual(routeDiagnostics.routes[0].stops[0], {
+    id: '1',
+    role: 'stop',
+    name: 'Central',
+    lat: 42.35,
+    lon: -71.1,
+  });
   assert.equal(routeDiagnostics.lastStatus, 200);
   assert.equal(routeDiagnostics.cache, 'HIT');
   assert.equal(routeDiagnostics.upstream, 'overpass.example');

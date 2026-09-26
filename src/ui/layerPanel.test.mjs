@@ -29,6 +29,15 @@ test('panel presentation places Transit between Street Traffic and Bike Share in
     ],
   );
   assert.equal(order.filter(({ id }) => id === 'transit').length, 1);
+  assert.equal(order.find(({ id }) => id === 'tunnels')?.label, 'Infrastructure');
+  assert.ok(
+    order.findIndex(({ id }) => id === 'telegeography-submarine-cables') <
+      order.findIndex(({ id }) => id === 'tunnels'),
+  );
+  assert.ok(
+    order.findIndex(({ id }) => id === 'tunnels') <
+      order.findIndex(({ id }) => id === 'local-dams'),
+  );
 });
 
 test('partial feed controls distinguish incomplete records from stale data and outages', async () => {

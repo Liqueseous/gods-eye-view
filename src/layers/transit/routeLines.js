@@ -11,6 +11,8 @@ const FAILURE_RETRY_MS = 30_000;
 const OUTLINE_COLOR = '#07131B';
 const OUTLINE_WIDTH = 7;
 const ROUTE_WIDTH = 3.5;
+const ROUTE_OUTLINE_Z_INDEX = 20;
+const ROUTE_LINE_Z_INDEX = 21;
 
 function stableQueryBounds(bounds) {
   const safe = clampTransitRouteBounds(bounds);
@@ -74,7 +76,11 @@ function routePositions(line) {
 }
 
 /** Own viewport-loaded OSM rail-route geometry for one Transit layer. */
-export function createTransitRouteLines({ routeSource }) {
+export function createTransitRouteLines({
+  routeSource,
+  onSelectRoute = () => {},
+  onRoutesUpdated = () => {},
+}) {
   if (typeof routeSource?.requestRoutes !== 'function')
     throw new TypeError('A transit-route source is required');
 
@@ -102,6 +108,8 @@ export function createTransitRouteLines({ routeSource }) {
   let error = null;
   let primitives = [];
   let entities = [];
+  let selectedRouteId = null;
+  const routePickTargets = new Map();
 
   function removeGeometry() {
     for (const primitive of primitives)
@@ -111,15 +119,23 @@ export function createTransitRouteLines({ routeSource }) {
     entities = [];
   }
 
+  function raiseRouteLinesToTop() {
+    const collection = viewer?.scene?.groundPrimitives;
+    for (const primitive of primitives)
+      if (primitive) collection?.raiseToTop?.(primitive);
+  }
+
   function makeInstances(items, width) {
     const instances = [];
     for (const route of items) {
       for (let index = 0; index < route.lines.length; index++) {
         const positions = routePositions(route.lines[index]);
         if (positions.length < 2) continue;
+        const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
+        routePickTargets.set(id, route.routeId);
         instances.push(
           new Cesium.GeometryInstance({
-            id: `transit-route:${route.id}:${index}:${width}`,
+            id,
             geometry: new Cesium.GroundPolylineGeometry({ positions, width }),
           }),
         );
@@ -139,7 +155,7 @@ export function createTransitRouteLines({ routeSource }) {
         }),
       }),
       classificationType: Cesium.ClassificationType.BOTH,
-      allowPicking: false,
+      allowPicking: true,
       asynchronous: true,
       show: visible,
     });
@@ -153,14 +169,20 @@ export function createTransitRouteLines({ routeSource }) {
       for (let index = 0; index < route.lines.length; index++) {
         const positions = routePositions(route.lines[index]);
         if (positions.length < 2) continue;
+        const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
+        routePickTargets.set(id, route.routeId);
         created.push(
           viewer.entities.add({
-            id: `transit-route:${route.id}:${index}:${width}`,
+            id,
             polyline: {
               positions,
               width,
               material,
               clampToGround: true,
+              zIndex:
+                width === OUTLINE_WIDTH
+                  ? ROUTE_OUTLINE_Z_INDEX
+                  : ROUTE_LINE_Z_INDEX,
             },
           }),
         );
@@ -172,6 +194,7 @@ export function createTransitRouteLines({ routeSource }) {
   function replaceRoutes(nextRoutes) {
     const nextPrimitives = [];
     const nextEntities = [];
+    routePickTargets.clear();
     let canUseGround = false;
     try {
       canUseGround =
@@ -191,6 +214,7 @@ export function createTransitRouteLines({ routeSource }) {
           OUTLINE_COLOR,
         );
         if (outline) nextPrimitives.push(outline);
+    onRoutesUpdated();
         const byColor = new Map();
         for (const route of nextRoutes) {
           if (!byColor.has(route.color)) byColor.set(route.color, []);
@@ -224,6 +248,7 @@ export function createTransitRouteLines({ routeSource }) {
     for (const primitive of previousPrimitives)
       viewer?.scene?.groundPrimitives?.remove(primitive);
     for (const entity of previousEntities) viewer?.entities?.remove(entity);
+    raiseRouteLinesToTop();
     viewer?.scene?.requestRender?.();
   }
 
@@ -231,7 +256,25 @@ export function createTransitRouteLines({ routeSource }) {
     visible = enabled && next === true;
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
-    if (visible) viewer?.scene?.requestRender?.();
+    if (visible) {
+      raiseRouteLinesToTop();
+      viewer?.scene?.requestRender?.();
+    }
+  }
+
+  function routeForId(routeId) {
+    const segments = routes.filter((route) => route.routeId === routeId);
+    if (!segments.length) return null;
+    const stops = new Map();
+    for (const stop of segments.flatMap((segment) => segment.stops || [])) {
+      if (!stops.has(stop.id)) stops.set(stop.id, stop);
+    }
+    return {
+      ...segments[0],
+      id: routeId,
+      lines: segments.flatMap((segment) => segment.lines),
+      stops: [...stops.values()],
+    };
   }
 
   async function loadBounds(safeBounds, requestGeneration, signal, stage) {
@@ -358,6 +401,32 @@ export function createTransitRouteLines({ routeSource }) {
     );
   }
 
+  function selectFromPick(picked) {
+    const candidateIds = [
+      typeof picked === 'string' ? picked : null,
+      typeof picked?.id === 'string' ? picked.id : null,
+      typeof picked?.id?.id === 'string' ? picked.id.id : null,
+      typeof picked?.primitive?.id === 'string' ? picked.primitive.id : null,
+    ].filter(Boolean);
+    const routeId = candidateIds
+      .map((id) => routePickTargets.get(id))
+      .find(Boolean);
+    if (!routeId) return false;
+    const route = routeForId(routeId);
+    if (!route) return false;
+    selectedRouteId = routeId;
+    onSelectRoute(route);
+    return true;
+  }
+
+  function setSelectedRoute(routeId) {
+    selectedRouteId = routeId || null;
+  }
+
+  function clearSelectedRoute() {
+    selectedRouteId = null;
+  }
+
   function disable() {
     enabled = false;
     visible = false;
@@ -371,6 +440,7 @@ export function createTransitRouteLines({ routeSource }) {
     prefetching = false;
     lastBoundsKey = null;
     coverageBounds = null;
+    selectedRouteId = null;
     lastFailureKey = null;
     lastFailureAt = 0;
     error = null;
@@ -394,7 +464,12 @@ export function createTransitRouteLines({ routeSource }) {
     disable,
     destroy,
     setVisible,
+    raiseRouteLinesToTop,
     update,
+    selectFromPick,
+    getRoute: routeForId,
+    setSelectedRoute,
+    clearSelectedRoute,
     diagnostics({ includeGeometry = false } = {}) {
       return {
         source: 'OpenStreetMap via Overpass',
@@ -419,9 +494,18 @@ export function createTransitRouteLines({ routeSource }) {
           ref: route.ref,
           type: route.type,
           color: route.color,
+          network: route.network,
+          operator: route.operator,
+          from: route.from,
+          to: route.to,
+          description: route.description,
+          website: route.website,
+          stopCount: route.stops?.length || 0,
+          stops: route.stops || [],
           lineCount: route.lines.length,
           ...(includeGeometry ? { lines: route.lines } : {}),
         })),
+        selectedRouteId,
       };
     },
   };

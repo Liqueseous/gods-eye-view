@@ -32,10 +32,15 @@ const unnamed = {
   ],
 };
 
-function harness(t) {
+function harness(
+  t,
+  raiseRoutesAboveTunnels = () => {},
+  tunnelData = [road, rail, unnamed],
+) {
   t.mock.method(Cesium.GroundPolylinePrimitive, 'isSupported', () => false);
   const overlays = new Map();
   const primitives = [];
+  const ghostPrimitives = [];
   const entities = [];
   const moveEnd = new Cesium.Event();
   let rectangle = Cesium.Rectangle.fromDegrees(-71.2, 42.2, -70.9, 42.5);
@@ -54,6 +59,18 @@ function harness(t) {
     },
     scene: {
       canvas: { clientWidth: 100, clientHeight: 100 },
+      globe: { getHeight: () => 12 },
+      primitives: {
+        add(primitive) {
+          ghostPrimitives.push(primitive);
+          return primitive;
+        },
+        remove(primitive) {
+          const index = ghostPrimitives.indexOf(primitive);
+          if (index >= 0) ghostPrimitives.splice(index, 1);
+          return index >= 0;
+        },
+      },
       groundPrimitives: {
         add(primitive) {
           primitives.push(primitive);
@@ -86,11 +103,12 @@ function harness(t) {
         requests.push(bounds);
         return {
           ok: true,
-          json: async () => ({ tunnels: [road, rail, unnamed] }),
+          json: async () => ({ tunnels: tunnelData }),
         };
       },
     },
     services: {
+      raiseRoutesAboveTunnels,
       overlays: {
         setVisible: (id, visible) => overlays.set(`${id}:visible`, visible),
         setEntries: (id, entries, options) =>
@@ -106,6 +124,7 @@ function harness(t) {
     viewer,
     overlays,
     primitives,
+    ghostPrimitives,
     entities,
     requests,
     setRectangle(next) {
@@ -113,6 +132,9 @@ function harness(t) {
     },
     setCameraCenter(lon, lat) {
       pickedCenter = { lon, lat };
+    },
+    setCameraHeight(height) {
+      viewer.camera.positionCartographic.height = height;
     },
     moveEnd,
   };
@@ -150,6 +172,7 @@ test('tunnel layer fetches bounded geometry, styles road and rail separately, an
   );
   assert.equal(app.entities[0].polyline.width, 5);
   assert.equal(app.entities[0].polyline.clampToGround, true);
+  assert.equal(app.entities[0].polyline.zIndex, 10);
   assert.equal(app.entities[3].polyline.width, 2.4);
   assert.equal(
     app.entities[3].polyline.material.toCssHexString().toLowerCase(),
@@ -181,6 +204,51 @@ test('tunnel layer fetches bounded geometry, styles road and rail separately, an
     error: null,
     zoomLimited: false,
   });
+});
+
+test('tunnel geometry replacement reapplies route-line priority', async (t) => {
+  let priorityRefreshes = 0;
+  const app = harness(t, () => priorityRefreshes++);
+
+  await app.layer.enable(app.viewer);
+
+  assert.equal(priorityRefreshes, 1);
+});
+
+test('tunnel alignments get ghostly 3D shells that hide at range and clean up', async (t) => {
+  const app = harness(t);
+
+  await app.layer.enable(app.viewer);
+
+  assert.equal(app.ghostPrimitives.length, 2, 'road and rail shells are batched');
+  assert.ok(app.ghostPrimitives.every((primitive) => primitive.show));
+  assert.ok(
+    app.ghostPrimitives.every(
+      (primitive) => primitive instanceof Cesium.Primitive,
+    ),
+  );
+
+  app.setCameraHeight(20_000);
+  await app.layer.update(app.viewer);
+  assert.ok(app.ghostPrimitives.every((primitive) => !primitive.show));
+
+  app.layer.disable();
+  assert.equal(app.ghostPrimitives.length, 0);
+});
+
+test('ghost shell batches include every tunnel beyond the former per-kind cap', async (t) => {
+  const tunnelData = Array.from({ length: 105 }, (_, index) => ({
+    ...road,
+    id: `road-${index}`,
+  }));
+  const app = harness(t, undefined, tunnelData);
+
+  await app.layer.enable(app.viewer);
+
+  assert.equal(
+    app.ghostPrimitives[0].geometryInstances.length,
+    tunnelData.length,
+  );
 });
 
 test('tunnel layer reloads after camera move and releases its geometry and labels on disable', async (t) => {

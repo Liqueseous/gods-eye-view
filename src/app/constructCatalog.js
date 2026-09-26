@@ -131,6 +131,11 @@ export function createApplicationCatalog({
     const satellites = createApplicationSatellites({
       source: sources.satellites,
     });
+    const traffic = createApplicationTraffic({ source: sources.traffic });
+    const transit = createApplicationTransit({
+      surface,
+      source: sources.transit,
+    });
     const catalog = createLayerCatalog(
       [
         createBhoteKoshiEventLayer(),
@@ -152,11 +157,15 @@ export function createApplicationCatalog({
         createApplicationAlpr({ surface, source: sources.alpr }),
         satellites,
         createApplicationLaunches({ source: sources.launches, satellites }),
-        createApplicationTraffic({ source: sources.traffic }),
-        createApplicationTunnels({ source: sources.tunnels }),
+        traffic,
+        createApplicationTunnels({
+          source: sources.tunnels,
+          trafficLayer: traffic,
+          transitLayer: transit,
+        }),
         createApplicationCctv({ surface, source: sources.cctv }),
         createApplicationRadio({ surface, source: sources.radio }),
-        createApplicationTransit({ surface, source: sources.transit }),
+        transit,
         createApplicationBikeshare({ source: sources.bikeshare }),
         createApplicationDirections(),
         createApplicationRecentImagery(),

@@ -80,7 +80,9 @@ export function buildTransitRouteQuery(bounds) {
     `relation["route"~"^(train|subway|light_rail|tram|monorail|funicular)$",i]${bbox}->.routes;` +
     '.routes out body;' +
     `way(r.routes)${bbox}->.routeways;` +
-    '.routeways out geom qt;'
+    '.routeways out geom qt;' +
+    `node(r.routes)${bbox}->.routenodes;` +
+    '.routenodes out body qt;'
   );
 }
 
@@ -108,6 +110,43 @@ function routeColor(tags, type, name, ref) {
     new RegExp(`\\b${color}\\b`, 'i').test(identity),
   );
   return named?.[1] || FALLBACK_COLORS[type];
+}
+
+function routeAliases(route) {
+  const raw = [route?.ref, route?.name]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .flatMap((value) => value.split(/[;,/]/));
+  const aliases = new Set();
+  for (const value of raw) {
+    const alias = value
+      .trim()
+      .replace(/\b(line|route|service)\b$/i, '')
+      .replace(/[^a-z\d]/gi, '')
+      .toUpperCase();
+    if (alias) aliases.add(alias);
+  }
+  return aliases;
+}
+
+/** True only when a live GTFS route id unambiguously matches this OSM route. */
+export function transitRouteMatchesVehicle(route, vehicleRouteId) {
+  if (typeof vehicleRouteId !== 'string' || !vehicleRouteId.trim()) return false;
+  const aliases = routeAliases(route);
+  const id = vehicleRouteId.trim().toUpperCase();
+  const candidates = [id];
+  const agencySuffix = id.split('_').at(-1);
+  if (agencySuffix !== id) candidates.push(agencySuffix);
+  for (const candidate of candidates) {
+    const normalized = candidate.replace(/[^A-Z\d]/g, '');
+    if (aliases.has(normalized)) return true;
+    for (const alias of aliases) {
+      if (alias.length > 1 && normalized.startsWith(`${alias}`)) {
+        const next = normalized[alias.length];
+        if (next && /[A-Z]/.test(next)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function clipSegment(a, b, bounds) {
@@ -183,11 +222,20 @@ export function normalizeTransitRoutes(payload, bounds) {
   const safeBounds = clampTransitRouteBounds(bounds);
   const segments = new Map();
   const waysById = new Map();
+  const nodesById = new Map();
   const routeRelations = [];
 
   for (const relation of payload?.elements || []) {
     if (relation?.type === 'way' && Array.isArray(relation.geometry)) {
       waysById.set(String(relation.id ?? ''), relation);
+      continue;
+    }
+    if (
+      relation?.type === 'node' &&
+      Number.isFinite(relation.lat) &&
+      Number.isFinite(relation.lon)
+    ) {
+      nodesById.set(String(relation.id ?? ''), relation);
       continue;
     }
     const tags = relation?.tags || {};
@@ -204,11 +252,21 @@ export function normalizeTransitRoutes(payload, bounds) {
       parseRouteColor(tags['route:colour']);
     const color = routeColor(tags, type, name, ref);
     const memberWays = new Set();
+    const memberStops = [];
     const inlineWays = [];
     for (const member of relation.members || []) {
-      if (member?.type !== 'way') continue;
-      memberWays.add(String(member.ref ?? ''));
-      if (Array.isArray(member.geometry)) inlineWays.push(member);
+      if (member?.type === 'way') {
+        memberWays.add(String(member.ref ?? ''));
+        if (Array.isArray(member.geometry)) inlineWays.push(member);
+      } else if (
+        member?.type === 'node' &&
+        /stop|platform|station/i.test(String(member.role || ''))
+      ) {
+        memberStops.push({
+          id: String(member.ref ?? ''),
+          role: cleanText(member.role),
+        });
+      }
     }
     if (Array.isArray(relation.geometry)) {
       inlineWays.push({ ref: 'route', geometry: relation.geometry });
@@ -220,13 +278,54 @@ export function normalizeTransitRoutes(payload, bounds) {
       ref,
       explicitColor,
       color,
+      network: cleanText(tags.network),
+      operator: cleanText(tags.operator),
+      from: cleanText(tags.from),
+      to: cleanText(tags.to),
+      description: cleanText(tags.description),
+      website: cleanText(tags.website),
+      memberStops,
       memberWays,
       inlineWays,
     });
   }
 
   for (const route of routeRelations) {
-    const { relation, type, name, ref, explicitColor, color } = route;
+    const {
+      relation,
+      type,
+      name,
+      ref,
+      explicitColor,
+      color,
+      network,
+      operator,
+      from,
+      to,
+      description,
+      website,
+      memberStops,
+    } = route;
+    const stops = memberStops
+      .map(({ id, role }) => {
+        const node = nodesById.get(id);
+        if (!node || node.lat < safeBounds.south || node.lat > safeBounds.north ||
+          node.lon < safeBounds.west || node.lon > safeBounds.east)
+          return null;
+        const tags = node.tags || {};
+        return {
+          id,
+          role,
+          name:
+            cleanText(tags.name) ||
+            cleanText(tags['name:en']) ||
+            cleanText(tags.ref) ||
+            cleanText(tags.local_ref),
+          lat: Number(node.lat.toFixed(6)),
+          lon: Number(node.lon.toFixed(6)),
+        };
+      })
+      .filter(Boolean);
     const addWay = (wayId, geometry, wayTags = {}) => {
       const id = `${relation.id ?? 'route'}:${wayId ?? segments.size}`;
       if (segments.has(id)) return;
@@ -243,6 +342,13 @@ export function normalizeTransitRoutes(payload, bounds) {
           parseRouteColor(wayTags.colour) ||
           parseRouteColor(wayTags.color) ||
           color,
+        network,
+        operator,
+        from,
+        to,
+        description,
+        website,
+        stops,
         lines,
       });
     };

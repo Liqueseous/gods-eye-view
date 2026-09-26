@@ -8,6 +8,7 @@ import {
   MISSED_POLLS_TO_DROP,
   SELECTED_CARD_REFRESH_MS,
   TRANSIT_POLL_MS,
+  TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS,
   VEHICLE_MAX_FIX_AGE_MS,
 } from './policy.js';
 import { FLOOR_WARM_PER_POLL } from './policy.js';
@@ -151,6 +152,7 @@ function harness(
   t,
   {
     source,
+    routeSource,
     altitude = 4_000,
     floorAt = () => 12,
     at = BOSTON,
@@ -283,6 +285,7 @@ function harness(
   const meshCalls = [];
   const layer = createTransitLayer({
     source,
+    routeSource,
     services: {
       ground,
       mesh: {
@@ -467,6 +470,123 @@ test('static OSM rail routes render when the realtime fleet is empty', async (t)
   );
   app.layer.disable(app.viewer);
   assert.equal(app.entities.length, 0);
+});
+
+test('selecting a mapped route opens route details and replaces vehicle selection', async (t) => {
+  const routeDataCalls = [];
+  const alertHeader =
+    'Red Line trains are experiencing major delays between Alewife and Ashmont due to emergency track repairs';
+  const app = harness(t, {
+    source: {
+      async requestSnapshot() {
+        return {
+          ok: false,
+          status: 503,
+          async json() {
+            return { error: 'Vehicle snapshot unavailable' };
+          },
+        };
+      },
+      async getHistory() {
+        return { fixes: [], epochs: [] };
+      },
+      async requestRouteDetails(feedId, routeId) {
+        routeDataCalls.push({ feedId, routeId });
+        return {
+          ok: true,
+          async json() {
+            return {
+              feedId,
+              routeId,
+              fetchedAt: Date.now(),
+              predictions: [
+                {
+                  stopId: '70073',
+                  stopName: 'Harvard',
+                  arrivalTime: new Date(Date.now() + 300_000).toISOString(),
+                  departureTime: null,
+                },
+              ],
+              alerts: [{ header: 'Red Line delays', effect: 'DELAY' }],
+                          alerts: [{ header: alertHeader, effect: 'DELAY' }],
+            };
+          },
+        };
+      },
+    },
+    routeSource: {
+      async requestRoutes() {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          async json() {
+            return {
+              routes: [
+                {
+                  id: '123:456',
+                  routeId: '123',
+                  ref: 'Red',
+                  name: 'Red Line',
+                  type: 'subway',
+                  color: '#DA291C',
+                  network: 'MBTA',
+                  operator: 'MBTA',
+                  from: 'Alewife',
+                  to: 'Ashmont/Braintree',
+                  lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
+                  stops: [
+                    { id: '1', name: 'Central', role: 'stop', lat: 42.35, lon: -71.1 },
+                  ],
+                },
+              ],
+            };
+          },
+        };
+      },
+    },
+  });
+  app.layer.enable(app.viewer);
+  await new Promise((resolve) => setImmediate(resolve));
+  app.layer._loadTransitFleetForTest(1, BOSTON, 70, ['Red']);
+  const parts = app.layer._transitPartsForTest();
+  assert.equal(app.entities.length, 2, 'route has an outline and color stroke');
+  app.viewer.scene.pick = () => ({ id: app.entities[0] });
+  app.state()._clickHandler.getInputAction(
+    Cesium.ScreenSpaceEventType.LEFT_CLICK,
+  )({ position: new Cesium.Cartesian2(500, 400) });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const routeCard = app.overlaySources.get('transit-route-selected')?.[0];
+  assert.equal(routeCard.title, 'Red Line');
+  assert.equal(routeCard.moving, true);
+  assert.equal(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS.moving, true);
+  assert.equal(typeof routeCard.position, 'function');
+  const initialAnchor = routeCard.position();
+  app.viewer.camera.positionCartographic.longitude = Cesium.Math.toRadians(-71.1);
+  const pannedAnchor = routeCard.position();
+  assert.ok(Cesium.Cartesian3.distance(initialAnchor, pannedAnchor) > 1000);
+  assert.match(routeCard.details.join(' · '), /Subway · MBTA/);
+  assert.match(routeCard.details.join(' · '), /1 mapped stops/);
+  assert.match(routeCard.details.join(' · '), /Central/);
+  assert.match(routeCard.details.join(' · '), /1 matching live vehicles · MBTA/);
+  assert.match(routeCard.details.join(' · '), /Next MBTA stops: Harvard/);
+  assert.match(routeCard.details.join(' · '), /MBTA alert: Red Line trains/);
+    assert.match(routeCard.details.join(' · '), /MBTA alert: Red Line trains/);
+    const alertStart = routeCard.details.findIndex((line) =>
+      line.startsWith('MBTA alert:'),
+    );
+    const wrappedAlert = routeCard.details.slice(alertStart);
+    assert.ok(wrappedAlert.length > 1, 'long MBTA alert wraps to multiple rows');
+    assert.ok(wrappedAlert.every((line) => line.length <= 42));
+    assert.equal(wrappedAlert.join(' '), `MBTA alert: ${alertHeader}`);
+  assert.deepEqual(routeDataCalls, [{ feedId: 'mbta', routeId: 'Red' }]);
+  assert.ok(app.credits.includes('transit-mbta'));
+
+  const vehicle = app.vehicles()[0];
+  parts.selection.selectVehicle(vehicle.key);
+  assert.equal(app.overlaySources.has('transit-route-selected'), false);
+  assert.ok(app.overlaySources.has('transit-selected'));
 });
 
 test('transit coverage follows the center-screen ground point, not the view-rectangle midpoint', (t) => {

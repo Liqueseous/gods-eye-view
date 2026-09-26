@@ -12,6 +12,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import createViteConfig, { fetchOverpassPayload, overpassPayloadIsData, readOverpassDisk } from '../vite.config.js';
+import { overpassDiskTtlMs, _overpassCache } from '../server/providers/overpass/cache.js';
+import { OVERPASS_DISK_TTL_MS } from '../server/providers/overpass/constants.js';
+import { sanitizeOverpassBody } from '../server/providers/overpass/query.js';
+import { createTransitRouteSource } from './layers/transit/routeSource.js';
+import { createTunnelsSource } from './layers/tunnels/source.js';
 
 const ENDPOINTS = ['https://a.example/api', 'https://b.example/api', 'https://c.example/api'];
 
@@ -38,6 +43,15 @@ const run = (byUrl) => {
 };
 
 const DATA = { status: 200, body: '{"elements":[]}' };
+
+async function waitForDiskCache(cacheKey) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const payload = await readOverpassDisk(cacheKey, Infinity);
+    if (payload) return payload;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return null;
+}
 
 test('disk cache rejects old refusals for fresh and stale reads but preserves last-good data', async () => {
   const key = `overpass-cache-regression-${randomUUID()}`;
@@ -325,5 +339,65 @@ test('coalesced outage callers both receive last-good data, never a cached refus
       mock.mock.restore();
       await unlink(file);
     }
+  }
+});
+
+test('successful transit-route and tunnel queries persist to server disk cache', async (t) => {
+  const handler = proxyHandler();
+  const bounds = { south: 42.3, west: -71.2, north: 42.4, east: -71 };
+  let routeBody;
+  let tunnelBody;
+  const captureFetch = async (_url, options) => {
+    if (options.body.includes('relation%5B')) routeBody = options.body;
+    else tunnelBody = options.body;
+    return Response.json({ elements: [] });
+  };
+  await createTransitRouteSource({ fetchImpl: captureFetch }).requestRoutes(bounds);
+  await createTunnelsSource({ fetchImpl: captureFetch }).requestTunnels(bounds);
+
+  const cacheEntries = [];
+  const priorMemoryCache = new Map(_overpassCache);
+  let upstreamCalls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    upstreamCalls++;
+    return Response.json({ elements: [] });
+  });
+
+  try {
+    for (const sourceBody of [routeBody, tunnelBody]) {
+      const data = new URLSearchParams(sourceBody).get('data');
+      const body = `data=${encodeURIComponent(`${data}\n/*${randomUUID()}*/`)}`;
+      const sanitized = sanitizeOverpassBody(body);
+      assert.equal(sanitized.ok, true);
+      const cacheKey = sanitized.body.replace(/\s+/g, ' ').trim();
+      cacheEntries.push(cacheKey);
+      assert.equal(overpassDiskTtlMs(cacheKey), OVERPASS_DISK_TTL_MS);
+
+      const miss = await invoke(handler, body);
+      assert.equal(miss.status, 200);
+      assert.equal(miss.headers['X-Overpass-Cache'], 'MISS');
+      assert.ok(
+        await waitForDiskCache(cacheKey),
+        'successful OSM response is written to the persistent disk cache',
+      );
+
+      _overpassCache.delete(cacheKey);
+      const diskHit = await invoke(handler, body);
+      assert.equal(diskHit.status, 200);
+      assert.equal(diskHit.headers['X-Overpass-Cache'], 'DISK');
+      assert.equal(upstreamCalls, cacheEntries.length);
+    }
+  } finally {
+    for (const cacheKey of cacheEntries) {
+      const file = path.join(
+        process.cwd(),
+        '.gev-cache',
+        'overpass',
+        `${createHash('sha1').update(cacheKey).digest('hex')}.json`,
+      );
+      await unlink(file).catch(() => {});
+    }
+    _overpassCache.clear();
+    for (const [key, payload] of priorMemoryCache) _overpassCache.set(key, payload);
   }
 });

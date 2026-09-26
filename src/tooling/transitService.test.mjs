@@ -80,6 +80,78 @@ test('MTA service request uses the resolved key without returning it to clients'
   assert.equal(responseText.includes('service-secret'), false);
 });
 
+test('MBTA route details return route-filtered predictions and alerts and cache briefly', async (t) => {
+  const calls = [];
+  const arrivalTime = new Date(Date.now() + 300_000).toISOString();
+  const service = createTransitService({
+    fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      calls.push(parsed);
+      assert.equal(parsed.origin, 'https://api-v3.mbta.com');
+      assert.equal(parsed.searchParams.get('filter[route]'), 'Red');
+      if (parsed.pathname === '/predictions')
+        return Response.json({
+          data: [
+            {
+              id: 'prediction-red',
+              attributes: { arrival_time: arrivalTime, trip_headsign: 'Alewife' },
+              relationships: {
+                route: { data: { id: 'Red' } },
+                stop: { data: { id: '70073' } },
+              },
+            },
+            {
+              id: 'prediction-orange',
+              attributes: { arrival_time: arrivalTime },
+              relationships: { route: { data: { id: 'Orange' } } },
+            },
+          ],
+          included: [
+            { type: 'stop', id: '70073', attributes: { name: 'Harvard' } },
+          ],
+        });
+      return Response.json({
+        data: [
+          {
+            id: 'alert-red',
+            attributes: {
+              header: 'Red Line delays',
+              effect: 'DELAY',
+              severity: 4,
+              informed_entity: [{ route: 'Red' }],
+            },
+          },
+          {
+            id: 'alert-orange',
+            attributes: {
+              header: 'Orange Line alert',
+              informed_entity: [{ route: 'Orange' }],
+            },
+          },
+        ],
+      });
+    },
+  });
+  t.after(service.close);
+
+  const path = '/api/transit/route-details/mbta/Red';
+  const first = await service.handle(request(path));
+  assert.equal(first.status, 200);
+  const details = await first.json();
+  assert.equal(details.feedId, 'mbta');
+  assert.equal(details.routeId, 'Red');
+  assert.equal(details.predictions.length, 1);
+  assert.equal(details.predictions[0].stopName, 'Harvard');
+  assert.equal(details.predictions[0].arrivalTime, arrivalTime);
+  assert.equal(details.alerts.length, 1);
+  assert.equal(details.alerts[0].header, 'Red Line delays');
+  assert.equal(calls.length, 2);
+
+  const cached = await service.handle(request(path));
+  assert.equal(cached.headers.get('x-route-data-cache'), 'HIT');
+  assert.equal(calls.length, 2);
+});
+
 test('source sends snapshots and bounded history through the supplied transport', async () => {
   const calls = [];
   const controller = new AbortController();
@@ -121,6 +193,36 @@ test('source sends snapshots and bounded history through the supplied transport'
     { name: 'AbortError' },
   );
   assert.equal(calls.length, 2);
+});
+
+test('source requests validated MBTA route details through the same-origin proxy', async () => {
+  const calls = [];
+  const source = createTransitSource({
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return Response.json({
+        feedId: 'mbta',
+        routeId: 'Red',
+        fetchedAt: 123,
+        predictions: [],
+        alerts: [],
+      });
+    },
+  });
+  const response = await source.requestRouteDetails('mbta', 'Red');
+  assert.deepEqual(await response.json(), {
+    feedId: 'mbta',
+    routeId: 'Red',
+    fetchedAt: 123,
+    predictions: [],
+    alerts: [],
+  });
+  assert.equal(calls[0].url, '/api/transit/route-details/mbta/Red');
+  assert.equal(calls[0].init.headers.Accept, 'application/json');
+  assert.throws(
+    () => source.requestRouteDetails('mta-nyc', 'M15'),
+    /registered MBTA route id/,
+  );
 });
 
 test('source retains history validation and never retries through another transport', async () => {

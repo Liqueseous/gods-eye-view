@@ -7,6 +7,7 @@ import {
 import {
   CAMERA_PERCENTAGE_CHANGED,
   TRANSIT_SELECTED_OVERLAY_SOURCE_ID,
+  TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID,
 } from './policy.js';
 import { TRANSIT_ENABLED_FEEDS } from '../../data/transitFeeds.js';
 
@@ -160,6 +161,7 @@ export function createLifecycle({ state, services, parts }) {
       state._rotationPose = null;
       state._rotationDirty = false;
       state._overlayHost.setVisible(TRANSIT_SELECTED_OVERLAY_SOURCE_ID, false);
+      state._overlayHost.setVisible(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID, false);
       restoreSpriteOrder(viewer);
       bindStyleEvents();
       console.log(
@@ -184,6 +186,7 @@ export function createLifecycle({ state, services, parts }) {
         250,
       );
       state._overlayHost.setVisible(TRANSIT_SELECTED_OVERLAY_SOURCE_ID, true);
+      state._overlayHost.setVisible(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID, true);
       parts.selection.installClickHandler(viewer);
       registerPickOwner('transit', (pickedId) => state._vehicles.has(pickedId));
       if (!state._cameraChangedAttached) {
@@ -222,6 +225,7 @@ export function createLifecycle({ state, services, parts }) {
       state._cameraDebounceTimer = null;
       parts.selection.clearSelection();
       state._overlayHost.setVisible(TRANSIT_SELECTED_OVERLAY_SOURCE_ID, false);
+      state._overlayHost.setVisible(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID, false);
       parts.selection.removeClickHandler();
       unregisterPickOwner('transit');
       if (state._cameraChangedAttached) {
@@ -301,6 +305,7 @@ export function createLifecycle({ state, services, parts }) {
         state._animatedMarkers = null;
       }
       state._overlayHost.clearSource(TRANSIT_SELECTED_OVERLAY_SOURCE_ID);
+      state._overlayHost.clearSource(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID);
       parts.height.clear();
       unbindStyleEvents();
       state._dataManager = null;
