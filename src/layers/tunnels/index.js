@@ -111,6 +111,10 @@ function createOverlayPublisher(overlays) {
   };
 }
 
+async function yieldAssetBuild() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /** Create a viewport-loaded tunnel alignment and label layer. */
 export function createTunnelsLayer({ source, services }) {
   if (typeof source?.requestTunnels !== 'function')
@@ -124,6 +128,7 @@ export function createTunnelsLayer({ source, services }) {
   let generation = 0;
   let abortController = null;
   let cameraMoveEndRemove = null;
+  let requestBoundsKey = null;
   let groundPrimitives = [];
   let ghostPrimitives = [];
   let fallbackEntities = [];
@@ -196,9 +201,12 @@ export function createTunnelsLayer({ source, services }) {
     return clampBoundsAroundCenter(bounds, center, QUERY_SPAN_DEG);
   }
 
-  function makeGeometryInstances(tunnels, width) {
-    return tunnels.map(
-      (tunnel) =>
+  async function makeGeometryInstances(tunnels, width, isCurrent) {
+    const instances = [];
+    for (let index = 0; index < tunnels.length; index++) {
+      if (!isCurrent()) return null;
+      const tunnel = tunnels[index];
+      instances.push(
         new Cesium.GeometryInstance({
           id: `tunnel:${tunnel.kind}:${tunnel.id}:${width}`,
           geometry: new Cesium.GroundPolylineGeometry({
@@ -208,13 +216,22 @@ export function createTunnelsLayer({ source, services }) {
             width,
           }),
         }),
-    );
+      );
+      if (index % 64 === 63) await yieldAssetBuild();
+    }
+    return instances;
   }
 
-  function addGroundPrimitive(tunnels, width, cssColor) {
+  async function addGroundPrimitive(tunnels, width, cssColor, isCurrent) {
     if (!tunnels.length) return null;
+    const geometryInstances = await makeGeometryInstances(
+      tunnels,
+      width,
+      isCurrent,
+    );
+    if (!geometryInstances) return null;
     const primitive = new Cesium.GroundPolylinePrimitive({
-      geometryInstances: makeGeometryInstances(tunnels, width),
+      geometryInstances,
       appearance: new Cesium.PolylineMaterialAppearance({
         material: Cesium.Material.fromType('Color', {
           color: Cesium.Color.fromCssColorString(cssColor),
@@ -227,9 +244,11 @@ export function createTunnelsLayer({ source, services }) {
     return viewer.scene.groundPrimitives.add(primitive);
   }
 
-  function addFallbackLines(tunnels, width, cssColor) {
+  async function addFallbackLines(tunnels, width, cssColor, isCurrent) {
     const material = Cesium.Color.fromCssColorString(cssColor);
-    for (const tunnel of tunnels) {
+    for (let index = 0; index < tunnels.length; index++) {
+      if (!isCurrent()) return false;
+      const tunnel = tunnels[index];
       fallbackEntities.push(
         viewer.entities.add({
           id: `tunnel:${tunnel.kind}:${tunnel.id}:${width}`,
@@ -244,7 +263,9 @@ export function createTunnelsLayer({ source, services }) {
           },
         }),
       );
+      if (index % 64 === 63) await yieldAssetBuild();
     }
+    return true;
   }
 
   function ghostPathPositions(tunnel) {
@@ -267,17 +288,20 @@ export function createTunnelsLayer({ source, services }) {
     return positions.length >= 2 ? positions : null;
   }
 
-  function addGhostPrimitive(tunnels, kind, cssColor) {
+  async function addGhostPrimitive(tunnels, kind, cssColor, isCurrent) {
     if (!viewer.scene.primitives?.add) return null;
     const color = Cesium.Color.fromCssColorString(cssColor).withAlpha(
       GHOST_ALPHA,
     );
-    const geometryInstances = tunnels
-      .filter((tunnel) => tunnel.kind === kind)
-      .map((tunnel) => {
-        const polylinePositions = ghostPathPositions(tunnel);
-        if (!polylinePositions) return null;
-        return new Cesium.GeometryInstance({
+    const geometryInstances = [];
+    const matching = tunnels.filter((tunnel) => tunnel.kind === kind);
+    for (let index = 0; index < matching.length; index++) {
+      if (!isCurrent()) return null;
+      const tunnel = matching[index];
+      const polylinePositions = ghostPathPositions(tunnel);
+      if (polylinePositions)
+        geometryInstances.push(
+          new Cesium.GeometryInstance({
           id: `tunnel-ghost:${kind}:${tunnel.id}`,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(color),
@@ -287,9 +311,10 @@ export function createTunnelsLayer({ source, services }) {
             shapePositions: ghostTunnelShape(kind),
             cornerType: Cesium.CornerType.ROUNDED,
           }),
-        });
-      })
-      .filter(Boolean);
+          }),
+        );
+      if (index % 64 === 63) await yieldAssetBuild();
+    }
     if (!geometryInstances.length) return null;
 
     const primitive = new Cesium.Primitive({
@@ -316,7 +341,7 @@ export function createTunnelsLayer({ source, services }) {
     for (const primitive of ghostPrimitives) primitive.show = visible;
   }
 
-  function replaceGeometry(tunnels) {
+  async function replaceGeometry(tunnels, isCurrent = () => true) {
     const roads = tunnels.filter((tunnel) => tunnel.kind === 'road');
     const rail = tunnels.filter((tunnel) => tunnel.kind === 'rail');
     const primitives = [];
@@ -338,26 +363,61 @@ export function createTunnelsLayer({ source, services }) {
     }
     try {
       if (useGroundPrimitives) {
-        const outline = addGroundPrimitive(
+        const outline = await addGroundPrimitive(
           tunnels,
           OUTLINE_WIDTH,
           OUTLINE_COLOR,
+          isCurrent,
         );
-        const roadLines = addGroundPrimitive(roads, ROAD_WIDTH, ROAD_COLOR);
-        const railLines = addGroundPrimitive(rail, RAIL_WIDTH, RAIL_COLOR);
-        for (const primitive of [outline, roadLines, railLines])
-          if (primitive) primitives.push(primitive);
+        const roadLines = await addGroundPrimitive(
+          roads,
+          ROAD_WIDTH,
+          ROAD_COLOR,
+          isCurrent,
+        );
+        if (outline) primitives.push(outline);
+        if (roadLines) primitives.push(roadLines);
+        const railLines = await addGroundPrimitive(
+          rail,
+          RAIL_WIDTH,
+          RAIL_COLOR,
+          isCurrent,
+        );
+        if (railLines) primitives.push(railLines);
       } else {
-        addFallbackLines(tunnels, OUTLINE_WIDTH, OUTLINE_COLOR);
-        addFallbackLines(roads, ROAD_WIDTH, ROAD_COLOR);
-        addFallbackLines(rail, RAIL_WIDTH, RAIL_COLOR);
+        await addFallbackLines(
+          tunnels,
+          OUTLINE_WIDTH,
+          OUTLINE_COLOR,
+          isCurrent,
+        );
+        await addFallbackLines(roads, ROAD_WIDTH, ROAD_COLOR, isCurrent);
+        await addFallbackLines(rail, RAIL_WIDTH, RAIL_COLOR, isCurrent);
         entities.push(...fallbackEntities);
         fallbackEntities = [];
       }
-      const roadGhost = addGhostPrimitive(tunnels, 'road', ROAD_COLOR);
-      const railGhost = addGhostPrimitive(tunnels, 'rail', RAIL_COLOR);
-      for (const primitive of [roadGhost, railGhost])
-        if (primitive) ghosts.push(primitive);
+      if (!isCurrent())
+        throw Object.assign(new Error('Tunnel geometry superseded'), {
+          name: 'AbortError',
+        });
+      const roadGhost = await addGhostPrimitive(
+        tunnels,
+        'road',
+        ROAD_COLOR,
+        isCurrent,
+      );
+      if (roadGhost) ghosts.push(roadGhost);
+      const railGhost = await addGhostPrimitive(
+        tunnels,
+        'rail',
+        RAIL_COLOR,
+        isCurrent,
+      );
+      if (railGhost) ghosts.push(railGhost);
+      if (!isCurrent())
+        throw Object.assign(new Error('Tunnel geometry superseded'), {
+          name: 'AbortError',
+        });
     } catch (caught) {
       removeGeometry(primitives, entities);
       removeGeometry([], fallbackEntities);
@@ -379,7 +439,12 @@ export function createTunnelsLayer({ source, services }) {
     services.raiseRoutesAboveTunnels?.();
 
     const labels = [];
-    for (const tunnel of tunnels) {
+    for (let index = 0; index < tunnels.length; index++) {
+      if (!isCurrent())
+        throw Object.assign(new Error('Tunnel labels superseded'), {
+          name: 'AbortError',
+        });
+      const tunnel = tunnels[index];
       if (!tunnel.name) continue;
       const [lon, lat] = midpointOfLine(tunnel.coordinates);
       const entry = tunnelOverlayEntry(
@@ -387,6 +452,7 @@ export function createTunnelsLayer({ source, services }) {
         Cesium.Cartesian3.fromDegrees(lon, lat),
       );
       if (entry) labels.push(entry);
+      if (index % 64 === 63) await yieldAssetBuild();
     }
     publisher.publish(labels);
     count = tunnels.length;
@@ -394,6 +460,7 @@ export function createTunnelsLayer({ source, services }) {
     railCount = rail.length;
     namedCount = labels.length;
     viewer.scene.requestRender?.();
+    return true;
   }
 
   async function loadForCamera() {
@@ -417,12 +484,14 @@ export function createTunnelsLayer({ source, services }) {
       Date.now() - lastUpdate < CACHE_TTL_MS
     )
       return;
+    if (loading && boundsKey === requestBoundsKey) return;
 
     const requestGeneration = ++generation;
     abortController?.abort();
     abortController = new AbortController();
     const { signal } = abortController;
     loading = true;
+    requestBoundsKey = boundsKey;
     error = null;
     try {
       const response = await source.requestTunnels(bounds, { signal });
@@ -431,7 +500,10 @@ export function createTunnelsLayer({ source, services }) {
       const payload = await response.json();
       if (!enabled || requestGeneration !== generation || signal.aborted)
         return;
-      replaceGeometry(payload.tunnels);
+      const replaced = await replaceGeometry(payload.tunnels, () =>
+        enabled && requestGeneration === generation && !signal.aborted,
+      );
+      if (!replaced) return;
       lastBoundsKey = boundsKey;
       lastUpdate = Date.now();
     } catch (caught) {
@@ -439,7 +511,10 @@ export function createTunnelsLayer({ source, services }) {
         error = caught?.message || 'Tunnel data unavailable';
       }
     } finally {
-      if (requestGeneration === generation) loading = false;
+      if (requestGeneration === generation) {
+        loading = false;
+        requestBoundsKey = null;
+      }
     }
   }
 
@@ -453,6 +528,7 @@ export function createTunnelsLayer({ source, services }) {
     abortController?.abort();
     abortController = null;
     loading = false;
+    requestBoundsKey = null;
     lastBoundsKey = null;
     clearGeometry();
     publisher.hide();

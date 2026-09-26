@@ -611,6 +611,11 @@ export function initDeveloperMode({
     panel.hidden = !active;
     panel.classList.toggle('developer-only', active);
     documentRef.documentElement.classList.toggle('developer-mode', active);
+    documentRef.dispatchEvent?.(
+      new CustomEvent('gev:developer-mode-changed', {
+        detail: { enabled: active },
+      }),
+    );
     if (refreshTimer) {
       clearInterval(refreshTimer);
       refreshTimer = null;

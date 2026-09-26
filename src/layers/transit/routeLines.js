@@ -5,7 +5,10 @@ export const TRANSIT_ROUTE_MAX_ALTITUDE_M = 500_000;
 
 const MIN_VIEW_SPAN_DEG = 0.1;
 const QUERY_GRID_DEG = 0.01;
-const PREFETCH_FACTOR = 3;
+// The 0.1 degree tile cache already provides nearby reuse. A 3x speculative
+// route query produced multi-megabyte responses during pans and blocked JSON
+// decoding long after the camera had moved on.
+const PREFETCH_FACTOR = 1.5;
 const ROUTE_CACHE_TTL_MS = 6 * 60 * 60_000;
 const FAILURE_RETRY_MS = 30_000;
 const OUTLINE_COLOR = '#07131B';
@@ -75,6 +78,10 @@ function routePositions(line) {
   return line.map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
 }
 
+async function yieldRouteBuild() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /** Own viewport-loaded OSM rail-route geometry for one Transit layer. */
 export function createTransitRouteLines({
   routeSource,
@@ -108,6 +115,8 @@ export function createTransitRouteLines({
   let error = null;
   let primitives = [];
   let entities = [];
+  let pendingReplacement = null;
+  let postRenderRemove = null;
   let selectedRouteId = null;
   const routePickTargets = new Map();
 
@@ -125,14 +134,15 @@ export function createTransitRouteLines({
       if (primitive) collection?.raiseToTop?.(primitive);
   }
 
-  function makeInstances(items, width) {
+  async function makeInstances(items, width, pickTargets, isCurrent) {
     const instances = [];
     for (const route of items) {
       for (let index = 0; index < route.lines.length; index++) {
+        if (!isCurrent()) throw Object.assign(new Error('Route build superseded'), { name: 'AbortError' });
         const positions = routePositions(route.lines[index]);
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
-        routePickTargets.set(id, route.routeId);
+        pickTargets.set(id, route.routeId);
         instances.push(
           new Cesium.GeometryInstance({
             id,
@@ -140,12 +150,13 @@ export function createTransitRouteLines({
           }),
         );
       }
+      if (instances.length % 64 === 0) await yieldRouteBuild();
     }
     return instances;
   }
 
-  function addGroundPrimitive(items, width, cssColor) {
-    const instances = makeInstances(items, width);
+  async function addGroundPrimitive(items, width, cssColor, pickTargets, isCurrent) {
+    const instances = await makeInstances(items, width, pickTargets, isCurrent);
     if (!instances.length) return null;
     const primitive = new Cesium.GroundPolylinePrimitive({
       geometryInstances: instances,
@@ -157,20 +168,21 @@ export function createTransitRouteLines({
       classificationType: Cesium.ClassificationType.BOTH,
       allowPicking: true,
       asynchronous: true,
-      show: visible,
+      show: false,
     });
     return viewer.scene.groundPrimitives.add(primitive);
   }
 
-  function addFallbackLines(items, width, cssColor) {
+  async function addFallbackLines(items, width, cssColor, pickTargets, isCurrent) {
     const material = Cesium.Color.fromCssColorString(cssColor);
     const created = [];
     for (const route of items) {
       for (let index = 0; index < route.lines.length; index++) {
+        if (!isCurrent()) throw Object.assign(new Error('Route build superseded'), { name: 'AbortError' });
         const positions = routePositions(route.lines[index]);
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
-        routePickTargets.set(id, route.routeId);
+        pickTargets.set(id, route.routeId);
         created.push(
           viewer.entities.add({
             id,
@@ -187,14 +199,53 @@ export function createTransitRouteLines({
           }),
         );
       }
+      if (created.length % 64 === 0) await yieldRouteBuild();
     }
     return created;
   }
 
-  function replaceRoutes(nextRoutes) {
+  function removeReplacement(replacement) {
+    for (const primitive of replacement?.primitives || [])
+      viewer?.scene?.groundPrimitives?.remove(primitive);
+    for (const entity of replacement?.entities || [])
+      viewer?.entities?.remove(entity);
+  }
+
+  function commitRoutes(replacement) {
+    const previousPrimitives = primitives;
+    const previousEntities = entities;
+    primitives = replacement.primitives;
+    entities = replacement.entities;
+    routes = replacement.routes;
+    routePickTargets.clear();
+    for (const [id, routeId] of replacement.pickTargets)
+      routePickTargets.set(id, routeId);
+    pendingReplacement = null;
+    for (const primitive of primitives) primitive.show = visible;
+    for (const entity of entities) entity.show = visible;
+    for (const primitive of previousPrimitives)
+      viewer?.scene?.groundPrimitives?.remove(primitive);
+    for (const entity of previousEntities) viewer?.entities?.remove(entity);
+    raiseRouteLinesToTop();
+    onRoutesUpdated();
+    viewer?.scene?.requestRender?.();
+  }
+
+  function promoteReadyReplacement() {
+    if (!pendingReplacement) return;
+    if (
+      pendingReplacement.primitives.some(
+        (primitive) => primitive.ready !== true,
+      )
+    )
+      return;
+    commitRoutes(pendingReplacement);
+  }
+
+  async function replaceRoutes(nextRoutes, isCurrent = () => true) {
     const nextPrimitives = [];
     const nextEntities = [];
-    routePickTargets.clear();
+    const nextPickTargets = new Map();
     let canUseGround = false;
     try {
       canUseGround =
@@ -208,29 +259,48 @@ export function createTransitRouteLines({
 
     try {
       if (canUseGround) {
-        const outline = addGroundPrimitive(
+        const outline = await addGroundPrimitive(
           nextRoutes,
           OUTLINE_WIDTH,
           OUTLINE_COLOR,
+          nextPickTargets,
+          isCurrent,
         );
         if (outline) nextPrimitives.push(outline);
-    onRoutesUpdated();
         const byColor = new Map();
         for (const route of nextRoutes) {
           if (!byColor.has(route.color)) byColor.set(route.color, []);
           byColor.get(route.color).push(route);
         }
         for (const [color, group] of byColor) {
-          const primitive = addGroundPrimitive(group, ROUTE_WIDTH, color);
+          const primitive = await addGroundPrimitive(
+            group,
+            ROUTE_WIDTH,
+            color,
+            nextPickTargets,
+            isCurrent,
+          );
           if (primitive) nextPrimitives.push(primitive);
         }
       } else {
         nextEntities.push(
-          ...addFallbackLines(nextRoutes, OUTLINE_WIDTH, OUTLINE_COLOR),
+          ...(await addFallbackLines(
+            nextRoutes,
+            OUTLINE_WIDTH,
+            OUTLINE_COLOR,
+            nextPickTargets,
+            isCurrent,
+          )),
         );
         for (const route of nextRoutes)
           nextEntities.push(
-            ...addFallbackLines([route], ROUTE_WIDTH, route.color),
+            ...(await addFallbackLines(
+              [route],
+              ROUTE_WIDTH,
+              route.color,
+              nextPickTargets,
+              isCurrent,
+            )),
           );
       }
     } catch (caught) {
@@ -240,22 +310,32 @@ export function createTransitRouteLines({
       throw caught;
     }
 
-    const previousPrimitives = primitives;
-    const previousEntities = entities;
-    primitives = nextPrimitives;
-    entities = nextEntities;
-    routes = nextRoutes;
-    for (const primitive of previousPrimitives)
-      viewer?.scene?.groundPrimitives?.remove(primitive);
-    for (const entity of previousEntities) viewer?.entities?.remove(entity);
-    raiseRouteLinesToTop();
+    if (!isCurrent()) return false;
+    const replacement = {
+      primitives: nextPrimitives,
+      entities: nextEntities,
+      routes: nextRoutes,
+      pickTargets: nextPickTargets,
+    };
+    removeReplacement(pendingReplacement);
+    pendingReplacement = replacement;
+    if (!primitives.length && !entities.length) {
+      if (!nextPrimitives.length) commitRoutes(replacement);
+      else {
+        for (const primitive of nextPrimitives) primitive.show = visible;
+        promoteReadyReplacement();
+      }
+    } else promoteReadyReplacement();
     viewer?.scene?.requestRender?.();
+    return true;
   }
 
   function setVisible(next) {
     visible = enabled && next === true;
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
+    for (const primitive of pendingReplacement?.primitives || [])
+      primitive.show = false;
     if (visible) {
       raiseRouteLinesToTop();
       viewer?.scene?.requestRender?.();
@@ -300,7 +380,10 @@ export function createTransitRouteLines({
       const payload = await response.json();
       if (!enabled || requestGeneration !== generation || signal.aborted)
         return false;
-      replaceRoutes(payload.routes || []);
+      const replaced = await replaceRoutes(payload.routes || [], () =>
+        enabled && requestGeneration === generation && !signal.aborted,
+      );
+      if (!replaced) return false;
       lastBoundsKey = key;
       lastUpdate = Date.now();
       coverageBounds = { ...safeBounds };
@@ -444,18 +527,25 @@ export function createTransitRouteLines({
     lastFailureKey = null;
     lastFailureAt = 0;
     error = null;
+    removeReplacement(pendingReplacement);
+    pendingReplacement = null;
     removeGeometry();
     routes = [];
   }
 
   function destroy() {
     disable();
+    postRenderRemove?.();
+    postRenderRemove = null;
     viewer = null;
   }
 
   return {
     init(nextViewer) {
       viewer = nextViewer;
+      postRenderRemove = viewer.scene.postRender?.addEventListener?.(
+        promoteReadyReplacement,
+      );
     },
     enable(nextViewer) {
       if (nextViewer) viewer = nextViewer;
