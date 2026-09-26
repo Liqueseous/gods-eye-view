@@ -40,10 +40,13 @@ test('developer mode writes a boolean state to storage', () => {
 
 test('developer panel is labeled DEV TOOLBOX', () => {
   const template = readFileSync(
-    new URL('./templates/command-dock.html', import.meta.url),
+    new URL('./templates/context.html', import.meta.url),
     'utf8',
   );
-  assert.match(template, /<span>DEV TOOLBOX<\/span>/);
+  assert.match(template, /<span class="panel-title">DEV TOOLBOX<\/span>/);
+  assert.match(template, /id="developer-tools-panel"[^>]*data-panel-id="developer-tools-panel"/s);
+  assert.match(template, /data-collapse-target="developer-tools-panel"/);
+  assert.match(template, /id="developer-osm-cache-readout"/);
   assert.doesNotMatch(template, /<span>DEV TOOLS<\/span>/);
 });
 
@@ -60,7 +63,7 @@ test('developer mode reveals the diagnostics panel when enabled', () => {
   const panel = {
     hidden: true,
     id: 'developer-tools-panel',
-    parentElement: { id: 'command-dock' },
+    parentElement: { id: 'right-context-rail' },
     classList: { toggle() {} },
     querySelector(selector) {
       if (selector === '#developer-camera-readout') return { textContent: '' };
@@ -69,7 +72,6 @@ test('developer mode reveals the diagnostics panel when enabled', () => {
       if (selector === '#developer-voice-readout') return { textContent: '' };
       return null;
     },
-    remove() { this.parentElement = null; },
   };
   const body = {
     children: [],
@@ -90,7 +92,7 @@ test('developer mode reveals the diagnostics panel when enabled', () => {
   const store = storage();
   const instance = initDeveloperMode({ storage: store, documentRef: doc });
   assert.ok(instance);
-  assert.equal(panel.parentElement, body);
+  assert.equal(panel.parentElement.id, 'right-context-rail');
 
   toggle.checked = true;
   toggle.dispatch('change');
@@ -120,6 +122,7 @@ test('developer diagnostics refresh from live app state while enabled', () => {
     render: { textContent: '' },
     layers: { textContent: '' },
     voice: { textContent: '' },
+    osmCache: { textContent: '', title: '' },
     routes: { textContent: '', title: '' },
     assets: {
       children: [],
@@ -137,6 +140,7 @@ test('developer diagnostics refresh from live app state while enabled', () => {
       if (selector === '#developer-render-readout') return nodes.render;
       if (selector === '#developer-layers-readout') return nodes.layers;
       if (selector === '#developer-voice-readout') return nodes.voice;
+      if (selector === '#developer-osm-cache-readout') return nodes.osmCache;
       if (selector === '#developer-routes-readout') return nodes.routes;
       if (selector === '#developer-assets-list') return nodes.assets;
       return null;
@@ -216,6 +220,19 @@ test('developer diagnostics refresh from live app state while enabled', () => {
       ]),
     },
     getRenderGovernorDiagnostics: () => ({ installed: true, mode: 'continuous', holds: ['traffic'] }),
+    getOsmTileCacheDiagnostics: () => ({
+      tileDegrees: 0.1,
+      maxTilesPerRequest: 16,
+      activeRequests: 1,
+      pendingRequests: 2,
+      knownTiles: 2,
+      totals: { requests: 3, cacheHits: 1, diskHits: 1, staleResponses: 0, upstreamFetches: 1, errors: 0 },
+      sources: [{
+        id: 'roads-full', tileCount: 2, cacheHits: 1, diskHits: 1,
+        upstreamFetches: 1, staleResponses: 0, errors: 0,
+        tiles: [{ bounds: { south: 42.3, west: -71.2, north: 42.4, east: -71.1 }, lastStatus: 'DISK' }],
+      }],
+    }),
     voiceCommands: { session: { state: 'idle' } },
   };
 
@@ -231,6 +248,9 @@ test('developer diagnostics refresh from live app state while enabled', () => {
   assert.match(nodes.render.textContent, /CONTINUOUS/);
   assert.match(nodes.layers.textContent, /4\//);
   assert.match(nodes.voice.textContent, /OFF/);
+  assert.equal(nodes.osmCache.textContent, '2 TILES · 2 CACHED · 1 UPSTREAM');
+  assert.match(nodes.osmCache.title, /roads-full 42\.300,-71\.200,42\.400,-71\.100 DISK/);
+  assert.match(nodes.osmCache.title, /1 ACTIVE · 2 QUEUED/);
   assert.equal(nodes.routes.textContent, 'VIEW · LOADING · 0');
   assert.match(nodes.routes.title, /BOUNDS 42\.300,-71\.200,42\.400,-71\.000/);
   assert.equal(nodes.assets.children.length, 4);
@@ -324,10 +344,17 @@ test('developer diagnostics export includes view, matching Transit feeds, and so
       ],
     },
     getRenderGovernorDiagnostics: () => ({ installed: true, mode: 'idle', holds: [] }),
+    getOsmTileCacheDiagnostics: () => ({
+      knownTiles: 1,
+      totals: { requests: 2, cacheHits: 1, diskHits: 0, upstreamFetches: 1, staleResponses: 0, errors: 0 },
+      sources: [],
+    }),
   };
 
   const snapshot = createDeveloperDiagnosticsSnapshot(app);
   assert.equal(snapshot.schema, 'gods-eye-view-developer-diagnostics/v1');
+  assert.equal(snapshot.osmTileCache.knownTiles, 1);
+  assert.equal(snapshot.osmTileCache.totals.requests, 2);
   assert.equal(snapshot.camera.centerSource, 'screen-center-ground-hit');
   assert.ok(Math.abs(snapshot.camera.center.latitude - 45) < 1e-6);
   assert.equal(snapshot.transit.matchingFeeds.length, 0);

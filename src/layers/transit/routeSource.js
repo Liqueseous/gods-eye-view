@@ -1,4 +1,5 @@
 import { clampBoundsAroundCenter } from '../../data/trafficBounds.js';
+import { fetchOsmCacheTiles } from '../../data/osmCacheBounds.js';
 
 const MAX_QUERY_SPAN_DEG = 1;
 const ROUTE_TYPES = new Set([
@@ -376,10 +377,10 @@ export function createTransitRouteSource({
     async requestRoutes(bounds, { signal } = {}) {
       const safeBounds = clampTransitRouteBounds(bounds);
       signal?.throwIfAborted();
-      const response = await fetchImpl('/api/overpass', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `data=${encodeURIComponent(buildTransitRouteQuery(safeBounds))}`,
+      const response = await fetchOsmCacheTiles(safeBounds, {
+        sourceId: 'transit-routes',
+        buildQuery: buildTransitRouteQuery,
+        fetchImpl,
         signal,
       });
       signal?.throwIfAborted();

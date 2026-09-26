@@ -22,8 +22,8 @@ export function numTag(value) {
  * @param {number} [step=QUERY_SNAP_DEGREES]
  */
 export function snapAlprBox(box, step = QUERY_SNAP_DEGREES) {
-  const down = (v) => Math.floor(v / step) * step;
-  const up = (v) => Math.ceil(v / step) * step;
+  const down = (value) => Math.floor(value / step) * step;
+  const up = (value) => Math.ceil(value / step) * step;
   return {
     south: Math.max(-90, down(box.south)),
     west: Math.max(-180, down(box.west)),

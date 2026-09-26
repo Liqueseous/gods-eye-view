@@ -168,3 +168,27 @@ test('route source uses the local Overpass proxy and validates the decoded paylo
   assert.match(decodeURIComponent(request[1].body), /route/);
   assert.deepEqual(await response.json(), { routes: [] });
 });
+
+test('nearby transit viewports share cached OSM tiles', async () => {
+  const queries = [];
+  const source = createTransitRouteSource({
+    fetchImpl: async (_url, options) => {
+      queries.push(new URLSearchParams(options.body).get('data'));
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ elements: [] }),
+      };
+    },
+  });
+  await source.requestRoutes(BOUNDS);
+  const firstTileQueries = queries.splice(0);
+  await source.requestRoutes({
+    south: 42.31,
+    west: -71.19,
+    north: 42.39,
+    east: -71.01,
+  });
+  assert.deepEqual(queries, firstTileQueries);
+});

@@ -1,4 +1,5 @@
 import { normalizeOverpassRoads } from '../../sources/overpassRoads.js';
+import { fetchOsmCacheTiles } from '../../data/osmCacheBounds.js';
 export { normalizeOverpassRoads } from '../../sources/overpassRoads.js';
 import { createFlowTileSource } from './flowSource.js';
 function buildOverpassQuery(
@@ -104,16 +105,19 @@ export function createTrafficSource({
       )
         throw new TypeError('A bounded road viewport and timeout are required');
       signal?.throwIfAborted();
-      const query = buildOverpassQuery(south, west, north, east, {
-        majorOnly,
-        timeoutSec,
-      });
-      const response = await fetchImpl('/api/overpass', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query),
-        signal,
-      });
+      const response = await fetchOsmCacheTiles(
+        { south, west, north, east },
+        {
+          sourceId: majorOnly ? 'roads-major' : 'roads-full',
+          buildQuery: (tile) =>
+            buildOverpassQuery(tile.south, tile.west, tile.north, tile.east, {
+              majorOnly,
+              timeoutSec,
+            }),
+          fetchImpl,
+          signal,
+        },
+      );
       signal?.throwIfAborted();
       return {
         ok: response.ok,

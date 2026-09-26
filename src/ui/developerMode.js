@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { TRANSIT_ENABLED_FEEDS, haversineKm } from '../data/transitFeeds.js';
+import { getOsmTileCacheDiagnostics } from '../data/osmCacheBounds.js';
 
 /** Persisted opt-in switch for tools intended for development and QA. */
 export const DEVELOPER_MODE_STORAGE_KEY = 'godsEyeView.developerMode.enabled';
@@ -212,6 +213,8 @@ export function createDeveloperDiagnosticsSnapshot(
     schema: 'gods-eye-view-developer-diagnostics/v1',
     capturedAt: new Date().toISOString(),
     camera: view,
+    osmTileCache:
+      app?.getOsmTileCacheDiagnostics?.() || getOsmTileCacheDiagnostics(),
     transit: {
       activationAltitudeLimitM: 2_850_000,
       altitudeGateOpen: view.altitudeM !== null && view.altitudeM <= 2_850_000,
@@ -430,6 +433,31 @@ function readAssetDiagnostics(app) {
     });
 }
 
+function osmTileCacheReadout(cache) {
+  const totals = cache?.totals || {};
+  const cached =
+    (Number(totals.cacheHits) || 0) +
+    (Number(totals.diskHits) || 0) +
+    (Number(totals.staleResponses) || 0);
+  const requests = Number(totals.requests) || 0;
+  const text = requests
+    ? `${Number(cache.knownTiles) || 0} TILES · ${cached} CACHED · ${Number(totals.upstreamFetches) || 0} UPSTREAM`
+    : '0 TILES · NO REQUESTS';
+  const details = (cache?.sources || []).flatMap((source) => [
+    `${source.id}: ${source.tileCount} tiles · ${source.cacheHits} memory · ${source.diskHits} disk · ${source.upstreamFetches} upstream · ${source.staleResponses} stale · ${source.errors} errors`,
+    ...source.tiles.slice(0, 8).map((tile) =>
+      `${source.id} ${tile.bounds.south.toFixed(3)},${tile.bounds.west.toFixed(3)},${tile.bounds.north.toFixed(3)},${tile.bounds.east.toFixed(3)} ${tile.lastStatus}`,
+    ),
+  ]);
+  const activity = [
+    `${cache?.tileDegrees ?? 0.1}° GRID`,
+    `${cache?.maxTilesPerRequest ?? 16} MAX TILES/QUERY`,
+    `${cache?.activeRequests || 0} ACTIVE`,
+    `${cache?.pendingRequests || 0} QUEUED`,
+  ];
+  return { text, title: [...activity, ...details].join(' · ') };
+}
+
 function readLiveDiagnostics() {
   const app = globalThis.__godsEyeView || {};
   const viewer = app.viewer;
@@ -447,6 +475,8 @@ function readLiveDiagnostics() {
       : normalizedVoiceState.toUpperCase();
   const transitModule = app.dataManager?.layers?.get?.('transit')?.module;
   const routeData = transitModule?.getTransitRouteDiagnostics?.() || null;
+  const osmTileCache =
+    app.getOsmTileCacheDiagnostics?.() || getOsmTileCacheDiagnostics();
   const routeCount = Number(routeData?.count) || 0;
   const routePhase =
     routeData?.requestStage === 'prefetch'
@@ -489,6 +519,7 @@ function readLiveDiagnostics() {
       : 'RENDER OFFLINE',
     layers: `${enabledLayers}/${totalLayers || 0} ACTIVE`,
     voice: formattedVoiceState || 'OFF',
+    osmCache: osmTileCacheReadout(osmTileCache),
     routes: routeReadout,
     assets: readAssetDiagnostics(app),
   };
@@ -504,6 +535,7 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
     render: panel.querySelector('#developer-render-readout'),
     layers: panel.querySelector('#developer-layers-readout'),
     voice: panel.querySelector('#developer-voice-readout'),
+    osmCache: panel.querySelector('#developer-osm-cache-readout'),
     routes: panel.querySelector('#developer-routes-readout'),
   };
   for (const [key, node] of Object.entries(entries)) {
@@ -512,7 +544,8 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
       typeof diagnostics[key] === 'string'
         ? diagnostics[key] || '—'
         : diagnostics[key]?.text || '—';
-    if (key === 'routes') node.title = diagnostics.routes?.title || '';
+    if (key === 'routes' || key === 'osmCache')
+      node.title = diagnostics[key]?.title || '';
   }
   const assetsList = panel.querySelector('#developer-assets-list');
   if (assetsList && documentRef.createElement) {
@@ -562,16 +595,6 @@ export function initDeveloperMode({
 
   const deriveEnabledState = () =>
     Boolean(toggle.checked) || readDeveloperMode(storage);
-
-  const body = documentRef?.body || documentRef?.querySelector?.('body');
-  if (
-    panel.parentElement &&
-    panel.parentElement.id === 'command-dock' &&
-    body
-  ) {
-    panel.remove();
-    body.appendChild(panel);
-  }
 
   let refreshTimer = null;
   const refresh = () => {

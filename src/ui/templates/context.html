@@ -241,6 +241,37 @@
         </div>
       </div>
     </div>
+    <div
+      id="developer-tools-panel"
+      class="panel-collapsible collapsed developer-tools-panel developer-only"
+      data-panel-id="developer-tools-panel"
+      role="region"
+      aria-label="Developer toolbox"
+      hidden
+    >
+      <div class="panel-glow"></div>
+      <div class="developer-tools-inner">
+        <div class="panel-header developer-tools-header">
+          <span class="panel-title">DEV TOOLBOX</span>
+          <span class="developer-tools-scope">LIVE STATE</span>
+          <span class="panel-divider" aria-hidden="true"></span>
+          <button id="developer-diagnostics-export" type="button" title="Download a local JSON snapshot including camera coordinates and source diagnostics">EXPORT JSON</button>
+          <button class="panel-collapse-btn" data-collapse-target="developer-tools-panel" type="button" title="Expand Developer toolbox" aria-label="Expand Developer toolbox">+</button>
+        </div>
+        <div class="developer-tools-content" data-rail-scroller>
+          <div class="developer-tools-list">
+            <div class="developer-tool-row"><span>CAMERA</span><strong id="developer-camera-readout">—</strong></div>
+            <div class="developer-tool-row"><span>RENDER</span><strong id="developer-render-readout">—</strong></div>
+            <div class="developer-tool-row"><span>LAYERS</span><strong id="developer-layers-readout">—</strong></div>
+            <div class="developer-tool-row"><span>VOICE</span><strong id="developer-voice-readout">—</strong></div>
+            <div class="developer-tool-row"><span>OSM CACHE</span><strong id="developer-osm-cache-readout" title="Per-tile proxy cache outcomes observed this session">—</strong></div>
+            <div class="developer-tool-row"><span>ROUTES</span><strong id="developer-routes-readout">—</strong></div>
+          </div>
+          <div class="developer-assets-heading">SOURCES · IN VIEW / LOADED</div>
+          <div id="developer-assets-list" class="developer-assets-list" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
   </aside>
 
   <div id="scene-runtime"></div>

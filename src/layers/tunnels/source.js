@@ -1,3 +1,5 @@
+import { fetchOsmCacheTiles } from '../../data/osmCacheBounds.js';
+
 const MAX_QUERY_SPAN_DEG = 5;
 const MAX_QUERY_TIMEOUT_SEC = 20;
 const RAILWAY_TUNNEL_TYPES = new Set([
@@ -108,10 +110,10 @@ export function createTunnelsSource({
       if (!validBounds(bounds))
         throw new TypeError('A bounded tunnel viewport is required');
       signal?.throwIfAborted();
-      const response = await fetchImpl('/api/overpass', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(tunnelQuery(bounds)),
+      const response = await fetchOsmCacheTiles(bounds, {
+        sourceId: 'tunnels',
+        buildQuery: tunnelQuery,
+        fetchImpl,
         signal,
       });
       signal?.throwIfAborted();

@@ -21,6 +21,23 @@ test('the source rejects invalid and unbounded queries before fetching', async (
   }
   assert.equal(calls, 0);
 });
+test('nearby ALPR viewports share cached OSM tiles', async () => {
+  const queries = [];
+  const source = createOverpassAlprSource({
+    fetchImpl: async (_url, options) => {
+      queries.push(new URLSearchParams(options.body).get('data'));
+      return Response.json({ elements: [] });
+    },
+  });
+  await source.fetch(box);
+  await source.fetch({
+    south: 30.01,
+    west: -97.99,
+    north: 30.09,
+    east: -97.91,
+  });
+  assert.equal(queries[0], queries[1]);
+});
 test('cancellation during body parsing rejects even when the transport ignores it', async () => {
   const abort = new AbortController();
   const source = createOverpassAlprSource({

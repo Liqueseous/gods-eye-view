@@ -29,6 +29,7 @@ const COCKPIT_ENTRY_COLLAPSE_PANEL_IDS = Object.freeze([
   'scene-panel',
   'pp-toggles',
   'global-context-panel',
+  'developer-tools-panel',
   'radio-panel',
 ]);
 const UI_MEMORY_KEY = 'godsEyeView.v1.uiMemory';
@@ -388,6 +389,7 @@ export class PanelChrome {
       'weather-panel',
       'recent-imagery-panel',
       'global-context-panel',
+      'developer-tools-panel',
     ].includes(panelEl?.id);
     const collapsed = panelEl.classList.contains('collapsed');
     panelEl

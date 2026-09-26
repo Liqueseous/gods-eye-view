@@ -28,7 +28,25 @@ test('tunnel query is bounded, accepted by the proxy, and selects road and rail 
   assert.match(query, /way\["highway"\]\["tunnel"\]/);
   assert.match(query, /way\["railway"~"\^\(rail\|light_rail/);
   assert.match(query, /out geom qt/);
-  assert.match(query, /42\.35,-71\.1,42\.37,-71\.05/);
+  assert.match(query, /42\.3,-71\.1,42\.4,-71/);
+});
+
+test('nearby tunnel viewports share cached OSM tiles', async () => {
+  const queries = [];
+  const source = createTunnelsSource({
+    fetchImpl: async (_url, options) => {
+      queries.push(new URLSearchParams(options.body).get('data'));
+      return Response.json({ elements: [] });
+    },
+  });
+  await source.requestTunnels(bounds);
+  await source.requestTunnels({
+    south: 42.31,
+    west: -71.09,
+    north: 42.36,
+    east: -71.04,
+  });
+  assert.equal(queries[0], queries[1]);
 });
 
 test('tunnel source rejects invalid or overwide bounds before fetching', async () => {

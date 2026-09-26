@@ -21,7 +21,8 @@
 :root[data-ui-theme='cyber']
   #right-context-rail
   .global-context-panel-inner
-  > .cyber-panel-body {
+  > .cyber-panel-body,
+:root[data-ui-theme='cyber'] #right-context-rail .developer-tools-inner {
   --context-scrollbar-thumb: color-mix(
     in srgb,
     var(--cyber-red-bright) 58%,
