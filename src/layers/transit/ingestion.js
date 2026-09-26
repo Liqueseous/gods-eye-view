@@ -370,6 +370,7 @@ export function createIngestion({ state, services, parts, source }) {
       entry.record = record;
       entry.fetchedAt = fetchedAt;
       entry.pollSeq = pollSeq;
+      if (state._selectedKey === key) parts.trails.style();
       seen += 1;
     }
 

@@ -50,8 +50,19 @@ export async function fetchTransitFeed(
   signal,
   fetchImpl = fetch,
   validators = null,
+  requestUrl = feed.url,
 ) {
-  let current = feed.url;
+  let current = requestUrl;
+  try {
+    if (
+      !isAcceptableTransitUpstreamUrl(current) ||
+      new URL(current).origin !== new URL(feed.url).origin
+    )
+      throw new Error('configured upstream URL must stay on the registered origin');
+  } catch (error) {
+    if (error?.message?.startsWith('configured upstream URL')) throw error;
+    throw new Error('configured upstream URL is invalid');
+  }
   for (let hop = 0; hop <= TRANSIT_MAX_REDIRECTS; hop += 1) {
     const response = await fetchImpl(current, {
       signal,
@@ -104,10 +115,13 @@ export async function fetchTransitFeed(
  * re-asked once per poll for a whole session: consecutive failures push the
  * next permitted attempt out to five minutes, and one success resets it.
  *
- * @param {{fetchImpl?: typeof fetch}} [options]
+ * @param {{fetchImpl?: typeof fetch, resolveFeedUrl?: (feed:object)=>string}} [options]
  * @returns {{handle: (request: Request) => Promise<Response>, close: () => void}}
  */
-export function createTransitService({ fetchImpl = fetch } = {}) {
+export function createTransitService({
+  fetchImpl = fetch,
+  resolveFeedUrl = (feed) => feed.url,
+} = {}) {
   /** @type {Map<string, {at:number, body:string, host:string}>} feedId → snapshot */
   const cache = new Map();
   const history = createTransitHistory();
@@ -156,6 +170,7 @@ export function createTransitService({ fetchImpl = fetch } = {}) {
         previous
           ? { etag: previous.etag, lastModified: previous.lastModified }
           : null,
+        resolveFeedUrl(feed),
       );
       if (closed) throw new Error('Transit provider closed');
       if (!isAcceptableTransitUpstreamUrl(finalUrl)) {

@@ -1,4 +1,7 @@
-import { getRegisteredTransitFeed } from '../../data/transitFeeds.js';
+import {
+  getRegisteredTransitFeed,
+  transitRouteColor,
+} from '../../data/transitFeeds.js';
 import * as Cesium from 'cesium';
 import {
   readFix,
@@ -38,10 +41,14 @@ export function createTrails({ state, services, parts, source }) {
     return renderer;
   }
   function style() {
+    const feed = selected
+      ? getRegisteredTransitFeed(selected.feedId)
+      : null;
+    const routeColor = transitRouteColor(feed, selected?.record?.routeId);
     renderer?.setStyle(
       transitStyleProfile(state._stylePreset) === 'mono'
         ? '#FFFFFF'
-        : MODE_COLOR[selected?.mode] || MODE_COLOR.unknown,
+        : routeColor || MODE_COLOR[selected?.mode] || MODE_COLOR.unknown,
     );
   }
   function releaseSelectionGeometry(entry) {

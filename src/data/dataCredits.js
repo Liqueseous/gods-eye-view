@@ -97,7 +97,7 @@ export const DATA_CREDITS = [
   {
     key: 'overpass',
     html:
-      'Road and tunnel geometry: ' +
+      'Road, tunnel and transit-route geometry: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
       '(ODbL 1.0)',
   },
@@ -368,7 +368,10 @@ export function transitFeedCredit(feed) {
     key: `transit-${feed.id}`,
     html:
       `Transit (${escape(feed.attribution)}): ` +
-      `<a href="${escape(feed.licenseUrl)}" target="_blank" rel="noopener">${escape(feed.license)}</a>`,
+      `<a href="${escape(feed.licenseUrl)}" target="_blank" rel="noopener">${escape(feed.license)}</a>` +
+      (feed.id === 'mta-nyc'
+        ? ' · MTA Bus Time positions may be delayed and are not guaranteed to be real-time.'
+        : ''),
   };
 }
 

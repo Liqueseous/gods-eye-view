@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTransitService } from 'gods-eye-view/sources/transit-service';
 import { createTransitSource } from 'gods-eye-view/layers/transit/source';
+import { getTransitFeed, publicTransitCatalog } from '../data/transitFeeds.js';
+import { resolveTransitFeedUrl } from '../../server/providers/transit.js';
 
 const request = (path, method = 'GET') => ({
   url: `https://example.test${path}`,
@@ -34,12 +36,48 @@ test('portable service confines requests to registered feeds and GET', async (t)
   assert.ok(response instanceof Response);
   assert.equal(response.status, 200);
   assert.ok((await response.json()).feeds.some((feed) => feed.id === 'mbta'));
+  assert.ok((await (await service.handle(request('/api/transit/feeds'))).json()).feeds.some((feed) => feed.id === 'mta-nyc'));
   assert.equal(calls, 0);
   service.close();
   assert.equal(
     (await service.handle(request('/api/transit/feeds'))).status,
     503,
   );
+});
+
+test('MTA Bus Time API key is appended server-side and never exposed in the catalog', () => {
+  const feed = getTransitFeed('mta-nyc');
+  const url = new URL(resolveTransitFeedUrl(feed, 'test-secret'));
+  assert.equal(url.origin, 'https://gtfsrt.prod.obanyc.com');
+  assert.equal(url.pathname, '/vehiclePositions');
+  assert.equal(url.searchParams.get('key'), 'test-secret');
+  assert.throws(() => resolveTransitFeedUrl(feed, ''), /MTA_BUS_API_KEY is required/);
+  const catalogEntry = publicTransitCatalog().find(({ id }) => id === 'mta-nyc');
+  assert.ok(catalogEntry);
+  assert.equal('url' in catalogEntry, false);
+  assert.equal(JSON.stringify(catalogEntry).includes('test-secret'), false);
+});
+
+test('MTA service request uses the resolved key without returning it to clients', async (t) => {
+  let requestedUrl = null;
+  t.mock.method(console, 'warn', () => {});
+  const service = createTransitService({
+    resolveFeedUrl: (feed) => resolveTransitFeedUrl(feed, 'service-secret'),
+    fetchImpl: async (url) => {
+      requestedUrl = String(url);
+      return new Response('unauthorized', { status: 401 });
+    },
+  });
+  t.after(service.close);
+
+  const response = await service.handle(request('/api/transit/vehicles/mta-nyc'));
+  const responseText = await response.text();
+  assert.equal(response.status, 502);
+  assert.equal(
+    new URL(requestedUrl).searchParams.get('key'),
+    'service-secret',
+  );
+  assert.equal(responseText.includes('service-secret'), false);
 });
 
 test('source sends snapshots and bounded history through the supplied transport', async () => {

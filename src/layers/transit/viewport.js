@@ -6,6 +6,7 @@ import {
   RANGE_SLACK_KM,
   inflateViewBounds,
 } from './policy.js';
+import { TRANSIT_ROUTE_MAX_ALTITUDE_M } from './routeLines.js';
 import { transitFeedsInRange } from '../../data/transitFeeds.js';
 
 /**
@@ -16,6 +17,7 @@ import { transitFeedsInRange } from '../../data/transitFeeds.js';
  */
 export function createViewport({ state, services, parts }) {
   const { governorRequestRender } = services.render;
+  let cameraBounds = null;
 
   function getCameraAltitude(viewer = state._viewer) {
     const carto = viewer?.camera?.positionCartographic;
@@ -75,14 +77,15 @@ export function createViewport({ state, services, parts }) {
     const rect = viewer?.camera?.computeViewRectangle?.(
       viewer.scene.globe?.ellipsoid,
     );
-    state._viewBounds = rect
-      ? inflateViewBounds({
+    cameraBounds = rect
+      ? {
           south: Cesium.Math.toDegrees(rect.south),
           north: Cesium.Math.toDegrees(rect.north),
           west: Cesium.Math.toDegrees(rect.west),
           east: Cesium.Math.toDegrees(rect.east),
-        })
+        }
       : null;
+    state._viewBounds = cameraBounds ? inflateViewBounds(cameraBounds) : null;
     // The sweep itself is deferred: `marker.show` is a dirty flag, and a drag
     // fires this on every frame, so re-deciding visibility inline would put the
     // whole fleet back into the vertex buffer once a frame — the exact cost
@@ -97,6 +100,9 @@ export function createViewport({ state, services, parts }) {
     refreshViewBounds();
     const altitude = getCameraAltitude();
     state._altitudeGateOpen = altitudeGateOpen(altitude);
+    const routesVisible = altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M;
+    parts.routes.setVisible(routesVisible);
+    if (routesVisible) void parts.routes.update(cameraBounds || state._viewBounds);
     const center = state._altitudeGateOpen ? getCameraCenterLatLon() : null;
     const desired = new Map();
     if (center) {
@@ -148,6 +154,7 @@ export function createViewport({ state, services, parts }) {
     refreshViewBounds,
     getCameraAltitude,
     getCameraCenterLatLon,
+    getCameraBounds: () => cameraBounds,
     altitudeGateOpen,
     runProximityCheck,
     onCameraChanged,

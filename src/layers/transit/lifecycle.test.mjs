@@ -185,6 +185,7 @@ function harness(
   const originalFetch = globalThis.fetch;
   const originalDocument = globalThis.document;
   const primitives = [];
+  const entities = [];
   const sprites = new Map();
   const pickOwners = new Map();
   const overlaySources = new Map();
@@ -204,6 +205,18 @@ function harness(
   const preRender = new Cesium.Event();
   const cameraChanged = new Cesium.Event();
   const viewer = {
+    entities: {
+      add(entity) {
+        entities.push(entity);
+        return entity;
+      },
+      remove(entity) {
+        const index = entities.indexOf(entity);
+        if (index < 0) return false;
+        entities.splice(index, 1);
+        return true;
+      },
+    },
     camera: {
       changed: cameraChanged,
       percentageChanged: 0.5,
@@ -334,6 +347,7 @@ function harness(
     overlaySources,
     credits,
     requested,
+    entities,
     serve(feedId, responder) {
       responders.set(feedId, responder);
     },
@@ -407,6 +421,53 @@ function harness(
     },
   };
 }
+
+test('static OSM rail routes render when the realtime fleet is empty', async (t) => {
+  const app = harness(t);
+  app.serve('overpass', () => ({
+    status: 200,
+    body: {
+      elements: [
+        {
+          type: 'relation',
+          id: 123,
+          tags: {
+            route: 'light_rail',
+            name: 'Green Line',
+            colour: '#00843D',
+          },
+          members: [
+            {
+              type: 'way',
+              ref: 456,
+              geometry: [
+                { lon: -71.1, lat: 42.35 },
+                { lon: -71.05, lat: 42.35 },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  }));
+
+  app.layer.enable(app.viewer);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(app.vehicles().length, 0);
+  assert.ok(app.requested.includes('/api/overpass'));
+  assert.equal(
+    app.layer._transitPartsForTest().routes.diagnostics().count,
+    1,
+  );
+  assert.equal(app.entities.length, 2, 'outlined route is visible without live vehicles');
+  assert.deepEqual(
+    app.entities[1].polyline.material,
+    Cesium.Color.fromCssColorString('#00843D'),
+  );
+  app.layer.disable(app.viewer);
+  assert.equal(app.entities.length, 0);
+});
 
 test('transit coverage follows the center-screen ground point, not the view-rectangle midpoint', (t) => {
   const app = harness(t, { at: { lat: 39.7392, lon: -104.9903 } });

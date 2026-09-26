@@ -126,6 +126,7 @@ export function createLifecycle({ state, services, parts }) {
      */
     init(viewer) {
       state._viewer = viewer;
+      parts.routes.init(viewer);
       state._markers = new Cesium.BillboardCollection({
         blendOption: Cesium.BlendOption.TRANSLUCENT,
       });
@@ -172,6 +173,7 @@ export function createLifecycle({ state, services, parts }) {
      */
     enable(viewer) {
       state._enabled = true;
+      parts.routes.enable(viewer);
       bindVisibility();
       state._generation += 1;
       state._error = null;
@@ -204,6 +206,7 @@ export function createLifecycle({ state, services, parts }) {
      */
     disable(viewer) {
       state._enabled = false;
+      parts.routes.disable();
       unbindVisibility();
       parts.testing._stopTransitProbeForTest();
       state._qaFixtureFloors?.clear();
@@ -266,6 +269,10 @@ export function createLifecycle({ state, services, parts }) {
      */
     async update() {
       if (!state._enabled) return;
+      if (state._altitudeGateOpen)
+        void parts.routes.update(
+          parts.viewport.getCameraBounds() || state._viewBounds,
+        );
       parts.ingestion.sweepAgedVehicles(Date.now());
       if (state._activeFeeds.size === 0) return;
       const generation = state._generation;
@@ -282,6 +289,7 @@ export function createLifecycle({ state, services, parts }) {
      */
     destroy(viewer) {
       this.disable(viewer);
+      parts.routes.destroy();
       if (state._markers) {
         unregisterSpriteCollection('transit', state._markers);
         viewer?.scene?.primitives?.remove(state._markers);

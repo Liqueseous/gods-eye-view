@@ -10,6 +10,8 @@ import { createQueries } from './queries.js';
 import { createControls } from './controls.js';
 import { createLifecycle } from './lifecycle.js';
 import { createTesting } from './testing.js';
+import { createTransitRouteSource } from './routeSource.js';
+import { createTransitRouteLines } from './routeLines.js';
 import { TRANSIT_POLL_MS } from './policy.js';
 
 /**
@@ -27,6 +29,7 @@ import { TRANSIT_POLL_MS } from './policy.js';
 export function createTransitLayer({
   services,
   source = createTransitSource(),
+  routeSource = createTransitRouteSource(),
 }) {
   if (!services?.overlays || !services?.render || !services?.sprites) {
     throw new TypeError(
@@ -43,8 +46,9 @@ export function createTransitLayer({
   }
   const state = createState({ services });
   const parts = {};
-  const context = { state, services, parts, source };
+  const context = { state, services, parts, source, routeSource };
   parts.trails = createTrails(context);
+  parts.routes = createTransitRouteLines(context);
   parts.height = createHeight(context);
   parts.selection = createSelection(context);
   parts.rendering = createRendering(context);
@@ -56,7 +60,11 @@ export function createTransitLayer({
   parts.testing = createTesting(context);
 
   return Object.assign(
-    { updateInterval: TRANSIT_POLL_MS },
+    {
+      updateInterval: TRANSIT_POLL_MS,
+      getTransitRouteDiagnostics: (options) =>
+        parts.routes.diagnostics(options),
+    },
     parts.lifecycle.methods,
     parts.queries.methods,
     parts.controls.methods,
@@ -80,3 +88,4 @@ export {
   transitVehicleKey,
   vehicleFixAgeMs,
 } from './policy.js';
+export { TRANSIT_ROUTE_MAX_ALTITUDE_M } from './routeLines.js';
