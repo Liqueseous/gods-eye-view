@@ -53,6 +53,13 @@ export function createRendering({
     layerState._heatLineCount = 0;
   }
 
+  function raiseHeatLinesToTop() {
+    const primitives = layerState._viewer?.scene?.groundPrimitives;
+    for (const primitive of [layerState._heatJamPrim, layerState._heatSlowPrim]) {
+      if (primitive) primitives?.raiseToTop?.(primitive);
+    }
+  }
+
   /**
    * Rebuild the congestion heat-line underlay (jam-viz heatline prototype):
    * slow/jam roads drape a corridor line onto the rendered 3D tiles — glowing
@@ -153,6 +160,7 @@ export function createRendering({
     }
 
     layerState._heatLineCount = kept.length;
+    raiseHeatLinesToTop();
     if (candidates.length > kept.length) {
       console.log(
         `[Data:Traffic] Heat-lines capped at ${HEAT_LINE_CAP} (${candidates.length} congested roads in view)`,
@@ -313,6 +321,7 @@ export function createRendering({
     visibleRoadsForAltitude,
     removeHeatLines,
     rebuildHeatLines,
+    raiseHeatLinesToTop,
     renderRoadsForAltitude,
   };
 }

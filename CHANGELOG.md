@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — OSM Tunnel Layer
+
+### Added
+
+- Add a shareable **Tunnels** data layer for viewport-bounded OpenStreetMap
+  road and rail tunnel ways. Road and rail alignments use distinct styling
+  with a dark outline, and mapped tunnel names or refs appear as collision-
+  managed labels at the line midpoint.
+- Read `name`, `name:en`, `official_name`, or `ref` when available; unnamed
+  tunnels remain visible without fabricated labels. Coverage depends on what
+  OpenStreetMap contributors have mapped.
+- Add OSM attribution, standalone source registration, and layer-state
+  round-trip support.
+
+### Validation
+
+- Tunnel query, normalization, cancellation, layer lifecycle, styling, labels,
+  catalog registration, and share-state tests pass.
+- Full unit tests and production build pass.
+
 ## Unreleased — Natural-Language Analyst Assistant
 
 ### Added

@@ -11,6 +11,7 @@ import { createApplicationVessels } from './layers/aisLiveVessels.js';
 import { createApplicationCctv } from './layers/cctv.js';
 import { createApplicationRadio } from './layers/radio.js';
 import { createApplicationTraffic } from './layers/traffic.js';
+import { createApplicationTunnels } from './layers/tunnels.js';
 import { createApplicationBikeshare } from './layers/bikeshare.js';
 import { createApplicationDirections } from './layers/directions.js';
 import { createApplicationRecentImagery } from './layers/recentImagery.js';
@@ -43,6 +44,7 @@ const SOURCE_METHODS = Object.freeze({
     'getFlowSessionStats',
     'resetFlowTileCache',
   ],
+  tunnels: ['requestTunnels'],
   bikeshare: ['getStations'],
   installations: ['getMappedSites', 'searchNearby'],
   satellites: ['readGroup'],
@@ -129,6 +131,11 @@ export function createApplicationCatalog({
     const satellites = createApplicationSatellites({
       source: sources.satellites,
     });
+    const traffic = createApplicationTraffic({ source: sources.traffic });
+    const transit = createApplicationTransit({
+      surface,
+      source: sources.transit,
+    });
     const catalog = createLayerCatalog(
       [
         createBhoteKoshiEventLayer(),
@@ -150,10 +157,15 @@ export function createApplicationCatalog({
         createApplicationAlpr({ surface, source: sources.alpr }),
         satellites,
         createApplicationLaunches({ source: sources.launches, satellites }),
-        createApplicationTraffic({ source: sources.traffic }),
+        traffic,
+        createApplicationTunnels({
+          source: sources.tunnels,
+          trafficLayer: traffic,
+          transitLayer: transit,
+        }),
         createApplicationCctv({ surface, source: sources.cctv }),
         createApplicationRadio({ surface, source: sources.radio }),
-        createApplicationTransit({ surface, source: sources.transit }),
+        transit,
         createApplicationBikeshare({ source: sources.bikeshare }),
         createApplicationDirections(),
         createApplicationRecentImagery(),

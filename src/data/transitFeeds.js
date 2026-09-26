@@ -1,6 +1,6 @@
 /**
  * @module transitFeeds
- * @description Registry of keyless, openly licensed GTFS-Realtime
+ * @description Registry of openly accessible or server-keyed GTFS-Realtime
  * VehiclePositions feeds the Transit layer can show.
  *
  * Every entry here is a URL the SERVER fetches — the browser only ever asks
@@ -9,8 +9,8 @@
  * a DATA_SOURCES.md row with its license, and a credit in dataCredits.js.
  *
  * Admission rules for a feed:
- *  - No key, token, or registration required (identify-yourself headers are
- *    fine — Entur asks for `ET-Client-Name`, OVapi for a User-Agent).
+ *  - Feeds that require credentials use server-only configuration and never
+ *    expose the secret to clients.
  *  - An open license that permits display with attribution.
  *  - Real coordinates in VehiclePosition.position — NYCT subway, for example,
  *    publishes stop-relative positions only and is deliberately absent.
@@ -63,6 +63,15 @@ function mbtaRouteMode(routeId) {
   return 'bus';
 }
 
+function mbtaRouteColor(routeId) {
+  if (/^Red\b|^Mattapan\b/i.test(routeId || '')) return '#DA291C';
+  if (/^Orange\b/i.test(routeId || '')) return '#ED8B00';
+  if (/^Blue\b/i.test(routeId || '')) return '#003DA5';
+  if (/^Green\b/i.test(routeId || '')) return '#00843D';
+  if (/^CR-/i.test(routeId || '')) return '#80276C';
+  return null;
+}
+
 /**
  * Entur (Norway) route ids are `<codespace>:Line:<local-id>`; the codespace
  * tells the operator, not the mode, but a few are single-mode operators.
@@ -102,6 +111,10 @@ function hslRouteMode(routeId) {
   return 'bus';
 }
 
+function hslRouteColor(routeId) {
+  return /^31M/i.test(routeId || '') ? '#FF6319' : null;
+}
+
 /**
  * Metro Transit (Minneapolis–St Paul): light rail is the Blue/Green line
  * (route ids 901/902), Northstar commuter rail is 888.
@@ -115,6 +128,12 @@ function metroTransitRouteMode(routeId) {
   return 'bus';
 }
 
+function metroTransitRouteColor(routeId) {
+  if (routeId === '901') return '#0053A4';
+  if (routeId === '902') return '#007A3D';
+  return null;
+}
+
 /**
  * Registry of feeds. Order is presentation order in the stats/credit text.
  * `loadRadiusKm` is the distance from `center` inside which the feed is polled.
@@ -124,6 +143,7 @@ function metroTransitRouteMode(routeId) {
  *   url: string, headers?: Record<string, string>,
  *   license: string, licenseUrl: string, attribution: string,
  *   defaultMode: string, routeMode?: (routeId: string|null) => string,
+ *   routeColor?: (routeId: string|null) => string|null,
  * }>>}
  */
 export const TRANSIT_FEED_REGISTRY = Object.freeze([
@@ -148,6 +168,7 @@ export const TRANSIT_FEED_REGISTRY = Object.freeze([
     }),
     defaultMode: 'bus',
     routeMode: mbtaRouteMode,
+    routeColor: mbtaRouteColor,
   }),
   Object.freeze({
     id: 'capmetro-austin',
@@ -188,6 +209,7 @@ export const TRANSIT_FEED_REGISTRY = Object.freeze([
     }),
     defaultMode: 'bus',
     routeMode: metroTransitRouteMode,
+    routeColor: metroTransitRouteColor,
   }),
   Object.freeze({
     id: 'hsl-helsinki',
@@ -207,6 +229,27 @@ export const TRANSIT_FEED_REGISTRY = Object.freeze([
     }),
     defaultMode: 'bus',
     routeMode: hslRouteMode,
+    routeColor: hslRouteColor,
+  }),
+  Object.freeze({
+    id: 'mta-nyc',
+    name: 'MTA Bus Time',
+    operator: 'Metropolitan Transportation Authority',
+    region: 'New York City, NY',
+    center: Object.freeze({ lat: 40.7128, lon: -74.006 }),
+    loadRadiusKm: 70,
+    url: 'https://gtfsrt.prod.obanyc.com/vehiclePositions',
+    license: 'MTA Data Feeds Terms and Conditions',
+    licenseUrl: 'https://www.mta.info/developers/terms-and-conditions',
+    attribution: 'MTA Bus Time — Metropolitan Transportation Authority',
+    defaultEnabled: true,
+    terms: Object.freeze({
+      quote:
+        'The MTA authorizes downloading and hosting its data on a non-MTA server, subject to its Data Feeds Terms and Conditions.',
+      note:
+        'Bus Time GTFS-Realtime requires an API key. The key is supplied as MTA_BUS_API_KEY to the server only. Do not imply MTA endorsement; disclose possible non-real-time data if a feed lags by more than one minute.',
+    }),
+    defaultMode: 'bus',
   }),
   Object.freeze({
     id: 'ovapi-nl',
@@ -364,6 +407,15 @@ export function transitModeFor(feed, routeId) {
   const mode =
     hinted && hinted !== 'unknown' ? hinted : feed?.defaultMode || 'unknown';
   return TRANSIT_MODES.includes(mode) ? mode : 'unknown';
+}
+
+/** Primary network color for a known route, or null when the feed has no mapping. */
+export function transitRouteColor(feed, routeId) {
+  const color =
+    typeof feed?.routeColor === 'function' ? feed.routeColor(routeId) : null;
+  return typeof color === 'string' && /^#[\da-f]{6}$/i.test(color)
+    ? color
+    : null;
 }
 
 /**

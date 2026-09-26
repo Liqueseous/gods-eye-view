@@ -13,9 +13,10 @@ import {
   transitFeedsInRange,
   transitModeFor,
   transitModeResolved,
+  transitRouteColor,
 } from './transitFeeds.js';
 
-test('every registered feed is keyless, https, licensed, and uniquely identified', () => {
+test('every registered feed uses https, is documented, and uniquely identified', () => {
   const ids = new Set();
   for (const feed of TRANSIT_FEED_REGISTRY) {
     assert.match(
@@ -62,6 +63,10 @@ test('getTransitFeed is the only door to an upstream URL and refuses anything un
   assert.equal(getTransitFeed(''), null);
   assert.equal(getTransitFeed(null), null);
   assert.equal(getTransitFeed(42), null);
+  assert.equal(
+    getTransitFeed('mta-nyc')?.url,
+    'https://gtfsrt.prod.obanyc.com/vehiclePositions',
+  );
 });
 
 test('haversine matches known city distances', () => {
@@ -107,6 +112,11 @@ test('feeds in range are nearest-first and honor slack as hysteresis', () => {
     ['hsl-helsinki'],
     'Helsinki polls HSL only',
   );
+  assert.deepEqual(
+    transitFeedsInRange(40.7128, -74.006).map((f) => f.id),
+    ['mta-nyc'],
+    'New York polls MTA Bus Time only',
+  );
 });
 
 test('route hints refine a feed default and never escape the known modes', () => {
@@ -129,6 +139,20 @@ test('route hints refine a feed default and never escape the known modes', () =>
   assert.equal(transitModeFor(entur, 'TRO:Line:1_310'), 'bus');
   assert.equal(transitModeFor({ defaultMode: 'spaceship' }, 'x'), 'unknown');
   assert.equal(transitModeFor(null, 'x'), 'unknown');
+});
+
+test('known rail routes use their network colors and unknown routes keep mode styling', () => {
+  const mbta = getTransitFeed('mbta');
+  assert.equal(transitRouteColor(mbta, 'Red'), '#DA291C');
+  assert.equal(transitRouteColor(mbta, 'Orange'), '#ED8B00');
+  assert.equal(transitRouteColor(mbta, 'Blue'), '#003DA5');
+  assert.equal(transitRouteColor(mbta, 'Green-C'), '#00843D');
+  assert.equal(transitRouteColor(mbta, 'CR-Fitchburg'), '#80276C');
+  assert.equal(transitRouteColor(mbta, '66'), null);
+  assert.equal(transitRouteColor(getTransitFeed('hsl-helsinki'), '31M1'), '#FF6319');
+  assert.equal(transitRouteColor(getTransitFeed('metrotransit-msp'), '901'), '#0053A4');
+  assert.equal(transitRouteColor(getTransitFeed('metrotransit-msp'), '902'), '#007A3D');
+  assert.equal(transitRouteColor({ routeColor: () => 'invalid' }, 'x'), null);
 });
 
 test('the public catalog exposes coverage and credit, never the upstream URL or headers', () => {

@@ -186,6 +186,10 @@ export function createDeveloperDiagnosticsSnapshot(
   app = globalThis.__godsEyeView,
 ) {
   const layers = app?.dataManager?.getAll?.() || [];
+  const transitLayer = app?.dataManager?.layers?.get?.('transit')?.module;
+  const transitRouteData =
+    transitLayer?.getTransitRouteDiagnostics?.({ includeGeometry: true }) ||
+    null;
   const view = readDiagnosticView(app || {});
   const nearestTransitFeeds = view.center
     ? TRANSIT_ENABLED_FEEDS.map((feed) => ({
@@ -215,6 +219,7 @@ export function createDeveloperDiagnosticsSnapshot(
       matchingFeeds: nearestTransitFeeds.filter(
         (feed) => feed.distanceKm <= feed.loadRadiusKm,
       ),
+      routeData: transitRouteData,
     },
     render: app?.getRenderGovernorDiagnostics?.() || null,
     voiceState: app?.voiceCommands?.session?.state || 'idle',
@@ -440,6 +445,40 @@ function readLiveDiagnostics() {
     normalizedVoiceState === 'idle'
       ? 'OFF'
       : normalizedVoiceState.toUpperCase();
+  const transitModule = app.dataManager?.layers?.get?.('transit')?.module;
+  const routeData = transitModule?.getTransitRouteDiagnostics?.() || null;
+  const routeCount = Number(routeData?.count) || 0;
+  const routePhase =
+    routeData?.requestStage === 'prefetch'
+      ? 'PREFETCH'
+      : routeData?.requestStage === 'priority'
+        ? 'VIEW'
+        : null;
+  const routeStatus = routeData?.loading
+    ? `${routePhase || 'ROUTE'} · LOADING`
+    : routeData?.error
+      ? `HTTP ${routeData.lastStatus || 'ERROR'}`
+      : routeData?.lastStatus
+        ? `READY · HTTP ${routeData.lastStatus}`
+        : routeData?.enabled
+          ? 'WAITING'
+          : 'DISABLED';
+  const routeReadout = routeData
+    ? {
+        text: `${routeStatus} · ${routeCount}`,
+        title: [
+          routeData.error,
+          routeData.upstream && `UPSTREAM ${routeData.upstream}`,
+          routeData.cache && `CACHE ${routeData.cache}`,
+          routeData.bounds &&
+            `BOUNDS ${routeData.bounds.south.toFixed(3)},${routeData.bounds.west.toFixed(3)},${routeData.bounds.north.toFixed(3)},${routeData.bounds.east.toFixed(3)}`,
+          routeData.coverageBounds &&
+            `COVERAGE ${routeData.coverageBounds.south.toFixed(3)},${routeData.coverageBounds.west.toFixed(3)},${routeData.coverageBounds.north.toFixed(3)},${routeData.coverageBounds.east.toFixed(3)}`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      }
+    : { text: 'NO DIAGNOSTICS', title: 'Transit route diagnostics unavailable.' };
 
   return {
     camera: carto
@@ -450,6 +489,7 @@ function readLiveDiagnostics() {
       : 'RENDER OFFLINE',
     layers: `${enabledLayers}/${totalLayers || 0} ACTIVE`,
     voice: formattedVoiceState || 'OFF',
+    routes: routeReadout,
     assets: readAssetDiagnostics(app),
   };
 }
@@ -464,9 +504,15 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
     render: panel.querySelector('#developer-render-readout'),
     layers: panel.querySelector('#developer-layers-readout'),
     voice: panel.querySelector('#developer-voice-readout'),
+    routes: panel.querySelector('#developer-routes-readout'),
   };
   for (const [key, node] of Object.entries(entries)) {
-    if (node) node.textContent = diagnostics[key] || '—';
+    if (!node) continue;
+    node.textContent =
+      typeof diagnostics[key] === 'string'
+        ? diagnostics[key] || '—'
+        : diagnostics[key]?.text || '—';
+    if (key === 'routes') node.title = diagnostics.routes?.title || '';
   }
   const assetsList = panel.querySelector('#developer-assets-list');
   if (assetsList && documentRef.createElement) {

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import {
   DEVELOPER_MODE_STORAGE_KEY,
@@ -35,6 +36,15 @@ test('developer mode writes a boolean state to storage', () => {
   assert.equal(store.getItem(DEVELOPER_MODE_STORAGE_KEY), 'true');
   writeDeveloperMode(false, store);
   assert.equal(store.getItem(DEVELOPER_MODE_STORAGE_KEY), 'false');
+});
+
+test('developer panel is labeled DEV TOOLBOX', () => {
+  const template = readFileSync(
+    new URL('./templates/command-dock.html', import.meta.url),
+    'utf8',
+  );
+  assert.match(template, /<span>DEV TOOLBOX<\/span>/);
+  assert.doesNotMatch(template, /<span>DEV TOOLS<\/span>/);
 });
 
 test('developer mode reveals the diagnostics panel when enabled', () => {
@@ -110,6 +120,7 @@ test('developer diagnostics refresh from live app state while enabled', () => {
     render: { textContent: '' },
     layers: { textContent: '' },
     voice: { textContent: '' },
+    routes: { textContent: '', title: '' },
     assets: {
       children: [],
       replaceChildren(...children) { this.children = children; },
@@ -126,6 +137,7 @@ test('developer diagnostics refresh from live app state while enabled', () => {
       if (selector === '#developer-render-readout') return nodes.render;
       if (selector === '#developer-layers-readout') return nodes.layers;
       if (selector === '#developer-voice-readout') return nodes.voice;
+      if (selector === '#developer-routes-readout') return nodes.routes;
       if (selector === '#developer-assets-list') return nodes.assets;
       return null;
     },
@@ -185,7 +197,22 @@ test('developer diagnostics refresh from live app state while enabled', () => {
           { position: { x: 140, y: 50 } },
         ] } }],
         ['traffic', { module: { getDetectableObjects: () => trafficPositions } }],
-        ['transit', { module: { getDetectableObjects: () => transitPositions } }],
+        [
+          'transit',
+          {
+            module: {
+              getDetectableObjects: () => transitPositions,
+              getTransitRouteDiagnostics: () => ({
+                enabled: true,
+                count: 0,
+                loading: true,
+                requestStage: 'priority',
+                error: null,
+                bounds: { south: 42.3, west: -71.2, north: 42.4, east: -71 },
+              }),
+            },
+          },
+        ],
       ]),
     },
     getRenderGovernorDiagnostics: () => ({ installed: true, mode: 'continuous', holds: ['traffic'] }),
@@ -204,6 +231,8 @@ test('developer diagnostics refresh from live app state while enabled', () => {
   assert.match(nodes.render.textContent, /CONTINUOUS/);
   assert.match(nodes.layers.textContent, /4\//);
   assert.match(nodes.voice.textContent, /OFF/);
+  assert.equal(nodes.routes.textContent, 'VIEW · LOADING · 0');
+  assert.match(nodes.routes.title, /BOUNDS 42\.300,-71\.200,42\.400,-71\.000/);
   assert.equal(nodes.assets.children.length, 4);
   assert.equal(nodes.assets.children[0].children[0].textContent, '✈ Civil Flights');
   assert.equal(nodes.assets.children[0].children[1].textContent, '1 IN VIEW / 7 LOADED');
@@ -240,6 +269,25 @@ test('developer diagnostics refresh from live app state while enabled', () => {
 });
 
 test('developer diagnostics export includes view, matching Transit feeds, and source health', () => {
+  const transitRouteData = {
+    source: 'OpenStreetMap via Overpass',
+    count: 1,
+    loading: false,
+    error: null,
+    bounds: { south: 42.3, west: -71.2, north: 42.4, east: -71 },
+    routes: [
+      {
+        id: '123:456',
+        routeId: '123',
+        name: 'Red Line',
+        ref: 'A',
+        type: 'subway',
+        color: '#DA291C',
+        lineCount: 1,
+        lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
+      },
+    ],
+  };
   const app = {
     viewer: {
       camera: {
@@ -253,6 +301,12 @@ test('developer diagnostics export includes view, matching Transit feeds, and so
       },
     },
     dataManager: {
+      layers: new Map([
+        [
+          'transit',
+          { module: { getTransitRouteDiagnostics: () => transitRouteData } },
+        ],
+      ]),
       getAll: () => [
         {
           id: 'transit',
@@ -277,7 +331,8 @@ test('developer diagnostics export includes view, matching Transit feeds, and so
   assert.equal(snapshot.camera.centerSource, 'screen-center-ground-hit');
   assert.ok(Math.abs(snapshot.camera.center.latitude - 45) < 1e-6);
   assert.equal(snapshot.transit.matchingFeeds.length, 0);
-  assert.equal(snapshot.transit.nearestFeeds.length, 7);
+  assert.equal(snapshot.transit.nearestFeeds.length, 8);
+  assert.deepEqual(snapshot.transit.routeData, transitRouteData);
   assert.equal(snapshot.layers[0].stats.coverage, 'No feed here yet');
   assert.equal(snapshot.layers[1].availability, 'unavailable');
   assert.match(snapshot.layers[1].availabilityReason, /No OSM road data/);

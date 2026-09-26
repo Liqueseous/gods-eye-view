@@ -370,6 +370,7 @@ export function createIngestion({ state, services, parts, source }) {
       entry.record = record;
       entry.fetchedAt = fetchedAt;
       entry.pollSeq = pollSeq;
+      if (state._selectedKey === key) parts.trails.style();
       seen += 1;
     }
 
@@ -406,6 +407,7 @@ export function createIngestion({ state, services, parts, source }) {
     ) {
       parts.selection.refreshSelectedCard(true);
     }
+    parts.selection.refreshSelectedRouteCard();
     // Records changed hands this poll, so DETECT's list is rebuilt once —
     // the visibility sweep below bumps the revision.
     // One floor cycle per poll, on its own timer: warming is a network round

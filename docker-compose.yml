@@ -15,6 +15,12 @@ services:
       OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET}
       AISSTREAM_API_KEY: ${AISSTREAM_API_KEY}
       TOMTOM_API_KEY: ${TOMTOM_API_KEY}
+      MTA_BUS_API_KEY: ${MTA_BUS_API_KEY:-}
       CESIUM_ION_TOKEN: ${CESIUM_ION_TOKEN}
       FIRMS_MAP_KEY: ${FIRMS_MAP_KEY}
+    volumes:
+      - overpass-cache:/app/.gev-cache/overpass
     restart: unless-stopped
+
+volumes:
+  overpass-cache:

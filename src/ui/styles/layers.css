@@ -229,6 +229,40 @@
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
+#right-context-rail .global-context-panel-inner,
+#right-context-rail .global-context-panel-inner > .cyber-panel-body {
+  --context-scrollbar-thumb: color-mix(in srgb, var(--accent) 52%, transparent);
+  --context-scrollbar-thumb-hover: color-mix(
+    in srgb,
+    var(--accent) 76%,
+    transparent
+  );
+  --context-scrollbar-track: rgba(255, 255, 255, 0.035);
+  scrollbar-color: var(--context-scrollbar-thumb) var(--context-scrollbar-track);
+  scrollbar-width: thin;
+}
+#right-context-rail .global-context-panel-inner::-webkit-scrollbar,
+#right-context-rail .global-context-panel-inner
+  > .cyber-panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+#right-context-rail .global-context-panel-inner::-webkit-scrollbar-track,
+#right-context-rail .global-context-panel-inner
+  > .cyber-panel-body::-webkit-scrollbar-track {
+  background: var(--context-scrollbar-track);
+}
+#right-context-rail .global-context-panel-inner::-webkit-scrollbar-thumb,
+#right-context-rail .global-context-panel-inner
+  > .cyber-panel-body::-webkit-scrollbar-thumb {
+  border: 1px solid rgba(4, 17, 31, 0.72);
+  border-radius: 4px;
+  background: var(--context-scrollbar-thumb);
+}
+#right-context-rail .global-context-panel-inner:hover::-webkit-scrollbar-thumb,
+#right-context-rail .global-context-panel-inner
+  > .cyber-panel-body:hover::-webkit-scrollbar-thumb {
+  background: var(--context-scrollbar-thumb-hover);
+}
 #right-context-rail #global-context-panel.collapsed {
   width: var(--right-context-collapsed-width);
   /* Keep the compact Context tab on the rail edge rather than leaving it

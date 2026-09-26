@@ -39,7 +39,7 @@ test('catalogs construct distinct layers and classification from their supplied 
     signal: b.signal,
     surface: fixtureSurface(b.signal),
   });
-  assert.equal(first.layers.length, 29);
+  assert.equal(first.layers.length, 30);
   assert.ok(first.get('local-adsb'), 'Local ADS-B is registered');
   assert.deepEqual(
     first.metadata.find(({ id }) => id === 'local-adsb'),
@@ -60,10 +60,23 @@ test('catalogs construct distinct layers and classification from their supplied 
     );
   assert.ok(first.get('fire-perimeters'));
   assert.ok(first.get('transit'));
+  assert.ok(first.get('tunnels'));
+  assert.deepEqual(
+    first.metadata.find(({ id }) => id === 'tunnels'),
+    { id: 'tunnels', token: '3', disposition: 'enabled-only' },
+  );
   const order = first.layers.map(({ id }) => id);
   assert.deepEqual(
     order.slice(order.indexOf('traffic'), order.indexOf('directions') + 1),
-    ['traffic', 'cctv', 'radio', 'transit', 'bikeshare', 'directions'],
+    [
+      'traffic',
+      'tunnels',
+      'cctv',
+      'radio',
+      'transit',
+      'bikeshare',
+      'directions',
+    ],
   );
   assert.ok(first.get('bhote-koshi-2026'));
   assert.ok(first.get('bhote-koshi-locator'));
@@ -83,6 +96,11 @@ test('catalogs construct distinct layers and classification from their supplied 
     rows.find((row) => row.id === 'flights')?.showInTogglePanel,
     true,
     'ordinary data layer entries remain visible',
+  );
+  assert.equal(
+    rows.find((row) => row.id === 'tunnels')?.showInTogglePanel,
+    true,
+    'Tunnels is a normal Data Layers toggle',
   );
   assert.deepEqual(
     first.layers.map(({ id }) => id),

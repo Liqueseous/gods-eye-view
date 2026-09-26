@@ -17,6 +17,20 @@
   overflow: hidden;
 }
 
+:root[data-ui-theme='cyber'] #right-context-rail .global-context-panel-inner,
+:root[data-ui-theme='cyber']
+  #right-context-rail
+  .global-context-panel-inner
+  > .cyber-panel-body {
+  --context-scrollbar-thumb: color-mix(
+    in srgb,
+    var(--cyber-red-bright) 58%,
+    transparent
+  );
+  --context-scrollbar-thumb-hover: var(--cyber-red-bright);
+  --context-scrollbar-track: rgba(255, 255, 255, 0.035);
+}
+
 :root[data-ui-theme='cyber'] #pp-toggles > .pp-header-row {
   flex: 0 0 auto;
 }

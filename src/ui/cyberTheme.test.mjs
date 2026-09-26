@@ -39,6 +39,29 @@ test('CCTV and Context keep their headers outside Cyber-only scroll bodies', () 
   );
 });
 
+test('Context flyout scrollbars use the active theme on both scroll containers', () => {
+  const layers = readFileSync(
+    new URL('./styles/layers.css', import.meta.url),
+    'utf8',
+  );
+  const cyber = readFileSync(
+    new URL('./styles/cyber.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    layers,
+    /#right-context-rail \.global-context-panel-inner,[\s\S]*?#right-context-rail \.global-context-panel-inner > \.cyber-panel-body\s*\{[^}]*scrollbar-color: var\(--context-scrollbar-thumb\) var\(--context-scrollbar-track\);/,
+  );
+  assert.match(
+    layers,
+    /\.global-context-panel-inner\s*> \.cyber-panel-body::-webkit-scrollbar-thumb\s*\{[^}]*background: var\(--context-scrollbar-thumb\);/,
+  );
+  assert.match(
+    cyber,
+    /:root\[data-ui-theme='cyber'\] #right-context-rail[\s\S]*?--context-scrollbar-thumb: color-mix\([\s\S]*?var\(--cyber-red-bright\)/,
+  );
+});
+
 function styleOwner(t, initialVariant = 'cyber') {
   const previous = { document: globalThis.document, window: globalThis.window };
   const root = { dataset: {} };
