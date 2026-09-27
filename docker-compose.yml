@@ -1,5 +1,10 @@
 services:
   gods-eye-view:
+    # Comment out the pre-built image to use the local Dockerfile build instead
+    #image: gods-eye-view:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: gods-eye-view:latest
     ports:
       - "0.0.0.0:4173:4173"
