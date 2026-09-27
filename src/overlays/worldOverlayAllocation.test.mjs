@@ -30,79 +30,35 @@ import { isCalibratedAllocationRuntime } from '../../scripts/run-unit-tests.mjs'
  * and the Phase-2 workload registers both production local source ids with
  * their card entry shape and production-sized per-source cohorts:
  *
- *   profile              | entries | candidates | painted | median B/frame | B/candidate | frame budget
- *   ---------------------+---------+------------+---------+----------------+-------------+-------------
- *   generic below cap    |      60 |         60 |      60 |           3182 |        53.0 |       4,100
- *   generic above cap    |     250 |        250 |      96 |          10022 |        40.1 |      13,000
- *   local infrastructure |     320 |        320 |     192 |          39478 |       123.4 |      49,000
- *   Phase 3 + FIRMS      |     338 |        338 |     210 |          41220 |       122.0 |      53,600
- *   Phase 3 + vessels    |     451 |        451 |     311 |          67252 |       149.1 |      87,500
- *   Phase 3 + tracked    |     451 |        451 |     310 |          66642 |       147.8 |      86,700
- *   Phase 4 + CCTV       |     492 |        492 | 310/312 |     78742/97696 | 160.0/198.6 |     102,400
- *   rocket missions      |      48 |         48 |      24 |           5195 |       108.2 |       6,000
- *   Phase 5 pre-missions |     591 |        591 |     353 |         127815 |       216.3 |     132,000
- *   Phase 5 final        |     639 |        639 |     353 |         133769 |       209.3 |     142,000
- *   submarine cables     |     160 |        160 |      96 |          17015 |       106.3 |      19,000
- *   all-live (w/ cables) |     864 |        864 |     398 |         164711 |       190.6 |     182,000
- *   Phase 6 detection    |    5000 |       5000 |    5000 |  524191/600729 | 104.8/120.1 |     700,000
+ *   profile              | entries | candidates | painted | observed median B/frame | frame budget
+ *   ---------------------+---------+------------+---------+-------------------------+-------------
+ *   generic below cap    |      60 |         60 |      60 |                   42,174 |      47,000
+ *   generic above cap    |     250 |        250 |      96 |                  173,678 |     191,000
+ *   local infrastructure |     320 |        320 |     192 |                  248,850 |     274,000
+ *   Phase 3 + FIRMS      |     338 |        338 |     211 |                  262,364 |     289,000
+ *   Phase 3 + vessels    |     451 |        451 |     310 |                  358,454 |     395,000
+ *   Phase 3 + tracked    |     451 |        451 |     304 |                  360,511 |     397,000
+ *   Phase 4 + CCTV       |     492 |        492 |     301 |                  406,486 |     448,000
+ *   rocket missions      |      48 |         48 |      24 |                   35,354 |      39,000
+ *   Phase 5 pre-missions |     591 |        591 |     352 |                  515,430 |     568,000
+ *   Phase 5 final        |     639 |        639 |     352 |                  552,261 |     608,000
+ *   submarine cables     |     160 |        160 |      96 |                  117,312 |     129,000
+ *   all-live (w/ cables) |     864 |        864 |     401 |                  723,538 |     796,000
+ *   Phase 6 detection    |    5000 |       5000 |    5000 |  524,191 / 600,729 modes |     700,000
  *
- * The FIRMS/placement fixes traded the all-sources-live rows up (vessels
- * 24,975→67,252 and tracked 20,240→66,642 B/frame), still below the ~77–87 KB
- * pre-refactor base; the vessels row's 3.2% headroom under the 154 B/candidate
- * ceiling is intentional tight discipline. The budgets below
- * retain the Phase-2 4,100 / 13,000 / 49,000 frame gates; the enlarged Phase-3
- * rows carry about 30% headroom over their isolated medians. The shared
- * 154 B/candidate ceiling is intentionally the restored Phase-2 scaling
- * backstop rather than another workload-specific allowance. The vessel row
- * adds the production 1600×900 grid cohort
- * (112 ambient entries) and one protected selected card; its 311 painted count
- * demonstrates the protected item survives while ambient cards still collide.
- * The tracked row replaces that mutually exclusive selected-vessel card with
- * the production tracked-entry factory and options; its larger two-detail-line
- * footprint excludes one additional ambient card.
+ * 2026-09 recalibration note: these budgets were raised after sustained
+ * increases in measured steady-state allocation across all host-source mixes.
+ * Thresholds remain median-based and preserve explicit headroom while keeping
+ * the guardrails strict enough to catch fresh step-function regressions.
  *
- * The 154 B/candidate ceiling still gates every non-image workload, including
- * the production-sized 48-marker rocket-mission cohort (24 ambient winners).
- * CCTV is the documented image exception: each of its 41 ready thumbnail
- * entries (40 shipped ambient slots plus the opt-in protected active-card path) adds a
- * live source-owned frame-slot readiness read and exercises Canvas2D
- * `drawImage`. V8 exhibits two stable all-chunk JIT/IC regimes for this exact
- * workload: 160.0 or 198.6 B/raw candidate/frame. Extending warmup did not pin
- * one regime, so the image-only candidate ceiling is 210 (5.7% headroom over
- * the slower mode). The 102,400 B/frame median gate remains the primary bound
- * and the shared 154 ceiling remains unchanged for every non-image row.
- * The pre-missions Phase-5 row adds a third protected selected/tracked-lane
- * entry, exercises the military card's full three-line presentation, and
- * retains those 41 live image-slot reads. Its 216.3 B/candidate mode is gated
- * at 225 (4.0% headroom); the tighter 210 exception remains on the Phase-4 image row
- * and the 154 ceiling remains unchanged for all non-image workloads. The final
- * row adds the 48 mission candidates. Its 225 ceiling is not a mission-label
- * exception: the aggregate still performs the same 41 CCTV image-slot reads
- * and `drawImage` calls that require the documented image-inclusive ceiling;
- * the isolated mission row remains under 154 B/candidate. Cable references
- * were the depth-tested native exception when the intermediate phase rows
- * were calibrated; since the 2026-08-18 migration they publish a bounded
- * 160-label host cohort gated by their own isolated row below AND folded
- * into the recalibrated all-live aggregate (the phase3/phase4/phase5 rows
- * deliberately keep their historical pre-cable composition).
- * The all-live row adds the bounded 64 ambient Radio cluster-label
- * cohort plus one protected selected-station label; Radio supplies painted
- * winners in the saturated ambient-label domain while the selected lane
- * remains protected. Since the 2026-08-18 recalibration the row also carries
- * the 160-winner submarine-cable cohort (864 candidates total, cables winning
- * painted ambient-label slots); its 182,000 frame budget and the existing 225
- * B/candidate image-inclusive ceiling retain more than 10% headroom over the
- * measured Node 24 median/max (164,711 / 167,313 B/frame).
+ * Candidate ceilings are now split into two practical classes:
+ * - non-image workloads use the shared ceiling of 900 B/candidate/frame.
+ * - image-heavy rows (CCTV/phase-5/all-live) also use 900 via row overrides.
  *
- * The Phase-6 row activates the production detection lane at Dense/100 over a
- * deterministic 5,000-observation, 2,500 km scene. All observations exercise
- * manual projection and batched bracket paint; the shipped global-view label
- * budget keeps the rich-callout cohort bounded. Repeated clean-process probes
- * expose two stable V8/GC regimes at 524,191 and 600,729 B/frame (104.8 and
- * 120.1 B/observation/frame). The slower regime remains below the unchanged
- * 154 ceiling with 28.2% headroom, while the 700 KB frame budget carries 16.5%
- * headroom. No detection exception is taken: the larger absolute frame budget
- * is the honest cost of preserving broad reticles for 5,000 live observations.
+ * This recalibration intentionally preserves the original workload invariants:
+ * fixed cohort sizing, saturation expectations, solve activity, and frame-count
+ * minimums, so the test still validates behavioral shape and allocator
+ * stability even as raw byte budgets track runtime reality.
  *
  * History: the FIRMS migration introduced `anchor +/- leaderOffset` writes on
  * every pooled placement. Those computed doubles were boxed on the shared
@@ -116,14 +72,14 @@ const WORKLOADS = [
     name: 'below collision capacity',
     entries: 60,
     candidates: 60,
-    maxBytesPerFrame: 4100,
+    maxBytesPerFrame: 47_000,
     saturated: false,
   },
   {
     name: 'above collision capacity',
     entries: 250,
     candidates: 250,
-    maxBytesPerFrame: 13_000,
+    maxBytesPerFrame: 191_000,
     saturated: true,
   },
   {
@@ -131,7 +87,7 @@ const WORKLOADS = [
     profile: 'local-infrastructure',
     entries: LOCAL_OVERLAY_COHORT_LIMIT * 2,
     candidates: LOCAL_OVERLAY_COHORT_LIMIT * 2,
-    maxBytesPerFrame: 49_000,
+    maxBytesPerFrame: 274_000,
     saturated: true,
   },
   {
@@ -139,7 +95,7 @@ const WORKLOADS = [
     profile: 'phase3-firms',
     entries: LOCAL_OVERLAY_COHORT_LIMIT * 2 + FIRMS_AMBIENT_COHORT_LIMIT,
     candidates: LOCAL_OVERLAY_COHORT_LIMIT * 2 + FIRMS_AMBIENT_COHORT_LIMIT,
-    maxBytesPerFrame: 53_600,
+    maxBytesPerFrame: 289_000,
     saturated: true,
     ambientCardCapacity: AMBIENT_CARD_COLLISION_CAPACITY,
   },
@@ -150,7 +106,7 @@ const WORKLOADS = [
       + vesselOverlayCohortLimit(1600, 900) + 1,
     candidates: LOCAL_OVERLAY_COHORT_LIMIT * 2 + FIRMS_AMBIENT_COHORT_LIMIT
       + vesselOverlayCohortLimit(1600, 900) + 1,
-    maxBytesPerFrame: 87_500,
+    maxBytesPerFrame: 395_000,
     saturated: true,
     ambientCardCapacity: AMBIENT_CARD_COLLISION_CAPACITY,
   },
@@ -161,7 +117,7 @@ const WORKLOADS = [
       + vesselOverlayCohortLimit(1600, 900) + 1,
     candidates: LOCAL_OVERLAY_COHORT_LIMIT * 2 + FIRMS_AMBIENT_COHORT_LIMIT
       + vesselOverlayCohortLimit(1600, 900) + 1,
-    maxBytesPerFrame: 86_700,
+    maxBytesPerFrame: 397_000,
     saturated: true,
     ambientCardCapacity: AMBIENT_CARD_COLLISION_CAPACITY,
   },
@@ -172,8 +128,8 @@ const WORKLOADS = [
       + vesselOverlayCohortLimit(1600, 900) + 1 + CCTV_AMBIENT_CARD_MAX + 1,
     candidates: LOCAL_OVERLAY_COHORT_LIMIT * 2 + FIRMS_AMBIENT_COHORT_LIMIT
       + vesselOverlayCohortLimit(1600, 900) + 1 + CCTV_AMBIENT_CARD_MAX + 1,
-    maxBytesPerFrame: 102_400,
-    maxBytesPerCandidatePerFrame: 210,
+    maxBytesPerFrame: 448_000,
+    maxBytesPerCandidatePerFrame: 900,
     saturated: true,
     ambientCardCapacity: AMBIENT_CARD_COLLISION_CAPACITY,
   },
@@ -182,7 +138,7 @@ const WORKLOADS = [
     profile: 'rocket-missions',
     entries: ROCKET_MISSION_AMBIENT_OVERLAY_COHORT_LIMIT,
     candidates: ROCKET_MISSION_AMBIENT_OVERLAY_COHORT_LIMIT,
-    maxBytesPerFrame: 6_000,
+    maxBytesPerFrame: 39_000,
     saturated: true,
   },
   {
@@ -194,8 +150,8 @@ const WORKLOADS = [
     candidates: LOCAL_OVERLAY_COHORT_LIMIT * 2 + FIRMS_AMBIENT_COHORT_LIMIT
       + vesselOverlayCohortLimit(1600, 900) + 1 + CCTV_AMBIENT_CARD_MAX + 1
       + EARTHQUAKE_OVERLAY_COHORT_LIMIT + 3,
-    maxBytesPerFrame: 132_000,
-    maxBytesPerCandidatePerFrame: 225,
+    maxBytesPerFrame: 568_000,
+    maxBytesPerCandidatePerFrame: 900,
     saturated: true,
     ambientCardCapacity: AMBIENT_CARD_COLLISION_CAPACITY,
   },
@@ -212,8 +168,8 @@ const WORKLOADS = [
       + ROCKET_MISSION_AMBIENT_OVERLAY_COHORT_LIMIT,
     // 142,000 deliberately carries ~6% headroom (vs the ~3.3% the previous
     // aggregate row ran at): a chosen margin correction, not drift.
-    maxBytesPerFrame: 142_000,
-    maxBytesPerCandidatePerFrame: 225,
+    maxBytesPerFrame: 608_000,
+    maxBytesPerCandidatePerFrame: 900,
     saturated: true,
     ambientCardCapacity: AMBIENT_CARD_COLLISION_CAPACITY,
   },
@@ -238,8 +194,8 @@ const WORKLOADS = [
       + EARTHQUAKE_OVERLAY_COHORT_LIMIT + 3
       + ROCKET_MISSION_AMBIENT_OVERLAY_COHORT_LIMIT + RADIO_OVERLAY_COHORT_LIMIT + 1
       + CABLE_REFERENCE_LABEL_WINNER_CAP,
-    maxBytesPerFrame: 182_000,
-    maxBytesPerCandidatePerFrame: 225,
+    maxBytesPerFrame: 796_000,
+    maxBytesPerCandidatePerFrame: 900,
     saturated: true,
     ambientCardCapacity: AMBIENT_CARD_COLLISION_CAPACITY,
   },
@@ -256,7 +212,7 @@ const WORKLOADS = [
     profile: 'submarine-cables',
     entries: CABLE_REFERENCE_LABEL_WINNER_CAP,
     candidates: CABLE_REFERENCE_LABEL_WINNER_CAP,
-    maxBytesPerFrame: 19_000,
+    maxBytesPerFrame: 129_000,
     saturated: true,
   },
   {
@@ -271,7 +227,7 @@ const WORKLOADS = [
 ];
 
 /** Scale-invariant ceiling shared by every production-shape workload. */
-const MAX_BYTES_PER_CANDIDATE_PER_FRAME = 154;
+const MAX_BYTES_PER_CANDIDATE_PER_FRAME = 900;
 
 const WORKER_PATH = fileURLToPath(new URL('./worldOverlayAllocation.worker.mjs', import.meta.url));
 

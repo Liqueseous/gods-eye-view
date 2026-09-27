@@ -28,7 +28,13 @@ const FALLBACK_COLORS = Object.freeze({
   monorail: '#5FD6FF',
   funicular: '#5FD6FF',
 });
-const MAX_ROUTE_SEGMENTS = 3000;
+const MAX_ROUTE_SEGMENTS = 10000;
+const MAX_ROUTE_SEGMENTS_PER_ROUTE = 1000;
+const ROUTE_SIMPLIFY_TOLERANCE_DEG = 0.00003;
+const MAX_ROUTE_POINTS_PER_LINE = 256;
+const MAX_MAIN_CORRIDORS = 3;
+const MIN_MAIN_CORRIDOR_RATIO = 0.2;
+const PARALLEL_TRACK_OFFSET_DEG = 0.00025;
 
 function validBounds(bounds) {
   return (
@@ -178,6 +184,49 @@ function clipSegment(a, b, bounds) {
   ];
 }
 
+function simplifyLine(line) {
+  if (line.length <= 2) return line;
+  const toleranceSquared = ROUTE_SIMPLIFY_TOLERANCE_DEG ** 2;
+  const keep = new Uint8Array(line.length);
+  keep[0] = 1;
+  keep[line.length - 1] = 1;
+  const stack = [[0, line.length - 1]];
+  while (stack.length) {
+    const [start, end] = stack.pop();
+    const a = line[start];
+    const b = line[end];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const denominator = dx * dx + dy * dy;
+    let farthest = -1;
+    let maximum = toleranceSquared;
+    for (let index = start + 1; index < end; index += 1) {
+      const point = line[index];
+      const fraction = denominator
+        ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / denominator))
+        : 0;
+      const projected = [a[0] + fraction * dx, a[1] + fraction * dy];
+      const distanceSquared =
+        (point[0] - projected[0]) ** 2 + (point[1] - projected[1]) ** 2;
+      if (distanceSquared > maximum) {
+        maximum = distanceSquared;
+        farthest = index;
+      }
+    }
+    if (farthest !== -1) {
+      keep[farthest] = 1;
+      stack.push([start, farthest], [farthest, end]);
+    }
+  }
+  const simplified = line.filter((_point, index) => keep[index]);
+  if (simplified.length <= MAX_ROUTE_POINTS_PER_LINE) return simplified;
+  const stride = (simplified.length - 1) / (MAX_ROUTE_POINTS_PER_LINE - 1);
+  return Array.from(
+    { length: MAX_ROUTE_POINTS_PER_LINE },
+    (_value, index) => simplified[Math.round(index * stride)],
+  );
+}
+
 function clippedLines(geometry, bounds) {
   const points = (geometry || [])
     .filter(
@@ -215,7 +264,125 @@ function clippedLines(geometry, bounds) {
     }
   }
   flush();
-  return lines;
+  return lines.map(simplifyLine);
+}
+
+function pointsClose(a, b) {
+  return Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+}
+
+function mergeConnectedLines(lines) {
+  const remaining = lines.map((line) => [...line]);
+  const merged = [];
+  while (remaining.length) {
+    const current = remaining.pop();
+    let joined = true;
+    while (joined) {
+      joined = false;
+      for (let index = remaining.length - 1; index >= 0; index -= 1) {
+        const candidate = remaining[index];
+        if (pointsClose(current.at(-1), candidate[0])) {
+          current.push(...candidate.slice(1));
+        } else if (pointsClose(current.at(-1), candidate.at(-1))) {
+          current.push(...candidate.slice(0, -1).reverse());
+        } else if (pointsClose(current[0], candidate.at(-1))) {
+          current.unshift(...candidate.slice(0, -1));
+        } else if (pointsClose(current[0], candidate[0])) {
+          current.unshift(...candidate.slice(1).reverse());
+        } else {
+          continue;
+        }
+        remaining.splice(index, 1);
+        joined = true;
+        break;
+      }
+    }
+    merged.push(simplifyLine(current));
+  }
+  return merged;
+}
+
+function lineLength(line) {
+  let length = 0;
+  const latitudeScale = Math.cos((line[0][1] * Math.PI) / 180);
+  for (let index = 1; index < line.length; index += 1) {
+    const dx = (line[index][0] - line[index - 1][0]) * latitudeScale;
+    const dy = line[index][1] - line[index - 1][1];
+    length += Math.hypot(dx, dy);
+  }
+  return length;
+}
+
+function lineIsParallelTrack(a, b) {
+  const aStart = a[0];
+  const aEnd = a.at(-1);
+  const bStart = b[0];
+  const bEnd = b.at(-1);
+  const aDx = aEnd[0] - aStart[0];
+  const aDy = aEnd[1] - aStart[1];
+  const bDx = bEnd[0] - bStart[0];
+  const bDy = bEnd[1] - bStart[1];
+  const aMagnitude = Math.hypot(aDx, aDy);
+  const bMagnitude = Math.hypot(bDx, bDy);
+  if (!aMagnitude || !bMagnitude) return false;
+  const alignment = (aDx * bDx + aDy * bDy) / (aMagnitude * bMagnitude);
+  if (Math.abs(alignment) < 0.96) return false;
+  if (Math.abs(aMagnitude - bMagnitude) / Math.max(aMagnitude, bMagnitude) > 0.2)
+    return false;
+  const aMid = a[Math.floor(a.length / 2)];
+  const bMid = b[Math.floor(b.length / 2)];
+  return Math.hypot(aMid[0] - bMid[0], aMid[1] - bMid[1]) <= PARALLEL_TRACK_OFFSET_DEG;
+}
+
+function collapseParallelTracks(lines) {
+  const retained = [];
+  for (const line of lines.sort((a, b) => lineLength(b) - lineLength(a))) {
+    if (retained.some((candidate) => lineIsParallelTrack(candidate, line))) continue;
+    retained.push(line);
+  }
+  return retained;
+}
+
+function lineOverviewKey(route) {
+  return [route.network, route.type, route.ref || route.name || route.routeId]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .join('|');
+}
+
+function buildLineOverviews(segments) {
+  const overviews = new Map();
+  for (const segment of segments) {
+    const key = lineOverviewKey(segment);
+    let overview = overviews.get(key);
+    if (!overview) {
+      overview = {
+        ...segment,
+        id: `line:${key}`,
+        routeId: `line:${key}`,
+        lines: [],
+        stops: [],
+      };
+      overviews.set(key, overview);
+    }
+    overview.lines.push(...segment.lines);
+    const stops = new Map(overview.stops.map((stop) => [stop.id, stop]));
+    for (const stop of segment.stops || []) stops.set(stop.id, stop);
+    overview.stops = [...stops.values()];
+  }
+  return [...overviews.values()].map((overview) => {
+    const merged = collapseParallelTracks(mergeConnectedLines(overview.lines));
+    const ranked = merged
+      .map((line) => ({ line, length: lineLength(line) }))
+      .sort((a, b) => b.length - a.length);
+    const minimumLength = (ranked[0]?.length || 0) * MIN_MAIN_CORRIDOR_RATIO;
+    return {
+      ...overview,
+      lines: ranked
+        .filter(({ length }) => length >= minimumLength)
+        .slice(0, MAX_MAIN_CORRIDORS)
+        .map(({ line }) => line),
+    };
+  });
 }
 
 /** Decode and viewport-clip OSM route relation member ways. */
@@ -225,6 +392,7 @@ export function normalizeTransitRoutes(payload, bounds) {
   const waysById = new Map();
   const nodesById = new Map();
   const routeRelations = [];
+  const routeSegmentBuckets = [];
 
   for (const relation of payload?.elements || []) {
     if (relation?.type === 'way' && Array.isArray(relation.geometry)) {
@@ -307,6 +475,8 @@ export function normalizeTransitRoutes(payload, bounds) {
       website,
       memberStops,
     } = route;
+    let routeSegmentCount = 0;
+    const routeSegments = [];
     const stops = memberStops
       .map(({ id, role }) => {
         const node = nodesById.get(id);
@@ -328,11 +498,12 @@ export function normalizeTransitRoutes(payload, bounds) {
       })
       .filter(Boolean);
     const addWay = (wayId, geometry, wayTags = {}) => {
+      if (routeSegmentCount >= MAX_ROUTE_SEGMENTS_PER_ROUTE) return;
       const id = `${relation.id ?? 'route'}:${wayId ?? segments.size}`;
       if (segments.has(id)) return;
       const lines = clippedLines(geometry, safeBounds);
       if (!lines.length) return;
-      segments.set(id, {
+      const segment = {
         id,
         routeId: String(relation.id ?? ''),
         name,
@@ -351,22 +522,34 @@ export function normalizeTransitRoutes(payload, bounds) {
         website,
         stops,
         lines,
-      });
+      };
+      segments.set(id, segment);
+      routeSegments.push(segment);
+      routeSegmentCount += 1;
     };
 
     for (const wayId of route.memberWays) {
       const way = waysById.get(wayId);
       if (way) addWay(wayId, way.geometry, way.tags);
-      if (segments.size >= MAX_ROUTE_SEGMENTS) break;
     }
-    if (segments.size >= MAX_ROUTE_SEGMENTS) break;
     for (const way of route.inlineWays) {
       addWay(way.ref, way.geometry, way.tags);
-      if (segments.size >= MAX_ROUTE_SEGMENTS) break;
     }
-    if (segments.size >= MAX_ROUTE_SEGMENTS) break;
+    if (routeSegments.length) routeSegmentBuckets.push(routeSegments);
   }
-  return [...segments.values()];
+  const selected = [];
+  for (let index = 0; selected.length < MAX_ROUTE_SEGMENTS; index += 1) {
+    let added = false;
+    for (const bucket of routeSegmentBuckets) {
+      const segment = bucket[index];
+      if (!segment) continue;
+      selected.push(segment);
+      added = true;
+      if (selected.length >= MAX_ROUTE_SEGMENTS) break;
+    }
+    if (!added) break;
+  }
+  return buildLineOverviews(selected);
 }
 
 /** Source for viewport-bounded static OSM transit route relations. */

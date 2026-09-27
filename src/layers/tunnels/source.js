@@ -1,4 +1,5 @@
 import { fetchOsmCacheTiles } from '../../data/osmCacheBounds.js';
+import { simplifyLine } from '../../data/lineGeometry.js';
 
 const MAX_QUERY_SPAN_DEG = 5;
 const MAX_QUERY_TIMEOUT_SEC = 20;
@@ -43,7 +44,8 @@ export function normalizeTunnelWays(payload) {
     const id = String(element.id ?? '');
     if (!kind || !id || records.has(id)) continue;
 
-    const coordinates = element.geometry
+    const coordinates = simplifyLine(
+      element.geometry
       .filter(
         (point) =>
           Number.isFinite(point?.lon) &&
@@ -53,7 +55,8 @@ export function normalizeTunnelWays(payload) {
           point.lat >= -90 &&
           point.lat <= 90,
       )
-      .map((point) => [point.lon, point.lat]);
+      .map((point) => [point.lon, point.lat]),
+    );
     if (coordinates.length < 2) continue;
 
     records.set(id, {

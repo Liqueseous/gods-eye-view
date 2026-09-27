@@ -107,7 +107,141 @@ test('route relations expose clipped member geometry and preserve route colors',
       lon: -71.1,
     },
   ]);
-  assert.deepEqual(routes[0].lines, [[[-71.2, 42.35], [-71.1, 42.35], [-71, 42.35]]]);
+  assert.deepEqual(routes[0].lines, [[[-71.2, 42.35], [-71, 42.35]]]);
+});
+
+test('route geometry simplifies dense points while preserving endpoints', () => {
+  const geometry = Array.from({ length: 1000 }, (_value, index) => ({
+    lon: -71.2 + index * 0.0002,
+    lat: 42.35,
+  }));
+  const [line] = normalizeTransitRoutes(
+    {
+      elements: [
+        {
+          type: 'relation',
+          id: 14,
+          tags: { route: 'subway', ref: 'Blue' },
+          members: [{ type: 'way', ref: 1400 }],
+        },
+        { type: 'way', id: 1400, geometry },
+      ],
+    },
+    { south: 42.3, west: -71.2, north: 42.4, east: -71 },
+  )[0].lines;
+
+  assert.deepEqual(line, [
+    [-71.2, 42.35],
+    [-71.0002, 42.35],
+  ]);
+});
+
+test('route normalization bounds oversized relation geometry', () => {
+  const elements = [];
+  for (let relationId = 1; relationId <= 20; relationId += 1) {
+    const members = [];
+    for (let wayIndex = 0; wayIndex < 90; wayIndex += 1) {
+      const wayId = relationId * 1000 + wayIndex;
+      members.push({ type: 'way', ref: wayId });
+      elements.push({
+        type: 'way',
+        id: wayId,
+        geometry: [
+          { lon: -71.1, lat: 42.35 },
+          { lon: -71.05, lat: 42.35 },
+        ],
+      });
+    }
+    elements.push({
+      type: 'relation',
+      id: relationId,
+      tags: { route: 'tram', ref: `T${relationId}` },
+      members,
+    });
+  }
+
+  const routes = normalizeTransitRoutes({ elements }, BOUNDS);
+  assert.equal(routes.length, 20);
+  assert.equal(new Set(routes.map((route) => route.ref)).size, 20);
+  assert.ok(routes.every((route) => route.lines.length > 0));
+});
+
+test('line overviews keep substantial branches without restoring every track', () => {
+  const routes = normalizeTransitRoutes(
+    {
+      elements: [
+        {
+          type: 'relation',
+          id: 21,
+          tags: { route: 'light_rail', ref: 'Green', network: 'MBTA' },
+          members: [
+            { type: 'way', ref: 2101 },
+            { type: 'way', ref: 2102 },
+          ],
+        },
+        {
+          type: 'way',
+          id: 2101,
+          geometry: [
+            { lon: -71.2, lat: 42.35 },
+            { lon: -71.1, lat: 42.35 },
+          ],
+        },
+        {
+          type: 'way',
+          id: 2102,
+          geometry: [
+            { lon: -71.2, lat: 42.4 },
+            { lon: -70.9, lat: 42.4 },
+          ],
+        },
+      ],
+    },
+    BOUNDS,
+  );
+
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].ref, 'Green');
+  assert.equal(routes[0].lines.length, 2);
+  assert.ok(routes[0].lines.every((line) => line.length === 2));
+});
+
+test('line overviews collapse nearby parallel tracks', () => {
+  const routes = normalizeTransitRoutes(
+    {
+      elements: [
+        {
+          type: 'relation',
+          id: 22,
+          tags: { route: 'subway', ref: 'Blue', network: 'MBTA' },
+          members: [
+            { type: 'way', ref: 2201 },
+            { type: 'way', ref: 2202 },
+          ],
+        },
+        {
+          type: 'way',
+          id: 2201,
+          geometry: [
+            { lon: -71.2, lat: 42.35 },
+            { lon: -71.0, lat: 42.35 },
+          ],
+        },
+        {
+          type: 'way',
+          id: 2202,
+          geometry: [
+            { lon: -71.2, lat: 42.3501 },
+            { lon: -71.0, lat: 42.3501 },
+          ],
+        },
+      ],
+    },
+    BOUNDS,
+  );
+
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].lines.length, 1);
 });
 
 test('route colors fall back to line name, then route type', () => {

@@ -1,3 +1,5 @@
+import { simplifyLine } from '../data/lineGeometry.js';
+
 /** Decode OSM ways into portable road coordinates, classes and travel direction. */
 export function normalizeOverpassRoads(payload) {
   const roads = [];
@@ -10,7 +12,9 @@ export function normalizeOverpassRoads(payload) {
       continue;
     const oneway = element.tags?.oneway;
     roads.push({
-      coordinates: element.geometry.map((point) => [point.lon, point.lat]),
+      coordinates: simplifyLine(
+        element.geometry.map((point) => [point.lon, point.lat]),
+      ),
       type: element.tags?.highway || 'unclassified',
       oneway:
         oneway === 'yes' ||

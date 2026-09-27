@@ -6,8 +6,6 @@ import { createTransitRouteLines } from './routeLines.js';
 test('route lines render with a contrast outline and route color, then release on disable', async () => {
   const sceneEntities = [];
   const sourceCalls = [];
-  const prefetchStarted = Promise.withResolvers();
-  const releasePrefetch = Promise.withResolvers();
   let selectedRoute = null;
   const viewer = {
     scene: { requestRender() {} },
@@ -31,10 +29,6 @@ test('route lines render with a contrast outline and route color, then release o
     routeSource: {
       async requestRoutes(bounds) {
         sourceCalls.push(bounds);
-        if (sourceCalls.length === 2) {
-          prefetchStarted.resolve();
-          await releasePrefetch.promise;
-        }
         return {
           ok: true,
           status: 200,
@@ -78,9 +72,9 @@ test('route lines render with a contrast outline and route color, then release o
     north: 42.4,
     east: -71,
   });
-  await prefetchStarted.promise;
 
-  assert.equal(sourceCalls.length, 2);
+  await update;
+  assert.equal(sourceCalls.length, 1);
   assert.ok(sourceCalls[0].north - sourceCalls[0].south <= 1);
   assert.ok(sourceCalls[0].south <= 42.3, 'query includes the viewport south edge');
   assert.ok(sourceCalls[0].west <= -71.2, 'query includes the viewport west edge');
@@ -88,21 +82,13 @@ test('route lines render with a contrast outline and route color, then release o
   assert.ok(sourceCalls[0].east >= -71, 'query includes the viewport east edge');
   assert.ok(sourceCalls[0].north - sourceCalls[0].south <= 0.12);
   assert.ok(sourceCalls[0].east - sourceCalls[0].west <= 0.22);
-  assert.ok(sourceCalls[1].south < sourceCalls[0].south);
-  assert.ok(sourceCalls[1].west < sourceCalls[0].west);
-  assert.ok(sourceCalls[1].north > sourceCalls[0].north);
-  assert.ok(sourceCalls[1].east > sourceCalls[0].east);
   assert.equal(sceneEntities.length, 2, 'outline and colored route are drawn');
   assert.equal(layer.diagnostics().count, 1, 'in-view routes draw before prefetch');
-  assert.equal(layer.diagnostics().requestStage, 'prefetch');
   assert.deepEqual(layer.diagnostics().coverageBounds, sourceCalls[0]);
   assert.equal(layer.selectFromPick(sceneEntities[0].id), true);
   assert.equal(selectedRoute.routeId, '12');
   assert.equal(selectedRoute.name, 'Blue Line');
   assert.deepEqual(selectedRoute.stops.map(({ name }) => name), ['Central']);
-  releasePrefetch.resolve();
-  await update;
-
   assert.deepEqual(sceneEntities[0].polyline.material, Cesium.Color.fromCssColorString('#07131B'));
   assert.deepEqual(sceneEntities[1].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
   assert.ok(
@@ -122,7 +108,7 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(routeDiagnostics.lastStatus, 200);
   assert.equal(routeDiagnostics.cache, 'HIT');
   assert.equal(routeDiagnostics.upstream, 'overpass.example');
-  assert.deepEqual(routeDiagnostics.bounds, sourceCalls[1]);
+  assert.deepEqual(routeDiagnostics.bounds, sourceCalls[0]);
   assert.deepEqual(routeDiagnostics.routes[0].lines, [[[-71.1, 42.35], [-71.05, 42.35]]]);
   assert.equal(layer.diagnostics().routes[0].lines, undefined);
   await layer.update({
@@ -131,7 +117,7 @@ test('route lines render with a contrast outline and route color, then release o
     north: 42.4,
     east: -71,
   });
-  assert.equal(sourceCalls.length, 2, 'cached prefetch covers nearby view pans');
+  assert.equal(sourceCalls.length, 1, 'cached coverage covers nearby view pans');
 
   layer.setVisible(false);
   assert.equal(sceneEntities.every((entity) => entity.show === false), true);
@@ -140,9 +126,8 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(layer.diagnostics().count, 0);
 });
 
-test('a newly visible area supersedes an in-flight surrounding prefetch', async () => {
+test('a newly visible area supersedes an in-flight priority request', async () => {
   const calls = [];
-  const prefetchStarted = Promise.withResolvers();
   const priorityStarted = Promise.withResolvers();
   const response = {
     ok: true,
@@ -156,8 +141,7 @@ test('a newly visible area supersedes an in-flight surrounding prefetch', async 
     routeSource: {
       requestRoutes(bounds, { signal }) {
         calls.push(bounds);
-        if (calls.length === 2) {
-          prefetchStarted.resolve();
+        if (calls.length === 1) {
           return new Promise((_resolve, reject) => {
             signal.addEventListener(
               'abort',
@@ -166,7 +150,7 @@ test('a newly visible area supersedes an in-flight surrounding prefetch', async 
             );
           });
         }
-        if (calls.length === 3) priorityStarted.resolve();
+        priorityStarted.resolve();
         return Promise.resolve(response);
       },
     },
@@ -181,7 +165,6 @@ test('a newly visible area supersedes an in-flight surrounding prefetch', async 
     north: 42.4,
     east: -71,
   });
-  await prefetchStarted.promise;
   const secondUpdate = layer.update({
     south: 42.41,
     west: -71.2,
@@ -192,9 +175,9 @@ test('a newly visible area supersedes an in-flight surrounding prefetch', async 
   await secondUpdate;
   await firstUpdate;
 
-  assert.equal(calls.length, 4, 'new priority area loads before its prefetch');
-  assert.ok(calls[2].south <= 42.41);
-  assert.ok(calls[2].north >= 42.49);
-  assert.ok(calls[2].north - calls[2].south <= 0.12);
+  assert.equal(calls.length, 2, 'new priority area replaces the stale request');
+  assert.ok(calls[1].south <= 42.41);
+  assert.ok(calls[1].north >= 42.49);
+  assert.ok(calls[1].north - calls[1].south <= 0.12);
   layer.destroy();
 });

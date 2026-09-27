@@ -516,7 +516,7 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   }),
   Object.freeze({
     id: 'nws-alerts',
-    token: '3',
+    token: '4',
     disposition: 'enabled-only',
   }),
   Object.freeze({

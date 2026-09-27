@@ -5,10 +5,6 @@ export const TRANSIT_ROUTE_MAX_ALTITUDE_M = 500_000;
 
 const MIN_VIEW_SPAN_DEG = 0.1;
 const QUERY_GRID_DEG = 0.01;
-// The 0.1 degree tile cache already provides nearby reuse. A 3x speculative
-// route query produced multi-megabyte responses during pans and blocked JSON
-// decoding long after the camera had moved on.
-const PREFETCH_FACTOR = 1.5;
 const ROUTE_CACHE_TTL_MS = 6 * 60 * 60_000;
 const FAILURE_RETRY_MS = 30_000;
 const OUTLINE_COLOR = '#07131B';
@@ -52,26 +48,6 @@ function boundsContain(outer, inner) {
     outer.north >= inner.north - epsilon &&
     outer.east >= inner.east - epsilon
   );
-}
-
-function prefetchBounds(bounds) {
-  const safe = stableQueryBounds(bounds);
-  const centerLat = (safe.south + safe.north) / 2;
-  const centerLon = (safe.west + safe.east) / 2;
-  const halfLat = Math.min(
-    0.5,
-    ((safe.north - safe.south) * PREFETCH_FACTOR) / 2,
-  );
-  const halfLon = Math.min(
-    0.5,
-    ((safe.east - safe.west) * PREFETCH_FACTOR) / 2,
-  );
-  return stableQueryBounds({
-    south: Math.max(-90, centerLat - halfLat),
-    west: Math.max(-180, centerLon - halfLon),
-    north: Math.min(90, centerLat + halfLat),
-    east: Math.min(180, centerLon + halfLon),
-  });
 }
 
 function routePositions(line) {
@@ -233,6 +209,10 @@ export function createTransitRouteLines({
 
   function promoteReadyReplacement() {
     if (!pendingReplacement) return;
+    if (!primitives.length && !entities.length) {
+      commitRoutes(pendingReplacement);
+      return;
+    }
     if (
       pendingReplacement.primitives.some(
         (primitive) => primitive.ready !== true,
@@ -380,7 +360,8 @@ export function createTransitRouteLines({
       const payload = await response.json();
       if (!enabled || requestGeneration !== generation || signal.aborted)
         return false;
-      const replaced = await replaceRoutes(payload.routes || [], () =>
+      const nextRoutes = payload.routes || [];
+      const replaced = await replaceRoutes(nextRoutes, () =>
         enabled && requestGeneration === generation && !signal.aborted,
       );
       if (!replaced) return false;
@@ -411,31 +392,11 @@ export function createTransitRouteLines({
   async function update(bounds) {
     if (!enabled || !visible || !bounds) return;
     const priorityBounds = stableQueryBounds(bounds);
-    const expanded = prefetchBounds(priorityBounds);
     const now = Date.now();
     const coverageFresh =
       coverageBounds && now - lastUpdate < ROUTE_CACHE_TTL_MS;
 
-    if (coverageFresh && boundsContain(coverageBounds, priorityBounds)) {
-      if (boundsContain(coverageBounds, expanded)) return;
-      if (requestKey) return;
-      const expandedKey = routeBoundsKey(expanded);
-      if (
-        lastFailureKey === expandedKey &&
-        now - lastFailureAt < FAILURE_RETRY_MS
-      )
-        return;
-      const requestGeneration = ++generation;
-      abortController?.abort();
-      abortController = new AbortController();
-      await loadBounds(
-        expanded,
-        requestGeneration,
-        abortController.signal,
-        'prefetch',
-      );
-      return;
-    }
+    if (coverageFresh && boundsContain(coverageBounds, priorityBounds)) return;
 
     if (requestKey) {
       if (
@@ -469,19 +430,6 @@ export function createTransitRouteLines({
       'priority',
     );
     if (!loadedInView || !enabled || requestGeneration !== generation) return;
-    if (boundsContain(coverageBounds, expanded)) return;
-    const expandedKey = routeBoundsKey(expanded);
-    if (
-      lastFailureKey === expandedKey &&
-      Date.now() - lastFailureAt < FAILURE_RETRY_MS
-    )
-      return;
-    await loadBounds(
-      expanded,
-      requestGeneration,
-      abortController.signal,
-      'prefetch',
-    );
   }
 
   function selectFromPick(picked) {
