@@ -149,9 +149,18 @@ test('known rail routes use their network colors and unknown routes keep mode st
   assert.equal(transitRouteColor(mbta, 'Green-C'), '#00843D');
   assert.equal(transitRouteColor(mbta, 'CR-Fitchburg'), '#80276C');
   assert.equal(transitRouteColor(mbta, '66'), null);
-  assert.equal(transitRouteColor(getTransitFeed('hsl-helsinki'), '31M1'), '#FF6319');
-  assert.equal(transitRouteColor(getTransitFeed('metrotransit-msp'), '901'), '#0053A4');
-  assert.equal(transitRouteColor(getTransitFeed('metrotransit-msp'), '902'), '#007A3D');
+  assert.equal(
+    transitRouteColor(getTransitFeed('hsl-helsinki'), '31M1'),
+    '#FF6319',
+  );
+  assert.equal(
+    transitRouteColor(getTransitFeed('metrotransit-msp'), '901'),
+    '#0053A4',
+  );
+  assert.equal(
+    transitRouteColor(getTransitFeed('metrotransit-msp'), '902'),
+    '#007A3D',
+  );
   assert.equal(transitRouteColor({ routeColor: () => 'invalid' }, 'x'), null);
 });
 

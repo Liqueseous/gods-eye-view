@@ -64,11 +64,7 @@ export function clampTransitRouteBounds(bounds) {
     lat: (bounds.south + bounds.north) / 2,
     lon: centerLon,
   };
-  const clamped = clampBoundsAroundCenter(
-    bounds,
-    center,
-    MAX_QUERY_SPAN_DEG,
-  );
+  const clamped = clampBoundsAroundCenter(bounds, center, MAX_QUERY_SPAN_DEG);
   const rounded = (value) => Number(value.toFixed(6));
   return {
     south: rounded(Math.max(-90, clamped.south)),
@@ -137,7 +133,8 @@ function routeAliases(route) {
 
 /** True only when a live GTFS route id unambiguously matches this OSM route. */
 export function transitRouteMatchesVehicle(route, vehicleRouteId) {
-  if (typeof vehicleRouteId !== 'string' || !vehicleRouteId.trim()) return false;
+  if (typeof vehicleRouteId !== 'string' || !vehicleRouteId.trim())
+    return false;
   const aliases = routeAliases(route);
   const id = vehicleRouteId.trim().toUpperCase();
   const candidates = [id];
@@ -203,7 +200,13 @@ function simplifyLine(line) {
     for (let index = start + 1; index < end; index += 1) {
       const point = line[index];
       const fraction = denominator
-        ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / denominator))
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / denominator,
+            ),
+          )
         : 0;
       const projected = [a[0] + fraction * dx, a[1] + fraction * dy];
       const distanceSquared =
@@ -327,17 +330,24 @@ function lineIsParallelTrack(a, b) {
   if (!aMagnitude || !bMagnitude) return false;
   const alignment = (aDx * bDx + aDy * bDy) / (aMagnitude * bMagnitude);
   if (Math.abs(alignment) < 0.96) return false;
-  if (Math.abs(aMagnitude - bMagnitude) / Math.max(aMagnitude, bMagnitude) > 0.2)
+  if (
+    Math.abs(aMagnitude - bMagnitude) / Math.max(aMagnitude, bMagnitude) >
+    0.2
+  )
     return false;
   const aMid = a[Math.floor(a.length / 2)];
   const bMid = b[Math.floor(b.length / 2)];
-  return Math.hypot(aMid[0] - bMid[0], aMid[1] - bMid[1]) <= PARALLEL_TRACK_OFFSET_DEG;
+  return (
+    Math.hypot(aMid[0] - bMid[0], aMid[1] - bMid[1]) <=
+    PARALLEL_TRACK_OFFSET_DEG
+  );
 }
 
 function collapseParallelTracks(lines) {
   const retained = [];
   for (const line of lines.sort((a, b) => lineLength(b) - lineLength(a))) {
-    if (retained.some((candidate) => lineIsParallelTrack(candidate, line))) continue;
+    if (retained.some((candidate) => lineIsParallelTrack(candidate, line)))
+      continue;
     retained.push(line);
   }
   return retained;
@@ -345,7 +355,11 @@ function collapseParallelTracks(lines) {
 
 function lineOverviewKey(route) {
   return [route.network, route.type, route.ref || route.name || route.routeId]
-    .map((value) => String(value || '').trim().toLowerCase())
+    .map((value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase(),
+    )
     .join('|');
 }
 
@@ -480,8 +494,13 @@ export function normalizeTransitRoutes(payload, bounds) {
     const stops = memberStops
       .map(({ id, role }) => {
         const node = nodesById.get(id);
-        if (!node || node.lat < safeBounds.south || node.lat > safeBounds.north ||
-          node.lon < safeBounds.west || node.lon > safeBounds.east)
+        if (
+          !node ||
+          node.lat < safeBounds.south ||
+          node.lat > safeBounds.north ||
+          node.lon < safeBounds.west ||
+          node.lon > safeBounds.east
+        )
           return null;
         const tags = node.tags || {};
         return {

@@ -120,7 +120,10 @@ export function createSelection({ state, services, parts, source }) {
     const stops = route.stops || [];
     if (stops.length) {
       details.push(`${stops.length} mapped stops in loaded area`);
-      const names = stops.map((stop) => stop.name).filter(Boolean).slice(0, 5);
+      const names = stops
+        .map((stop) => stop.name)
+        .filter(Boolean)
+        .slice(0, 5);
       if (names.length) details.push(names.join(' · '));
     } else {
       details.push('No mapped stops in the loaded route data');
@@ -137,7 +140,9 @@ export function createSelection({ state, services, parts, source }) {
       details.push('No matching live vehicles from active feeds');
     }
     if (selectedRouteData?.loading) {
-      details.push(`MBTA predictions and alerts loading · ${selectedMbtaRouteId}`);
+      details.push(
+        `MBTA predictions and alerts loading · ${selectedMbtaRouteId}`,
+      );
     } else if (selectedRouteData?.error) {
       details.push('MBTA predictions and alerts are unavailable');
     } else if (selectedRouteData) {
@@ -170,7 +175,9 @@ export function createSelection({ state, services, parts, source }) {
         details.push('No active MBTA service alerts');
       }
     } else {
-      details.push('Schedules and service alerts are not provided for this route');
+      details.push(
+        'Schedules and service alerts are not provided for this route',
+      );
     }
     if (route.description) details.push(route.description);
     return { title, details, mode };
@@ -239,7 +246,9 @@ export function createSelection({ state, services, parts, source }) {
       } catch (error) {
         if (error?.name === 'AbortError' || routeDataController !== controller)
           return;
-        selectedRouteData = { error: error?.message || 'MBTA route details unavailable' };
+        selectedRouteData = {
+          error: error?.message || 'MBTA route details unavailable',
+        };
         publishSelectedRoute();
         governorRequestRender('transit-route-details-error');
       } finally {
@@ -394,13 +403,14 @@ export function createSelection({ state, services, parts, source }) {
 
   function refreshSelectedRouteCard() {
     if (!selectedRoute) return;
-    selectedRoute = parts.routes.getRoute(selectedRoute.routeId) || selectedRoute;
+    selectedRoute =
+      parts.routes.getRoute(selectedRoute.routeId) || selectedRoute;
     publishSelectedRoute();
   }
 
   function onKeyDown(event) {
-      if (event.key === 'Escape' && (state._selectedKey || selectedRoute))
-        clearSelection();
+    if (event.key === 'Escape' && (state._selectedKey || selectedRoute))
+      clearSelection();
   }
 
   function installClickHandler(viewer) {

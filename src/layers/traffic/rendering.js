@@ -55,7 +55,10 @@ export function createRendering({
 
   function raiseHeatLinesToTop() {
     const primitives = layerState._viewer?.scene?.groundPrimitives;
-    for (const primitive of [layerState._heatJamPrim, layerState._heatSlowPrim]) {
+    for (const primitive of [
+      layerState._heatJamPrim,
+      layerState._heatSlowPrim,
+    ]) {
       if (primitive) primitives?.raiseToTop?.(primitive);
     }
   }

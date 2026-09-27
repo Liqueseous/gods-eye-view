@@ -459,11 +459,12 @@ test('static OSM rail routes render when the realtime fleet is empty', async (t)
 
   assert.equal(app.vehicles().length, 0);
   assert.ok(app.requested.includes('/api/overpass'));
+  assert.equal(app.layer._transitPartsForTest().routes.diagnostics().count, 1);
   assert.equal(
-    app.layer._transitPartsForTest().routes.diagnostics().count,
-    1,
+    app.entities.length,
+    2,
+    'outlined route is visible without live vehicles',
   );
-  assert.equal(app.entities.length, 2, 'outlined route is visible without live vehicles');
   assert.deepEqual(
     app.entities[1].polyline.material,
     Cesium.Color.fromCssColorString('#00843D'),
@@ -508,7 +509,7 @@ test('selecting a mapped route opens route details and replaces vehicle selectio
                 },
               ],
               alerts: [{ header: 'Red Line delays', effect: 'DELAY' }],
-                          alerts: [{ header: alertHeader, effect: 'DELAY' }],
+              alerts: [{ header: alertHeader, effect: 'DELAY' }],
             };
           },
         };
@@ -534,9 +535,20 @@ test('selecting a mapped route opens route details and replaces vehicle selectio
                   operator: 'MBTA',
                   from: 'Alewife',
                   to: 'Ashmont/Braintree',
-                  lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
+                  lines: [
+                    [
+                      [-71.1, 42.35],
+                      [-71.05, 42.35],
+                    ],
+                  ],
                   stops: [
-                    { id: '1', name: 'Central', role: 'stop', lat: 42.35, lon: -71.1 },
+                    {
+                      id: '1',
+                      name: 'Central',
+                      role: 'stop',
+                      lat: 42.35,
+                      lon: -71.1,
+                    },
                   ],
                 },
               ],
@@ -552,9 +564,11 @@ test('selecting a mapped route opens route details and replaces vehicle selectio
   const parts = app.layer._transitPartsForTest();
   assert.equal(app.entities.length, 2, 'route has an outline and color stroke');
   app.viewer.scene.pick = () => ({ id: app.entities[0] });
-  app.state()._clickHandler.getInputAction(
-    Cesium.ScreenSpaceEventType.LEFT_CLICK,
-  )({ position: new Cesium.Cartesian2(500, 400) });
+  app
+    .state()
+    ._clickHandler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK)({
+    position: new Cesium.Cartesian2(500, 400),
+  });
   await new Promise((resolve) => setImmediate(resolve));
 
   const routeCard = app.overlaySources.get('transit-route-selected')?.[0];
@@ -563,23 +577,27 @@ test('selecting a mapped route opens route details and replaces vehicle selectio
   assert.equal(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS.moving, true);
   assert.equal(typeof routeCard.position, 'function');
   const initialAnchor = routeCard.position();
-  app.viewer.camera.positionCartographic.longitude = Cesium.Math.toRadians(-71.1);
+  app.viewer.camera.positionCartographic.longitude =
+    Cesium.Math.toRadians(-71.1);
   const pannedAnchor = routeCard.position();
   assert.ok(Cesium.Cartesian3.distance(initialAnchor, pannedAnchor) > 1000);
   assert.match(routeCard.details.join(' · '), /Subway · MBTA/);
   assert.match(routeCard.details.join(' · '), /1 mapped stops/);
   assert.match(routeCard.details.join(' · '), /Central/);
-  assert.match(routeCard.details.join(' · '), /1 matching live vehicles · MBTA/);
+  assert.match(
+    routeCard.details.join(' · '),
+    /1 matching live vehicles · MBTA/,
+  );
   assert.match(routeCard.details.join(' · '), /Next MBTA stops: Harvard/);
   assert.match(routeCard.details.join(' · '), /MBTA alert: Red Line trains/);
-    assert.match(routeCard.details.join(' · '), /MBTA alert: Red Line trains/);
-    const alertStart = routeCard.details.findIndex((line) =>
-      line.startsWith('MBTA alert:'),
-    );
-    const wrappedAlert = routeCard.details.slice(alertStart);
-    assert.ok(wrappedAlert.length > 1, 'long MBTA alert wraps to multiple rows');
-    assert.ok(wrappedAlert.every((line) => line.length <= 42));
-    assert.equal(wrappedAlert.join(' '), `MBTA alert: ${alertHeader}`);
+  assert.match(routeCard.details.join(' · '), /MBTA alert: Red Line trains/);
+  const alertStart = routeCard.details.findIndex((line) =>
+    line.startsWith('MBTA alert:'),
+  );
+  const wrappedAlert = routeCard.details.slice(alertStart);
+  assert.ok(wrappedAlert.length > 1, 'long MBTA alert wraps to multiple rows');
+  assert.ok(wrappedAlert.every((line) => line.length <= 42));
+  assert.equal(wrappedAlert.join(' '), `MBTA alert: ${alertHeader}`);
   assert.deepEqual(routeDataCalls, [{ feedId: 'mbta', routeId: 'Red' }]);
   assert.ok(app.credits.includes('transit-mbta'));
 

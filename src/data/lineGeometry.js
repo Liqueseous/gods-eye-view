@@ -2,7 +2,9 @@ const DEFAULT_TOLERANCE_DEG = 0.00003;
 const DEFAULT_MAX_POINTS = 256;
 
 function pointsClose(a, b, tolerance) {
-  return Math.abs(a[0] - b[0]) <= tolerance && Math.abs(a[1] - b[1]) <= tolerance;
+  return (
+    Math.abs(a[0] - b[0]) <= tolerance && Math.abs(a[1] - b[1]) <= tolerance
+  );
 }
 
 /** Simplify lon/lat geometry while preserving its endpoints. */
@@ -28,7 +30,13 @@ export function simplifyLine(
     for (let index = start + 1; index < end; index += 1) {
       const point = line[index];
       const fraction = denominator
-        ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / denominator))
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / denominator,
+            ),
+          )
         : 0;
       const projected = [a[0] + fraction * dx, a[1] + fraction * dy];
       const distanceSquared =

@@ -202,6 +202,7 @@
       "server/providers/overpass/constants.js",
       "server/providers/overpass/geometry.js",
       "server/providers/overpass/query.js",
+      "server/providers/overpass/selfHosted.js",
       "server/providers/overpass/transport.js",
       "server/providers/places/routes.js",
       "src/data/placeProviderPayloads.js",
@@ -1010,6 +1011,7 @@
     "modules": [
       "src/data/cameraSensitivity.js",
       "src/data/flowMatch.js",
+      "src/data/lineGeometry.js",
       "src/data/osmCacheBounds.js",
       "src/data/tomtomTiles.js",
       "src/data/trafficBounds.js",
@@ -1281,6 +1283,7 @@
       "src/data/bhoteKoshiIncidentPlaces.js",
       "src/data/bhoteKoshiFloodPath.js",
       "src/data/bhoteKoshiShotPaths.js",
+      "src/data/lineGeometry.js",
       "src/annotations/annotationEngine.js",
       "src/annotations/annotationResolver.js",
       "src/annotations/hybridAnnotationRenderer.js",
@@ -2069,6 +2072,7 @@
       "src/data/firmsAdapt.js",
       "src/data/firmsLabels.js",
       "src/data/flowMatch.js",
+      "src/data/lineGeometry.js",
       "src/data/focusDeemphasis.js",
       "src/data/geoid.js",
       "src/data/iconOrientation.js",
@@ -2442,6 +2446,7 @@
       "src/data/detection.js",
       "src/data/detectionRenderDemand.js",
       "src/data/detectionPresentation.js",
+      "src/data/lineGeometry.js",
       "src/data/modelEligibility.js",
       "src/app/layers/recentImagery.js",
       "src/layers/recentImagery/index.js",
@@ -2741,6 +2746,7 @@
   "traffic-source-factory": {
     "exports": ["./layers/traffic/source"],
     "modules": [
+      "src/data/lineGeometry.js",
       "src/data/tomtomTiles.js",
       "src/data/osmCacheBounds.js",
       "src/layers/traffic/flowDecode.js",

@@ -445,9 +445,12 @@ function osmTileCacheReadout(cache) {
     : '0 TILES · NO REQUESTS';
   const details = (cache?.sources || []).flatMap((source) => [
     `${source.id}: ${source.tileCount} tiles · ${source.cacheHits} memory · ${source.diskHits} disk · ${source.upstreamFetches} upstream · ${source.staleResponses} stale · ${source.errors} errors`,
-    ...source.tiles.slice(0, 8).map((tile) =>
-      `${source.id} ${tile.bounds.south.toFixed(3)},${tile.bounds.west.toFixed(3)},${tile.bounds.north.toFixed(3)},${tile.bounds.east.toFixed(3)} ${tile.lastStatus}`,
-    ),
+    ...source.tiles
+      .slice(0, 8)
+      .map(
+        (tile) =>
+          `${source.id} ${tile.bounds.south.toFixed(3)},${tile.bounds.west.toFixed(3)},${tile.bounds.north.toFixed(3)},${tile.bounds.east.toFixed(3)} ${tile.lastStatus}`,
+      ),
   ]);
   const activity = [
     `${cache?.tileDegrees ?? 0.1}° GRID`,
@@ -508,7 +511,10 @@ function readLiveDiagnostics() {
           .filter(Boolean)
           .join(' · '),
       }
-    : { text: 'NO DIAGNOSTICS', title: 'Transit route diagnostics unavailable.' };
+    : {
+        text: 'NO DIAGNOSTICS',
+        title: 'Transit route diagnostics unavailable.',
+      };
 
   return {
     camera: carto

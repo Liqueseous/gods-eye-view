@@ -46,16 +46,16 @@ export function normalizeTunnelWays(payload) {
 
     const coordinates = simplifyLine(
       element.geometry
-      .filter(
-        (point) =>
-          Number.isFinite(point?.lon) &&
-          Number.isFinite(point?.lat) &&
-          point.lon >= -180 &&
-          point.lon <= 180 &&
-          point.lat >= -90 &&
-          point.lat <= 90,
-      )
-      .map((point) => [point.lon, point.lat]),
+        .filter(
+          (point) =>
+            Number.isFinite(point?.lon) &&
+            Number.isFinite(point?.lat) &&
+            point.lon >= -180 &&
+            point.lon <= 180 &&
+            point.lat >= -90 &&
+            point.lat <= 90,
+        )
+        .map((point) => [point.lon, point.lat]),
     );
     if (coordinates.length < 2) continue;
 

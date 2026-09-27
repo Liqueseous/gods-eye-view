@@ -246,8 +246,7 @@ export const TRANSIT_FEED_REGISTRY = Object.freeze([
     terms: Object.freeze({
       quote:
         'The MTA authorizes downloading and hosting its data on a non-MTA server, subject to its Data Feeds Terms and Conditions.',
-      note:
-        'Bus Time GTFS-Realtime requires an API key. The key is supplied as MTA_BUS_API_KEY to the server only. Do not imply MTA endorsement; disclose possible non-real-time data if a feed lags by more than one minute.',
+      note: 'Bus Time GTFS-Realtime requires an API key. The key is supplied as MTA_BUS_API_KEY to the server only. Do not imply MTA endorsement; disclose possible non-real-time data if a feed lags by more than one minute.',
     }),
     defaultMode: 'bus',
   }),

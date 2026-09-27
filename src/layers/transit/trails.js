@@ -41,9 +41,7 @@ export function createTrails({ state, services, parts, source }) {
     return renderer;
   }
   function style() {
-    const feed = selected
-      ? getRegisteredTransitFeed(selected.feedId)
-      : null;
+    const feed = selected ? getRegisteredTransitFeed(selected.feedId) : null;
     const routeColor = transitRouteColor(feed, selected?.record?.routeId);
     renderer?.setStyle(
       transitStyleProfile(state._stylePreset) === 'mono'

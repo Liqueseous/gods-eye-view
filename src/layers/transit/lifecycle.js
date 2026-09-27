@@ -161,7 +161,10 @@ export function createLifecycle({ state, services, parts }) {
       state._rotationPose = null;
       state._rotationDirty = false;
       state._overlayHost.setVisible(TRANSIT_SELECTED_OVERLAY_SOURCE_ID, false);
-      state._overlayHost.setVisible(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID, false);
+      state._overlayHost.setVisible(
+        TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID,
+        false,
+      );
       restoreSpriteOrder(viewer);
       bindStyleEvents();
       console.log(
@@ -186,7 +189,10 @@ export function createLifecycle({ state, services, parts }) {
         250,
       );
       state._overlayHost.setVisible(TRANSIT_SELECTED_OVERLAY_SOURCE_ID, true);
-      state._overlayHost.setVisible(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID, true);
+      state._overlayHost.setVisible(
+        TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID,
+        true,
+      );
       parts.selection.installClickHandler(viewer);
       registerPickOwner('transit', (pickedId) => state._vehicles.has(pickedId));
       if (!state._cameraChangedAttached) {
@@ -225,7 +231,10 @@ export function createLifecycle({ state, services, parts }) {
       state._cameraDebounceTimer = null;
       parts.selection.clearSelection();
       state._overlayHost.setVisible(TRANSIT_SELECTED_OVERLAY_SOURCE_ID, false);
-      state._overlayHost.setVisible(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID, false);
+      state._overlayHost.setVisible(
+        TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID,
+        false,
+      );
       parts.selection.removeClickHandler();
       unregisterPickOwner('transit');
       if (state._cameraChangedAttached) {

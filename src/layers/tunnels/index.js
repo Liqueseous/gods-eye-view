@@ -290,9 +290,8 @@ export function createTunnelsLayer({ source, services }) {
 
   async function addGhostPrimitive(tunnels, kind, cssColor, isCurrent) {
     if (!viewer.scene.primitives?.add) return null;
-    const color = Cesium.Color.fromCssColorString(cssColor).withAlpha(
-      GHOST_ALPHA,
-    );
+    const color =
+      Cesium.Color.fromCssColorString(cssColor).withAlpha(GHOST_ALPHA);
     const geometryInstances = [];
     const matching = tunnels.filter((tunnel) => tunnel.kind === kind);
     for (let index = 0; index < matching.length; index++) {
@@ -302,15 +301,15 @@ export function createTunnelsLayer({ source, services }) {
       if (polylinePositions)
         geometryInstances.push(
           new Cesium.GeometryInstance({
-          id: `tunnel-ghost:${kind}:${tunnel.id}`,
-          attributes: {
-            color: Cesium.ColorGeometryInstanceAttribute.fromColor(color),
-          },
-          geometry: new Cesium.PolylineVolumeGeometry({
-            polylinePositions,
-            shapePositions: ghostTunnelShape(kind),
-            cornerType: Cesium.CornerType.ROUNDED,
-          }),
+            id: `tunnel-ghost:${kind}:${tunnel.id}`,
+            attributes: {
+              color: Cesium.ColorGeometryInstanceAttribute.fromColor(color),
+            },
+            geometry: new Cesium.PolylineVolumeGeometry({
+              polylinePositions,
+              shapePositions: ghostTunnelShape(kind),
+              cornerType: Cesium.CornerType.ROUNDED,
+            }),
           }),
         );
       if (index % 64 === 63) await yieldAssetBuild();
@@ -500,8 +499,9 @@ export function createTunnelsLayer({ source, services }) {
       const payload = await response.json();
       if (!enabled || requestGeneration !== generation || signal.aborted)
         return;
-      const replaced = await replaceGeometry(payload.tunnels, () =>
-        enabled && requestGeneration === generation && !signal.aborted,
+      const replaced = await replaceGeometry(
+        payload.tunnels,
+        () => enabled && requestGeneration === generation && !signal.aborted,
       );
       if (!replaced) return;
       lastBoundsKey = boundsKey;

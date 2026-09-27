@@ -102,7 +102,8 @@ export function createViewport({ state, services, parts }) {
     state._altitudeGateOpen = altitudeGateOpen(altitude);
     const routesVisible = altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M;
     parts.routes.setVisible(routesVisible);
-    if (routesVisible) void parts.routes.update(cameraBounds || state._viewBounds);
+    if (routesVisible)
+      void parts.routes.update(cameraBounds || state._viewBounds);
     const center = state._altitudeGateOpen ? getCameraCenterLatLon() : null;
     const desired = new Map();
     if (center) {

@@ -36,7 +36,11 @@ test('portable service confines requests to registered feeds and GET', async (t)
   assert.ok(response instanceof Response);
   assert.equal(response.status, 200);
   assert.ok((await response.json()).feeds.some((feed) => feed.id === 'mbta'));
-  assert.ok((await (await service.handle(request('/api/transit/feeds'))).json()).feeds.some((feed) => feed.id === 'mta-nyc'));
+  assert.ok(
+    (
+      await (await service.handle(request('/api/transit/feeds'))).json()
+    ).feeds.some((feed) => feed.id === 'mta-nyc'),
+  );
   assert.equal(calls, 0);
   service.close();
   assert.equal(
@@ -51,8 +55,13 @@ test('MTA Bus Time API key is appended server-side and never exposed in the cata
   assert.equal(url.origin, 'https://gtfsrt.prod.obanyc.com');
   assert.equal(url.pathname, '/vehiclePositions');
   assert.equal(url.searchParams.get('key'), 'test-secret');
-  assert.throws(() => resolveTransitFeedUrl(feed, ''), /MTA_BUS_API_KEY is required/);
-  const catalogEntry = publicTransitCatalog().find(({ id }) => id === 'mta-nyc');
+  assert.throws(
+    () => resolveTransitFeedUrl(feed, ''),
+    /MTA_BUS_API_KEY is required/,
+  );
+  const catalogEntry = publicTransitCatalog().find(
+    ({ id }) => id === 'mta-nyc',
+  );
   assert.ok(catalogEntry);
   assert.equal('url' in catalogEntry, false);
   assert.equal(JSON.stringify(catalogEntry).includes('test-secret'), false);
@@ -70,13 +79,12 @@ test('MTA service request uses the resolved key without returning it to clients'
   });
   t.after(service.close);
 
-  const response = await service.handle(request('/api/transit/vehicles/mta-nyc'));
+  const response = await service.handle(
+    request('/api/transit/vehicles/mta-nyc'),
+  );
   const responseText = await response.text();
   assert.equal(response.status, 502);
-  assert.equal(
-    new URL(requestedUrl).searchParams.get('key'),
-    'service-secret',
-  );
+  assert.equal(new URL(requestedUrl).searchParams.get('key'), 'service-secret');
   assert.equal(responseText.includes('service-secret'), false);
 });
 
@@ -94,7 +102,10 @@ test('MBTA route details return route-filtered predictions and alerts and cache 
           data: [
             {
               id: 'prediction-red',
-              attributes: { arrival_time: arrivalTime, trip_headsign: 'Alewife' },
+              attributes: {
+                arrival_time: arrivalTime,
+                trip_headsign: 'Alewife',
+              },
               relationships: {
                 route: { data: { id: 'Red' } },
                 stop: { data: { id: '70073' } },

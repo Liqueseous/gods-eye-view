@@ -7,7 +7,8 @@ export function resolveTransitFeedUrl(
 ) {
   if (feed?.id !== 'mta-nyc') return feed?.url || null;
   const key = String(mtaBusApiKey || '').trim();
-  if (!key) throw new Error('MTA_BUS_API_KEY is required for NYC bus positions');
+  if (!key)
+    throw new Error('MTA_BUS_API_KEY is required for NYC bus positions');
   const url = new URL(feed.url);
   url.searchParams.set('key', key);
   return url.toString();

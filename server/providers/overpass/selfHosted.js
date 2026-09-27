@@ -1,6 +1,8 @@
 import { OVERPASS_BBOX_RE, OVERPASS_UPSTREAMS } from './constants.js';
 
-const SELF_HOSTED_URL = String(process.env.OVERPASS_SELF_HOSTED_URL || '').trim();
+const SELF_HOSTED_URL = String(
+  process.env.OVERPASS_SELF_HOSTED_URL || '',
+).trim();
 
 // Geofabrik "north-america" extract coverage (Canada, US, Mexico, Central
 // America, Caribbean) — generous on purpose. A query outside the imported
@@ -25,7 +27,10 @@ const COVERAGE = parseCoverage();
 function firstBbox(body) {
   const match = OVERPASS_BBOX_RE.exec(String(body || ''));
   if (!match) return null;
-  const [south, west, north, east] = match[0].slice(1, -1).split(',').map(Number);
+  const [south, west, north, east] = match[0]
+    .slice(1, -1)
+    .split(',')
+    .map(Number);
   const parts = [south, west, north, east];
   return parts.every(Number.isFinite) ? { south, west, north, east } : null;
 }

@@ -58,7 +58,9 @@ export async function fetchTransitFeed(
       !isAcceptableTransitUpstreamUrl(current) ||
       new URL(current).origin !== new URL(feed.url).origin
     )
-      throw new Error('configured upstream URL must stay on the registered origin');
+      throw new Error(
+        'configured upstream URL must stay on the registered origin',
+      );
   } catch (error) {
     if (error?.message?.startsWith('configured upstream URL')) throw error;
     throw new Error('configured upstream URL is invalid');
@@ -109,16 +111,19 @@ function mbtaRouteResourceUrl(resource, routeId) {
   return url.toString();
 }
 
-function normalizeMbtaRouteDetails(routeId, predictionsPayload, alertsPayload, now) {
+function normalizeMbtaRouteDetails(
+  routeId,
+  predictionsPayload,
+  alertsPayload,
+  now,
+) {
   const stopNames = new Map(
     (predictionsPayload.included || [])
       .filter((entry) => entry?.type === 'stop' && entry.id)
       .map((entry) => [entry.id, entry.attributes?.name || entry.id]),
   );
   const predictions = (predictionsPayload.data || [])
-    .filter(
-      (entry) => entry?.relationships?.route?.data?.id === routeId,
-    )
+    .filter((entry) => entry?.relationships?.route?.data?.id === routeId)
     .map((entry) => {
       const attributes = entry.attributes || {};
       const stopId = entry.relationships?.stop?.data?.id || null;
@@ -330,7 +335,9 @@ export function createTransitService({
         redirect: 'error',
       });
       if (!response.ok) {
-        const error = new Error(`MBTA ${resource} returned HTTP ${response.status}`);
+        const error = new Error(
+          `MBTA ${resource} returned HTTP ${response.status}`,
+        );
         error.upstreamStatus = response.status;
         throw error;
       }
@@ -412,7 +419,9 @@ export function createTransitService({
         redirect: 'error',
       });
       if (!response.ok) {
-        const error = new Error(`MBTA ${resource} returned HTTP ${response.status}`);
+        const error = new Error(
+          `MBTA ${resource} returned HTTP ${response.status}`,
+        );
         error.upstreamStatus = response.status;
         throw error;
       }

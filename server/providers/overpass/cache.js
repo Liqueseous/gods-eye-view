@@ -24,12 +24,17 @@ function recordOverpassRefusal(cacheKey, payload, now = Date.now()) {
   // Opportunistic sweep so a long-running process doesn't accumulate one
   // entry per distinct viewport tile ever queried.
   for (const [key, entry] of _overpassRefusalCooldown) {
-    if (now - entry.at > OVERPASS_REFUSAL_COOLDOWN_MS) _overpassRefusalCooldown.delete(key);
+    if (now - entry.at > OVERPASS_REFUSAL_COOLDOWN_MS)
+      _overpassRefusalCooldown.delete(key);
   }
 }
 
 /** A recent refusal for this exact query, if still within its cooldown window. */
-function readRecentRefusal(cacheKey, now = Date.now(), cooldownMs = OVERPASS_REFUSAL_COOLDOWN_MS) {
+function readRecentRefusal(
+  cacheKey,
+  now = Date.now(),
+  cooldownMs = OVERPASS_REFUSAL_COOLDOWN_MS,
+) {
   const entry = _overpassRefusalCooldown.get(cacheKey);
   if (!entry || now - entry.at > cooldownMs) return null;
   return entry.payload;
@@ -126,7 +131,8 @@ async function resolveOverpassPreflight({
   if (overpassPayloadIsData(disk)) return { source: 'DISK', payload: disk };
 
   const recentRefusal = readRecentRefusal(cacheKey, now);
-  if (recentRefusal) return { source: 'REFUSED_RECENT', payload: recentRefusal };
+  if (recentRefusal)
+    return { source: 'REFUSED_RECENT', payload: recentRefusal };
 
   return allowUpstream()
     ? { source: 'UPSTREAM', payload: null }

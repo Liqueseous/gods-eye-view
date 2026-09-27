@@ -114,7 +114,10 @@ export function createTransitRouteLines({
     const instances = [];
     for (const route of items) {
       for (let index = 0; index < route.lines.length; index++) {
-        if (!isCurrent()) throw Object.assign(new Error('Route build superseded'), { name: 'AbortError' });
+        if (!isCurrent())
+          throw Object.assign(new Error('Route build superseded'), {
+            name: 'AbortError',
+          });
         const positions = routePositions(route.lines[index]);
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
@@ -131,7 +134,13 @@ export function createTransitRouteLines({
     return instances;
   }
 
-  async function addGroundPrimitive(items, width, cssColor, pickTargets, isCurrent) {
+  async function addGroundPrimitive(
+    items,
+    width,
+    cssColor,
+    pickTargets,
+    isCurrent,
+  ) {
     const instances = await makeInstances(items, width, pickTargets, isCurrent);
     if (!instances.length) return null;
     const primitive = new Cesium.GroundPolylinePrimitive({
@@ -149,12 +158,21 @@ export function createTransitRouteLines({
     return viewer.scene.groundPrimitives.add(primitive);
   }
 
-  async function addFallbackLines(items, width, cssColor, pickTargets, isCurrent) {
+  async function addFallbackLines(
+    items,
+    width,
+    cssColor,
+    pickTargets,
+    isCurrent,
+  ) {
     const material = Cesium.Color.fromCssColorString(cssColor);
     const created = [];
     for (const route of items) {
       for (let index = 0; index < route.lines.length; index++) {
-        if (!isCurrent()) throw Object.assign(new Error('Route build superseded'), { name: 'AbortError' });
+        if (!isCurrent())
+          throw Object.assign(new Error('Route build superseded'), {
+            name: 'AbortError',
+          });
         const positions = routePositions(route.lines[index]);
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
@@ -361,8 +379,9 @@ export function createTransitRouteLines({
       if (!enabled || requestGeneration !== generation || signal.aborted)
         return false;
       const nextRoutes = payload.routes || [];
-      const replaced = await replaceRoutes(nextRoutes, () =>
-        enabled && requestGeneration === generation && !signal.aborted,
+      const replaced = await replaceRoutes(
+        nextRoutes,
+        () => enabled && requestGeneration === generation && !signal.aborted,
       );
       if (!replaced) return false;
       lastBoundsKey = key;
