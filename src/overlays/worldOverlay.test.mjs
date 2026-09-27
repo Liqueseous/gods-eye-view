@@ -987,6 +987,7 @@ test('entry normalization validates required fields and source lifecycle is stab
     title: 42,
     interactive: true,
     accessibilityLabel: 'Focus fire detection 42',
+    maxWidth: 360,
     activate,
   });
   assert.equal(normalized.source, 'fires');
@@ -995,6 +996,14 @@ test('entry normalization validates required fields and source lifecycle is stab
   assert.equal(normalized.edgeFade, 'keyhole');
   assert.equal(normalized.horizonCull, true);
   assert.equal(normalized.accessibilityLabel, 'Focus fire detection 42');
+  assert.equal(normalized.maxWidth, 360);
+  assert.equal(
+    normalizeOverlayEntry('fires', {
+      id: 'uncapped',
+      position: position(),
+    }).maxWidth,
+    null,
+  );
   assert.equal(normalized.activate, activate);
   assert.throws(() => normalizeOverlayEntry('', { id: 'a', position: position() }), /sourceId/);
   assert.throws(() => normalizeOverlayEntry('fires', { id: '', position: position() }), /entry.id/);
