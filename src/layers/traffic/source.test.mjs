@@ -8,6 +8,7 @@ import {
 } from './source.js';
 import { clampBoundsAroundCenter } from '../../data/trafficBounds.js';
 import {
+  clearOsmTileLocalCache,
   fetchOsmCacheTiles,
   getOsmTileCacheDiagnostics,
   osmCacheTiles,
@@ -19,6 +20,11 @@ const fixture = readFileSync(
     import.meta.url,
   ),
 );
+
+test.beforeEach(() => {
+  clearOsmTileLocalCache();
+});
+
 test('flow caches and diagnostics belong to their constructed source', async () => {
   let requestsA = 0,
     requestsB = 0;
@@ -97,7 +103,7 @@ test('road requests have finite bounds and retain the two-pass query', async () 
     /residential/,
   );
 });
-test('nearby road viewports share cached OSM tiles', async () => {
+test('nearby road viewports share cached OSM tiles without a second server call', async () => {
   const queries = [];
   const source = createTrafficSource({
     fetchImpl: async (_url, options) => {
@@ -112,7 +118,7 @@ test('nearby road viewports share cached OSM tiles', async () => {
     north: 30.272,
     east: -97.738,
   });
-  assert.equal(queries[0], queries[1]);
+  assert.equal(queries.length, 1);
 });
 test('OSM tile batches deduplicate elements and fall back for broad bounds', async () => {
   const bounds = { south: 42.35, west: -71.05, north: 42.45, east: -70.95 };
@@ -167,6 +173,7 @@ test('OSM tile diagnostics count requests and cache outcomes once', async () => 
   const options = {
     sourceId: 'diagnostics-test',
     buildQuery: (tile) => JSON.stringify(tile),
+    useLocalCache: true,
     fetchImpl: async () => {
       calls += 1;
       return Response.json(
@@ -184,10 +191,11 @@ test('OSM tile diagnostics count requests and cache outcomes once', async () => 
   const source = getOsmTileCacheDiagnostics().sources.find(
     (entry) => entry.id === 'diagnostics-test',
   );
+  assert.equal(calls, 1);
   assert.equal(source.tileCount, 1);
   assert.equal(source.requests, 2);
-  assert.equal(source.cacheHits, 1);
-  assert.equal(source.diskHits, 1);
+  assert.equal(source.cacheHits, 2);
+  assert.equal(source.diskHits, 0);
 });
 test('antimeridian clamps produce road tiles accepted on either side', async () => {
   const calls = [];

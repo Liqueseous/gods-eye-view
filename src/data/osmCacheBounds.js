@@ -2,9 +2,61 @@ export const OSM_CACHE_TILE_DEGREES = 0.1;
 export const OSM_CACHE_MAX_TILES_PER_QUERY = 16;
 const OSM_CACHE_FETCH_CONCURRENCY = 3;
 const OSM_CACHE_DIAGNOSTICS_MAX_TILES = 256;
+const OSM_LOCAL_TILE_CACHE_TTL_MS = 15 * 60 * 1000;
+const OSM_LOCAL_TILE_CACHE_MAX_ENTRIES = 256;
 let activeOsmTileRequests = 0;
 const pendingOsmTileRequests = [];
 const observedOsmTiles = new Map();
+const localOsmTileCache = new Map();
+
+function trimLocalOsmTileCache() {
+  while (localOsmTileCache.size > OSM_LOCAL_TILE_CACHE_MAX_ENTRIES) {
+    const oldestKey = localOsmTileCache.keys().next().value;
+    if (!oldestKey) break;
+    localOsmTileCache.delete(oldestKey);
+  }
+}
+
+function localOsmTileCacheKey(sourceId, queryBody) {
+  return `${sourceId}:${queryBody}`;
+}
+
+function readLocalOsmTileCache(key, now = Date.now()) {
+  const entry = localOsmTileCache.get(key);
+  if (!entry) return null;
+  if (now - entry.cachedAt > OSM_LOCAL_TILE_CACHE_TTL_MS) {
+    localOsmTileCache.delete(key);
+    return null;
+  }
+  // Refresh insertion order for oldest-first eviction.
+  localOsmTileCache.delete(key);
+  localOsmTileCache.set(key, entry);
+  return new Response(JSON.stringify(entry.payload), {
+    status: entry.status,
+    headers: {
+      'content-type': 'application/json',
+      'x-overpass-cache': 'LOCAL',
+      'x-overpass-upstream': entry.upstream || 'local-cache',
+    },
+  });
+}
+
+async function maybeWriteLocalOsmTileCache(key, response) {
+  if (!response?.ok || typeof response.clone !== 'function') return;
+  try {
+    const payload = await response.clone().json();
+    if (!Array.isArray(payload?.elements)) return;
+    localOsmTileCache.set(key, {
+      status: Number(response.status) || 200,
+      payload,
+      upstream: response.headers?.get?.('x-overpass-upstream') || null,
+      cachedAt: Date.now(),
+    });
+    trimLocalOsmTileCache();
+  } catch {
+    // Ignore local-cache write failures and keep the network response path.
+  }
+}
 
 function tileBoundsKey(bounds) {
   return [bounds.south, bounds.west, bounds.north, bounds.east]
@@ -44,7 +96,7 @@ function observeOsmTile(sourceId, bounds, response, error = null) {
         response.headers?.get?.('x-overpass-cache') || 'UNKNOWN';
       if (entry.lastStatus === 'DISK') entry.diskHits += 1;
       else if (entry.lastStatus === 'STALE') entry.staleResponses += 1;
-      else if (['HIT', 'INFLIGHT'].includes(entry.lastStatus))
+      else if (['HIT', 'INFLIGHT', 'LOCAL'].includes(entry.lastStatus))
         entry.cacheHits += 1;
       else if (['MISS', 'UPSTREAM'].includes(entry.lastStatus))
         entry.upstreamFetches += 1;
@@ -108,6 +160,10 @@ export function getOsmTileCacheDiagnostics() {
   };
 }
 
+export function clearOsmTileLocalCache() {
+  localOsmTileCache.clear();
+}
+
 function abortReason(signal) {
   try {
     signal?.throwIfAborted();
@@ -155,17 +211,32 @@ function acquireOsmTileRequest(signal) {
   });
 }
 
-async function fetchOsmTile(tile, { buildQuery, fetchImpl, signal, sourceId }) {
+async function fetchOsmTile(
+  tile,
+  { buildQuery, fetchImpl, signal, sourceId, useLocalCache = false },
+) {
   observeOsmTile(sourceId, tile);
+  const queryBody = `data=${encodeURIComponent(buildQuery(tile))}`;
+  const localCacheKey = localOsmTileCacheKey(sourceId, queryBody);
+  if (useLocalCache) {
+    const localHit = readLocalOsmTileCache(localCacheKey);
+    if (localHit) {
+      signal?.throwIfAborted();
+      observeOsmTile(sourceId, tile, localHit);
+      return localHit;
+    }
+  }
   let release;
   try {
     release = await acquireOsmTileRequest(signal);
     const response = await fetchImpl('/api/overpass', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(buildQuery(tile))}`,
+      body: queryBody,
       signal,
     });
+    if (useLocalCache)
+      await maybeWriteLocalOsmTileCache(localCacheKey, response);
     observeOsmTile(sourceId, tile, response);
     return response;
   } catch (error) {
@@ -209,7 +280,13 @@ export function osmCacheTiles(
 /** Fetch and combine tile responses; each exact tile query gets its own proxy disk entry. */
 export async function fetchOsmCacheTiles(
   bounds,
-  { buildQuery, fetchImpl, signal, sourceId = 'osm' } = {},
+  {
+    buildQuery,
+    fetchImpl,
+    signal,
+    sourceId = 'osm',
+    useLocalCache = false,
+  } = {},
 ) {
   const tiles = osmCacheTiles(bounds);
   signal?.throwIfAborted();
@@ -228,11 +305,15 @@ export async function fetchOsmCacheTiles(
     offset += OSM_CACHE_FETCH_CONCURRENCY
   ) {
     const settled = await Promise.allSettled(
-      tiles
-        .slice(offset, offset + OSM_CACHE_FETCH_CONCURRENCY)
-        .map((tile) =>
-          fetchOsmTile(tile, { buildQuery, fetchImpl, signal, sourceId }),
-        ),
+      tiles.slice(offset, offset + OSM_CACHE_FETCH_CONCURRENCY).map((tile) =>
+        fetchOsmTile(tile, {
+          buildQuery,
+          fetchImpl,
+          signal,
+          sourceId,
+          useLocalCache,
+        }),
+      ),
     );
     responses.push(
       ...settled

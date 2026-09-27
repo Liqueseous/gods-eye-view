@@ -115,6 +115,7 @@ export function createTrafficSource({
               timeoutSec,
             }),
           fetchImpl,
+          useLocalCache: true,
           signal,
         },
       );

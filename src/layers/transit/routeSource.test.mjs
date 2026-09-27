@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sanitizeOverpassBody } from '../../../server/providers/overpass/query.js';
+import { clearOsmTileLocalCache } from '../../data/osmCacheBounds.js';
 import {
   buildTransitRouteQuery,
   clampTransitRouteBounds,
@@ -166,7 +167,7 @@ test('route normalization bounds oversized relation geometry', () => {
   assert.ok(routes.every((route) => route.lines.length > 0));
 });
 
-test('line overviews keep substantial branches without restoring every track', () => {
+test('line overviews keep distinct branches without restoring parallel tracks', () => {
   const routes = normalizeTransitRoutes(
     {
       elements: [
@@ -204,6 +205,55 @@ test('line overviews keep substantial branches without restoring every track', (
   assert.equal(routes[0].ref, 'Green');
   assert.equal(routes[0].lines.length, 2);
   assert.ok(routes[0].lines.every((line) => line.length === 2));
+});
+
+test('line overviews retain every disconnected corridor including short branches', () => {
+  const members = [];
+  const ways = [];
+  const corridors = [
+    [-71.19, 42.31, -71.02, 42.31],
+    [-71.19, 42.33, -71.04, 42.33],
+    [-71.18, 42.35, -71.05, 42.35],
+    [-71.17, 42.37, -71.06, 42.37],
+    [-71.1, 42.39, -71.09, 42.39],
+  ];
+  for (let index = 0; index < corridors.length; index++) {
+    const id = 2301 + index;
+    const [west, south, east, north] = corridors[index];
+    members.push({ type: 'way', ref: id });
+    ways.push({
+      type: 'way',
+      id,
+      geometry: [
+        { lon: west, lat: south },
+        { lon: east, lat: north },
+      ],
+    });
+  }
+
+  const routes = normalizeTransitRoutes(
+    {
+      elements: [
+        {
+          type: 'relation',
+          id: 23,
+          tags: { route: 'light_rail', ref: 'Branching', network: 'Test' },
+          members,
+        },
+        ...ways,
+      ],
+    },
+    BOUNDS,
+  );
+
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].lines.length, corridors.length);
+  assert.ok(
+    routes[0].lines.some(
+      (line) => Math.abs(line[0][0] - line.at(-1)[0]) < 0.011,
+    ),
+    'the short branch must not be discarded relative to the longest corridor',
+  );
 });
 
 test('line overviews collapse nearby parallel tracks', () => {
@@ -303,17 +353,13 @@ test('route source uses the local Overpass proxy and validates the decoded paylo
   assert.deepEqual(await response.json(), { routes: [] });
 });
 
-test('nearby transit viewports share cached OSM tiles', async () => {
+test('nearby transit viewports share cached OSM tiles without repeat server calls', async () => {
+  clearOsmTileLocalCache();
   const queries = [];
   const source = createTransitRouteSource({
     fetchImpl: async (_url, options) => {
       queries.push(new URLSearchParams(options.body).get('data'));
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: () => 'application/json' },
-        json: async () => ({ elements: [] }),
-      };
+      return Response.json({ elements: [] });
     },
   });
   await source.requestRoutes(BOUNDS);
@@ -324,5 +370,6 @@ test('nearby transit viewports share cached OSM tiles', async () => {
     north: 42.39,
     east: -71.01,
   });
-  assert.deepEqual(queries, firstTileQueries);
+  assert.deepEqual(queries, []);
+  assert.ok(firstTileQueries.length > 0);
 });

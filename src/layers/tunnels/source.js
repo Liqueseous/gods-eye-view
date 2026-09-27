@@ -117,6 +117,7 @@ export function createTunnelsSource({
         sourceId: 'tunnels',
         buildQuery: tunnelQuery,
         fetchImpl,
+        useLocalCache: true,
         signal,
       });
       signal?.throwIfAborted();

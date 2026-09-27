@@ -128,10 +128,12 @@ export function createTunnelsLayer({ source, services }) {
   let generation = 0;
   let abortController = null;
   let cameraMoveEndRemove = null;
+  let postRenderRemove = null;
   let requestBoundsKey = null;
   let groundPrimitives = [];
   let ghostPrimitives = [];
   let fallbackEntities = [];
+  let pendingReplacement = null;
   let lastBoundsKey = null;
   let lastUpdate = null;
   let loading = false;
@@ -151,7 +153,15 @@ export function createTunnelsLayer({ source, services }) {
     for (const entity of entities) viewer?.entities?.remove(entity);
   }
 
+  function removeReplacement(replacement) {
+    removeGeometry(replacement?.primitives || [], replacement?.entities || []);
+    for (const primitive of replacement?.ghosts || [])
+      viewer?.scene?.primitives?.remove(primitive);
+  }
+
   function clearGeometry() {
+    removeReplacement(pendingReplacement);
+    pendingReplacement = null;
     removeGeometry();
     for (const primitive of ghostPrimitives)
       viewer?.scene?.primitives?.remove(primitive);
@@ -240,18 +250,21 @@ export function createTunnelsLayer({ source, services }) {
       classificationType: Cesium.ClassificationType.BOTH,
       asynchronous: true,
       allowPicking: false,
+      show: false,
     });
     return viewer.scene.groundPrimitives.add(primitive);
   }
 
   async function addFallbackLines(tunnels, width, cssColor, isCurrent) {
     const material = Cesium.Color.fromCssColorString(cssColor);
+    const created = [];
     for (let index = 0; index < tunnels.length; index++) {
-      if (!isCurrent()) return false;
+      if (!isCurrent()) return null;
       const tunnel = tunnels[index];
-      fallbackEntities.push(
+      created.push(
         viewer.entities.add({
           id: `tunnel:${tunnel.kind}:${tunnel.id}:${width}`,
+          show: false,
           polyline: {
             positions: tunnel.coordinates.map(([lon, lat]) =>
               Cesium.Cartesian3.fromDegrees(lon, lat),
@@ -265,7 +278,7 @@ export function createTunnelsLayer({ source, services }) {
       );
       if (index % 64 === 63) await yieldAssetBuild();
     }
-    return true;
+    return created;
   }
 
   function ghostPathPositions(tunnel) {
@@ -325,10 +338,8 @@ export function createTunnelsLayer({ source, services }) {
       }),
       asynchronous: true,
       allowPicking: false,
+      show: false,
     });
-    primitive.show =
-      (viewer.camera?.positionCartographic?.height ?? 0) <=
-      GHOST_MAX_CAMERA_ALTITUDE_M;
     return viewer.scene.primitives.add(primitive);
   }
 
@@ -338,6 +349,39 @@ export function createTunnelsLayer({ source, services }) {
       (viewer?.camera?.positionCartographic?.height ?? 0) <=
         GHOST_MAX_CAMERA_ALTITUDE_M;
     for (const primitive of ghostPrimitives) primitive.show = visible;
+  }
+
+  function commitGeometry(replacement) {
+    const previousPrimitives = groundPrimitives;
+    const previousGhosts = ghostPrimitives;
+    const previousEntities = fallbackEntities;
+    groundPrimitives = replacement.primitives;
+    ghostPrimitives = replacement.ghosts;
+    fallbackEntities = replacement.entities;
+    pendingReplacement = null;
+    for (const primitive of groundPrimitives) primitive.show = enabled;
+    for (const entity of fallbackEntities) entity.show = enabled;
+    updateGhostVisibility();
+    removeGeometry(previousPrimitives, previousEntities);
+    for (const primitive of previousGhosts)
+      viewer?.scene?.primitives?.remove(primitive);
+    publisher.publish(replacement.labels);
+    count = replacement.tunnels.length;
+    roadCount = replacement.roads.length;
+    railCount = replacement.rail.length;
+    namedCount = replacement.labels.length;
+    services.raiseRoutesAboveTunnels?.();
+    viewer?.scene?.requestRender?.();
+  }
+
+  function promoteReadyReplacement() {
+    if (!pendingReplacement) return;
+    const asynchronous = [
+      ...pendingReplacement.primitives,
+      ...pendingReplacement.ghosts,
+    ];
+    if (asynchronous.some((primitive) => primitive.ready !== true)) return;
+    commitGeometry(pendingReplacement);
   }
 
   async function replaceGeometry(tunnels, isCurrent = () => true) {
@@ -384,16 +428,26 @@ export function createTunnelsLayer({ source, services }) {
         );
         if (railLines) primitives.push(railLines);
       } else {
-        await addFallbackLines(
-          tunnels,
-          OUTLINE_WIDTH,
-          OUTLINE_COLOR,
-          isCurrent,
+        entities.push(
+          ...((await addFallbackLines(
+            tunnels,
+            OUTLINE_WIDTH,
+            OUTLINE_COLOR,
+            isCurrent,
+          )) || []),
+          ...((await addFallbackLines(
+            roads,
+            ROAD_WIDTH,
+            ROAD_COLOR,
+            isCurrent,
+          )) || []),
+          ...((await addFallbackLines(
+            rail,
+            RAIL_WIDTH,
+            RAIL_COLOR,
+            isCurrent,
+          )) || []),
         );
-        await addFallbackLines(roads, ROAD_WIDTH, ROAD_COLOR, isCurrent);
-        await addFallbackLines(rail, RAIL_WIDTH, RAIL_COLOR, isCurrent);
-        entities.push(...fallbackEntities);
-        fallbackEntities = [];
       }
       if (!isCurrent())
         throw Object.assign(new Error('Tunnel geometry superseded'), {
@@ -419,23 +473,10 @@ export function createTunnelsLayer({ source, services }) {
         });
     } catch (caught) {
       removeGeometry(primitives, entities);
-      removeGeometry([], fallbackEntities);
-      fallbackEntities = [];
       for (const primitive of ghosts)
         viewer?.scene?.primitives?.remove(primitive);
       throw caught;
     }
-    const previousPrimitives = groundPrimitives;
-    const previousGhosts = ghostPrimitives;
-    const previousEntities = fallbackEntities;
-    groundPrimitives = primitives;
-    ghostPrimitives = ghosts;
-    fallbackEntities = entities;
-    removeGeometry(previousPrimitives, previousEntities);
-    for (const primitive of previousGhosts)
-      viewer?.scene?.primitives?.remove(primitive);
-    updateGhostVisibility();
-    services.raiseRoutesAboveTunnels?.();
 
     const labels = [];
     for (let index = 0; index < tunnels.length; index++) {
@@ -453,11 +494,26 @@ export function createTunnelsLayer({ source, services }) {
       if (entry) labels.push(entry);
       if (index % 64 === 63) await yieldAssetBuild();
     }
-    publisher.publish(labels);
-    count = tunnels.length;
-    roadCount = roads.length;
-    railCount = rail.length;
-    namedCount = labels.length;
+    const replacement = {
+      primitives,
+      ghosts,
+      entities,
+      labels,
+      tunnels,
+      roads,
+      rail,
+    };
+    removeReplacement(pendingReplacement);
+    pendingReplacement = replacement;
+    const hasCurrentGeometry =
+      groundPrimitives.length ||
+      ghostPrimitives.length ||
+      fallbackEntities.length;
+    const asynchronous = [...primitives, ...ghosts];
+    if (!hasCurrentGeometry) {
+      commitGeometry(replacement);
+    } else if (!asynchronous.length) commitGeometry(replacement);
+    else promoteReadyReplacement();
     viewer.scene.requestRender?.();
     return true;
   }
@@ -539,6 +595,8 @@ export function createTunnelsLayer({ source, services }) {
     disable();
     cameraMoveEndRemove?.();
     cameraMoveEndRemove = null;
+    postRenderRemove?.();
+    postRenderRemove = null;
     viewer = null;
     lastUpdate = null;
     error = null;
@@ -557,6 +615,11 @@ export function createTunnelsLayer({ source, services }) {
       if (!cameraMoveEndRemove && viewer?.camera?.moveEnd?.addEventListener) {
         cameraMoveEndRemove =
           viewer.camera.moveEnd.addEventListener(onCameraMoveEnd);
+      }
+      if (!postRenderRemove && viewer?.scene?.postRender?.addEventListener) {
+        postRenderRemove = viewer.scene.postRender.addEventListener(
+          promoteReadyReplacement,
+        );
       }
     },
 

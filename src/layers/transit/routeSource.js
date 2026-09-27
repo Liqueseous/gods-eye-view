@@ -32,8 +32,6 @@ const MAX_ROUTE_SEGMENTS = 10000;
 const MAX_ROUTE_SEGMENTS_PER_ROUTE = 1000;
 const ROUTE_SIMPLIFY_TOLERANCE_DEG = 0.00003;
 const MAX_ROUTE_POINTS_PER_LINE = 256;
-const MAX_MAIN_CORRIDORS = 3;
-const MIN_MAIN_CORRIDOR_RATIO = 0.2;
 const PARALLEL_TRACK_OFFSET_DEG = 0.00025;
 
 function validBounds(bounds) {
@@ -384,17 +382,9 @@ function buildLineOverviews(segments) {
     overview.stops = [...stops.values()];
   }
   return [...overviews.values()].map((overview) => {
-    const merged = collapseParallelTracks(mergeConnectedLines(overview.lines));
-    const ranked = merged
-      .map((line) => ({ line, length: lineLength(line) }))
-      .sort((a, b) => b.length - a.length);
-    const minimumLength = (ranked[0]?.length || 0) * MIN_MAIN_CORRIDOR_RATIO;
     return {
       ...overview,
-      lines: ranked
-        .filter(({ length }) => length >= minimumLength)
-        .slice(0, MAX_MAIN_CORRIDORS)
-        .map(({ line }) => line),
+      lines: collapseParallelTracks(mergeConnectedLines(overview.lines)),
     };
   });
 }
@@ -583,6 +573,7 @@ export function createTransitRouteSource({
         sourceId: 'transit-routes',
         buildQuery: buildTransitRouteQuery,
         fetchImpl,
+        useLocalCache: true,
         signal,
       });
       signal?.throwIfAborted();
