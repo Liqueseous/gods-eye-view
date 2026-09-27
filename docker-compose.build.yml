@@ -1,0 +1,10 @@
+services:
+  gods-eye-view:
+    build:
+      context: .
+      args:
+        # Baked into the built client bundle — changing these requires a
+        # rebuild, a running container will not pick up a new value from
+        # `.env` alone.
+        CESIUM_ION_TOKEN: ${CESIUM_ION_TOKEN}
+        GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}

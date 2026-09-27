@@ -20,6 +20,11 @@ export function createModel({ state: layerState, services, parts, source }) {
     }
 
     const roads = [];
+    // scene.sampleHeight() is a synchronous GPU readback; calling it once per
+    // road with no dedup froze the tab on a dense full-graph pass (hundreds+
+    // roads, most sharing a neighborhood). Roads within the same ~111m cell
+    // reuse one sample instead of each paying for their own GPU stall.
+    const heightCellCache = new Map();
     for (const road of roadData.roads) {
       if (!road.coordinates || road.coordinates.length < 2) continue;
 
@@ -51,12 +56,18 @@ export function createModel({ state: layerState, services, parts, source }) {
       let baseHeight = 0;
       const firstCoord = coords[0];
       if (layerState._viewer?.scene?.sampleHeightSupported && firstCoord) {
-        const carto = Cesium.Cartographic.fromDegrees(
-          firstCoord[0],
-          firstCoord[1],
-        );
-        const sampled = layerState._viewer.scene.sampleHeight(carto);
-        if (Number.isFinite(sampled)) baseHeight = sampled;
+        const cellKey = `${firstCoord[1].toFixed(3)},${firstCoord[0].toFixed(3)}`;
+        if (heightCellCache.has(cellKey)) {
+          baseHeight = heightCellCache.get(cellKey);
+        } else {
+          const carto = Cesium.Cartographic.fromDegrees(
+            firstCoord[0],
+            firstCoord[1],
+          );
+          const sampled = layerState._viewer.scene.sampleHeight(carto);
+          if (Number.isFinite(sampled)) baseHeight = sampled;
+          heightCellCache.set(cellKey, baseHeight);
+        }
       }
 
       // Pre-compute Cartesian3 waypoints (lon, lat, height) for fast lerp animation
