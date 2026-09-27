@@ -600,6 +600,7 @@ test('retry clears the old terminal error while the new request is loading', asy
         }),
     );
     const pending = alprCamerasLayer.update();
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(alprCamerasLayer.getStats().loading, true);
     assert.equal(alprCamerasLayer.getStats().error, null);
     assert.equal(alprCamerasLayer.getStats().status, 'loading');
@@ -622,6 +623,7 @@ test('a cancelled older request cannot overwrite a newer request with a late net
         }),
     );
     const old = alprCamerasLayer.update();
+    await new Promise((resolve) => setImmediate(resolve));
     h.setBox({ south: 31, west: -98, north: 31.02, east: -97.98 });
     h.setFetch(
       () =>
@@ -842,6 +844,7 @@ test('a late network failure after disable cannot resurrect retries or an error 
         }),
     );
     const pending = alprCamerasLayer.update();
+    await new Promise((resolve) => setImmediate(resolve));
     alprCamerasLayer.disable();
     reject(new TypeError('cancelled connection'));
     await pending;
@@ -1010,6 +1013,7 @@ test('moves inside a pending query do not restart it; moving to another city can
         }),
     );
     const first = alprCamerasLayer.update();
+    await new Promise((resolve) => setImmediate(resolve));
     const signal = h.requests[0][1].signal;
     h.setBox({ south: 30.261, west: -97.749, north: 30.279, east: -97.731 });
     await alprCamerasLayer.update();
@@ -1019,6 +1023,7 @@ test('moves inside a pending query do not restart it; moving to another city can
     const finishFirst = resolve;
     h.setBox({ south: 51.49, west: -0.14, north: 51.5, east: -0.12 });
     const second = alprCamerasLayer.update();
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(signal.aborted, true);
     assert.equal(h.requests.length, 2);
     finishFirst(cameraResponse());

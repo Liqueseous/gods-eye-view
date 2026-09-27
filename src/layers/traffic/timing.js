@@ -251,6 +251,7 @@ export function createTiming({ state: layerState, services, parts, source }) {
     let _trafficTimingSampleHeightMs = 0;
     let _trafficTimingWaypointMaterializationMs = 0;
     /* TRACE_ONLY_END */
+    const heightCellCache = new Map();
     for (const road of roadData.roads) {
       if (!road.coordinates || road.coordinates.length < 2) continue;
 
@@ -277,25 +278,29 @@ export function createTiming({ state: layerState, services, parts, source }) {
       let baseHeight = 0;
       const firstCoord = coords[0];
       if (layerState._viewer?.scene?.sampleHeightSupported && firstCoord) {
+        const cellKey = `${firstCoord[1].toFixed(3)},${firstCoord[0].toFixed(3)}`;
         /* TRACE_ONLY_BEGIN */
-        _trafficTimingSampleHeightCalls += 1;
-        _trafficTimingSampledCells.add(
-          `${firstCoord[1].toFixed(3)},${firstCoord[0].toFixed(3)}`,
-        );
+        _trafficTimingSampledCells.add(cellKey);
         /* TRACE_ONLY_END */
-        const carto = Cesium.Cartographic.fromDegrees(
-          firstCoord[0],
-          firstCoord[1],
-        );
-        /* TRACE_ONLY_BEGIN */
-        const _trafficTimingSampleStart = performance.now();
-        /* TRACE_ONLY_END */
-        const sampled = layerState._viewer.scene.sampleHeight(carto);
-        /* TRACE_ONLY_BEGIN */
-        _trafficTimingSampleHeightMs +=
-          performance.now() - _trafficTimingSampleStart;
-        /* TRACE_ONLY_END */
-        if (Number.isFinite(sampled)) baseHeight = sampled;
+        if (heightCellCache.has(cellKey)) {
+          baseHeight = heightCellCache.get(cellKey);
+        } else {
+          const carto = Cesium.Cartographic.fromDegrees(
+            firstCoord[0],
+            firstCoord[1],
+          );
+          /* TRACE_ONLY_BEGIN */
+          _trafficTimingSampleHeightCalls += 1;
+          const _trafficTimingSampleStart = performance.now();
+          /* TRACE_ONLY_END */
+          const sampled = layerState._viewer.scene.sampleHeight(carto);
+          /* TRACE_ONLY_BEGIN */
+          _trafficTimingSampleHeightMs +=
+            performance.now() - _trafficTimingSampleStart;
+          /* TRACE_ONLY_END */
+          if (Number.isFinite(sampled)) baseHeight = sampled;
+          heightCellCache.set(cellKey, baseHeight);
+        }
       }
 
       /* TRACE_ONLY_BEGIN */

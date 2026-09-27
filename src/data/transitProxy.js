@@ -77,6 +77,21 @@ export function resolveTransitRoute(url) {
   const pathname = String(url || '').split('?')[0];
   if (pathname === '/feeds' || pathname === '/feeds/')
     return { route: 'feeds' };
+  const routeDetails = /^\/route-details\/([^/]+)\/([^/]+)\/?$/.exec(pathname);
+  if (routeDetails) {
+    let feedId;
+    let routeId;
+    try {
+      feedId = decodeURIComponent(routeDetails[1]);
+      routeId = decodeURIComponent(routeDetails[2]);
+    } catch {
+      return null;
+    }
+    const feed = getTransitFeed(feedId);
+    if (feed?.id !== 'mbta' || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(routeId))
+      return null;
+    return { route: 'route-details', feed, routeId };
+  }
   const match = /^\/(vehicles|trail)\/([^/]+)(?:\/([^/]+))?\/?$/.exec(pathname);
   if (!match) return null;
   let id, vehicleId;

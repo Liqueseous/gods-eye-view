@@ -40,6 +40,7 @@
     "opensky:import": "./scripts/opensky-import-client.sh",
     "build": "vite build",
     "preview": "vite preview",
+    "docker:build": "docker compose -f docker-compose.yml -f docker-compose.build.yml build",
     "test": "node scripts/run-unit-tests.mjs",
     "test:all": "node scripts/run-full-tests.mjs",
     "test:track": "node scripts/track-regression.mjs",

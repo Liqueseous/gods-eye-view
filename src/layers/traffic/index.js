@@ -53,6 +53,7 @@ export function createTrafficLayer({ services, source }) {
     parts.lifecycle.methods,
     parts.ingestion?.methods,
     {
+      raiseHeatLinesToTop: parts.rendering.raiseHeatLinesToTop,
       getTrafficTimingDiagnostics: parts.timing.getTrafficTimingDiagnostics,
       deriveTrafficFlowError: parts.flow.deriveTrafficFlowError,
       trafficFeedPresentation: parts.model.trafficFeedPresentation,

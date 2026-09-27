@@ -24,6 +24,13 @@ test('route resolution admits only the catalog and registered feed ids', () => {
   assert.equal(resolveTransitRoute('/vehicles/mbta')?.feed?.id, 'mbta');
   assert.equal(resolveTransitRoute('/vehicles/mbta/')?.feed?.id, 'mbta');
   assert.equal(resolveTransitRoute('/vehicles/mbta?trip=1')?.feed?.id, 'mbta');
+  assert.deepEqual(resolveTransitRoute('/route-details/mbta/Red'), {
+    route: 'route-details',
+    feed: getTransitFeed('mbta'),
+    routeId: 'Red',
+  });
+  assert.equal(resolveTransitRoute('/route-details/mta-nyc/M15'), null);
+  assert.equal(resolveTransitRoute('/route-details/mbta/../secrets'), null);
   assert.equal(resolveTransitRoute('/vehicles/nope'), null);
   assert.equal(resolveTransitRoute('/vehicles/'), null);
   assert.equal(resolveTransitRoute('/vehicles/mbta/extra'), null);

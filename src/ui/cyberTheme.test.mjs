@@ -39,6 +39,57 @@ test('CCTV and Context keep their headers outside Cyber-only scroll bodies', () 
   );
 });
 
+test('Context and Developer Toolbox scrollbars use the active theme', () => {
+  const layers = readFileSync(
+    new URL('./styles/layers.css', import.meta.url),
+    'utf8',
+  );
+  const analyst = readFileSync(
+    new URL('./styles/analyst-console.css', import.meta.url),
+    'utf8',
+  );
+  const cyber = readFileSync(
+    new URL('./styles/cyber.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    layers,
+    /#right-context-rail \.global-context-panel-inner,[\s\S]*?#right-context-rail \.developer-tools-inner\s*\{[^}]*--context-scrollbar-thumb:/,
+  );
+  assert.match(
+    layers,
+    /#right-context-rail \.developer-assets-list\s*\{[^}]*scrollbar-color: var\(--context-scrollbar-thumb\) var\(--context-scrollbar-track\);/,
+  );
+  assert.match(
+    layers,
+    /\.developer-assets-list::-webkit-scrollbar-thumb\s*\{[^}]*background: var\(--context-scrollbar-thumb\);/,
+  );
+  assert.match(
+    analyst,
+    /\.developer-assets-list\s*\{[^}]*max-height: 24rem;/,
+  );
+  assert.match(
+    analyst,
+    /\.developer-tools-content\s*\{[^}]*display: flex;[^}]*flex-direction: column;/,
+  );
+  assert.doesNotMatch(
+    analyst,
+    /\.developer-tools-content\s*\{[^}]*overflow-y:\s*auto;/,
+  );
+  assert.match(
+    analyst,
+    /\.developer-assets-list\s*\{[^}]*overflow-y: auto;[^}]*scrollbar-color: var\(--context-scrollbar-thumb\) var\(--context-scrollbar-track\);/,
+  );
+  assert.match(
+    cyber,
+    /:root\[data-ui-theme='cyber'\] #right-context-rail[\s\S]*?--context-scrollbar-thumb: color-mix\([\s\S]*?var\(--cyber-red-bright\)/,
+  );
+  assert.match(
+    cyber,
+    /:root\[data-ui-theme='cyber'\][\s\S]*?#right-context-rail \.developer-tools-inner\s*\{[^}]*var\(--cyber-red-bright\)/,
+  );
+});
+
 function styleOwner(t, initialVariant = 'cyber') {
   const previous = { document: globalThis.document, window: globalThis.window };
   const root = { dataset: {} };

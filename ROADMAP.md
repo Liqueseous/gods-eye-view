@@ -193,6 +193,11 @@ Potential domains:
 - agriculture and climate intelligence
 - transportation networks
 
+**Delivered transportation context:** the shareable Tunnels layer queries
+viewport-bounded OSM road and rail tunnel ways, draws distinct outlined
+alignments, and labels mapped names or refs. Coverage and names depend on OSM
+mapping; broader transportation dashboards remain future work.
+
 ### 9) Better Scene Authoring and Publishing
 
 Improve the creator workflow for camera-led storytelling and mission briefings.

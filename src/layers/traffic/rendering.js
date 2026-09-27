@@ -53,6 +53,16 @@ export function createRendering({
     layerState._heatLineCount = 0;
   }
 
+  function raiseHeatLinesToTop() {
+    const primitives = layerState._viewer?.scene?.groundPrimitives;
+    for (const primitive of [
+      layerState._heatJamPrim,
+      layerState._heatSlowPrim,
+    ]) {
+      if (primitive) primitives?.raiseToTop?.(primitive);
+    }
+  }
+
   /**
    * Rebuild the congestion heat-line underlay (jam-viz heatline prototype):
    * slow/jam roads drape a corridor line onto the rendered 3D tiles — glowing
@@ -153,6 +163,7 @@ export function createRendering({
     }
 
     layerState._heatLineCount = kept.length;
+    raiseHeatLinesToTop();
     if (candidates.length > kept.length) {
       console.log(
         `[Data:Traffic] Heat-lines capped at ${HEAT_LINE_CAP} (${candidates.length} congested roads in view)`,
@@ -172,7 +183,13 @@ export function createRendering({
    * @param {Object|null} [trace=null] - Development-only correlated load trace.
    */
 
-  function renderRoadsForAltitude(roads, altitude, label, trace = null) {
+  async function renderRoadsForAltitude(
+    roads,
+    altitude,
+    label,
+    trace = null,
+    isCurrent = () => true,
+  ) {
     const state =
       TRAFFIC_TIMING_ENABLED && trace
         ? parts.timing.trafficTimingRenderState(trace, label)
@@ -229,12 +246,19 @@ export function createRendering({
       altitude,
       MAX_DOTS,
     );
+    let batchStartedAt = performance.now();
     for (let i = 0; i < filteredRoads.length; i++) {
+      if (!isCurrent()) return false;
       const road = filteredRoads[i];
       const budget = roadBudgets[i] || 0;
       if (budget <= 0) continue;
       parts.animation.spawnDotsForRoad(road, altitude, budget);
       if (layerState._dots.length >= MAX_DOTS) break;
+      if (performance.now() - batchStartedAt >= 4) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (!isCurrent()) return false;
+        batchStartedAt = performance.now();
+      }
     }
 
     const renderMetrics = state
@@ -268,6 +292,7 @@ export function createRendering({
           renderMetrics,
         )
       : null;
+    if (!isCurrent()) return false;
     rebuildHeatLines(filteredRoads);
     if (state) {
       const heatEnd = parts.timing.trafficTimingMark(
@@ -308,11 +333,13 @@ export function createRendering({
         renderMetrics,
       );
     }
+    return true;
   }
   return {
     visibleRoadsForAltitude,
     removeHeatLines,
     rebuildHeatLines,
+    raiseHeatLinesToTop,
     renderRoadsForAltitude,
   };
 }

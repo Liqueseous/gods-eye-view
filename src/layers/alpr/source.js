@@ -1,10 +1,10 @@
 import {
-  OVERPASS_URL,
   MAX_VIEWPORT_DEGREES,
   QUERY_SNAP_DEGREES,
   QUERY_LIMIT,
 } from './policy.js';
 import { buildOverpassQuery, normalizeAlprNode } from './records.js';
+import { fetchOsmCacheTiles } from '../../data/osmCacheBounds.js';
 /** Construct the bounded OSM request adapter without starting a request. */
 export function createOverpassAlprSource({
   fetchImpl = (...args) => globalThis.fetch(...args),
@@ -26,11 +26,11 @@ export function createOverpassAlprSource({
     ) {
       throw new TypeError('ALPR requires a bounded city viewport');
     }
-    const query = buildOverpassQuery(box.south, box.west, box.north, box.east);
-    const response = await fetchImpl(OVERPASS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(query)}`,
+    const response = await fetchOsmCacheTiles(box, {
+      sourceId: 'alpr-cameras',
+      buildQuery: (tile) =>
+        buildOverpassQuery(tile.south, tile.west, tile.north, tile.east),
+      fetchImpl,
       signal,
     });
     if (!response.ok) {

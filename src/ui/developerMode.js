@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { TRANSIT_ENABLED_FEEDS, haversineKm } from '../data/transitFeeds.js';
+import { getOsmTileCacheDiagnostics } from '../data/osmCacheBounds.js';
 
 /** Persisted opt-in switch for tools intended for development and QA. */
 export const DEVELOPER_MODE_STORAGE_KEY = 'godsEyeView.developerMode.enabled';
@@ -186,6 +187,10 @@ export function createDeveloperDiagnosticsSnapshot(
   app = globalThis.__godsEyeView,
 ) {
   const layers = app?.dataManager?.getAll?.() || [];
+  const transitLayer = app?.dataManager?.layers?.get?.('transit')?.module;
+  const transitRouteData =
+    transitLayer?.getTransitRouteDiagnostics?.({ includeGeometry: true }) ||
+    null;
   const view = readDiagnosticView(app || {});
   const nearestTransitFeeds = view.center
     ? TRANSIT_ENABLED_FEEDS.map((feed) => ({
@@ -208,6 +213,8 @@ export function createDeveloperDiagnosticsSnapshot(
     schema: 'gods-eye-view-developer-diagnostics/v1',
     capturedAt: new Date().toISOString(),
     camera: view,
+    osmTileCache:
+      app?.getOsmTileCacheDiagnostics?.() || getOsmTileCacheDiagnostics(),
     transit: {
       activationAltitudeLimitM: 2_850_000,
       altitudeGateOpen: view.altitudeM !== null && view.altitudeM <= 2_850_000,
@@ -215,6 +222,7 @@ export function createDeveloperDiagnosticsSnapshot(
       matchingFeeds: nearestTransitFeeds.filter(
         (feed) => feed.distanceKm <= feed.loadRadiusKm,
       ),
+      routeData: transitRouteData,
     },
     render: app?.getRenderGovernorDiagnostics?.() || null,
     voiceState: app?.voiceCommands?.session?.state || 'idle',
@@ -425,6 +433,34 @@ function readAssetDiagnostics(app) {
     });
 }
 
+function osmTileCacheReadout(cache) {
+  const totals = cache?.totals || {};
+  const cached =
+    (Number(totals.cacheHits) || 0) +
+    (Number(totals.diskHits) || 0) +
+    (Number(totals.staleResponses) || 0);
+  const requests = Number(totals.requests) || 0;
+  const text = requests
+    ? `${Number(cache.knownTiles) || 0} TILES · ${cached} CACHED · ${Number(totals.upstreamFetches) || 0} UPSTREAM`
+    : '0 TILES · NO REQUESTS';
+  const details = (cache?.sources || []).flatMap((source) => [
+    `${source.id}: ${source.tileCount} tiles · ${source.cacheHits} memory · ${source.diskHits} disk · ${source.upstreamFetches} upstream · ${source.staleResponses} stale · ${source.errors} errors`,
+    ...source.tiles
+      .slice(0, 8)
+      .map(
+        (tile) =>
+          `${source.id} ${tile.bounds.south.toFixed(3)},${tile.bounds.west.toFixed(3)},${tile.bounds.north.toFixed(3)},${tile.bounds.east.toFixed(3)} ${tile.lastStatus}`,
+      ),
+  ]);
+  const activity = [
+    `${cache?.tileDegrees ?? 0.1}° GRID`,
+    `${cache?.maxTilesPerRequest ?? 16} MAX TILES/QUERY`,
+    `${cache?.activeRequests || 0} ACTIVE`,
+    `${cache?.pendingRequests || 0} QUEUED`,
+  ];
+  return { text, title: [...activity, ...details].join(' · ') };
+}
+
 function readLiveDiagnostics() {
   const app = globalThis.__godsEyeView || {};
   const viewer = app.viewer;
@@ -440,6 +476,45 @@ function readLiveDiagnostics() {
     normalizedVoiceState === 'idle'
       ? 'OFF'
       : normalizedVoiceState.toUpperCase();
+  const transitModule = app.dataManager?.layers?.get?.('transit')?.module;
+  const routeData = transitModule?.getTransitRouteDiagnostics?.() || null;
+  const osmTileCache =
+    app.getOsmTileCacheDiagnostics?.() || getOsmTileCacheDiagnostics();
+  const routeCount = Number(routeData?.count) || 0;
+  const routePhase =
+    routeData?.requestStage === 'prefetch'
+      ? 'PREFETCH'
+      : routeData?.requestStage === 'priority'
+        ? 'VIEW'
+        : null;
+  const routeStatus = routeData?.loading
+    ? `${routePhase || 'ROUTE'} · LOADING`
+    : routeData?.error
+      ? `HTTP ${routeData.lastStatus || 'ERROR'}`
+      : routeData?.lastStatus
+        ? `READY · HTTP ${routeData.lastStatus}`
+        : routeData?.enabled
+          ? 'WAITING'
+          : 'DISABLED';
+  const routeReadout = routeData
+    ? {
+        text: `${routeStatus} · ${routeCount}`,
+        title: [
+          routeData.error,
+          routeData.upstream && `UPSTREAM ${routeData.upstream}`,
+          routeData.cache && `CACHE ${routeData.cache}`,
+          routeData.bounds &&
+            `BOUNDS ${routeData.bounds.south.toFixed(3)},${routeData.bounds.west.toFixed(3)},${routeData.bounds.north.toFixed(3)},${routeData.bounds.east.toFixed(3)}`,
+          routeData.coverageBounds &&
+            `COVERAGE ${routeData.coverageBounds.south.toFixed(3)},${routeData.coverageBounds.west.toFixed(3)},${routeData.coverageBounds.north.toFixed(3)},${routeData.coverageBounds.east.toFixed(3)}`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      }
+    : {
+        text: 'NO DIAGNOSTICS',
+        title: 'Transit route diagnostics unavailable.',
+      };
 
   return {
     camera: carto
@@ -450,6 +525,8 @@ function readLiveDiagnostics() {
       : 'RENDER OFFLINE',
     layers: `${enabledLayers}/${totalLayers || 0} ACTIVE`,
     voice: formattedVoiceState || 'OFF',
+    osmCache: osmTileCacheReadout(osmTileCache),
+    routes: routeReadout,
     assets: readAssetDiagnostics(app),
   };
 }
@@ -464,9 +541,17 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
     render: panel.querySelector('#developer-render-readout'),
     layers: panel.querySelector('#developer-layers-readout'),
     voice: panel.querySelector('#developer-voice-readout'),
+    osmCache: panel.querySelector('#developer-osm-cache-readout'),
+    routes: panel.querySelector('#developer-routes-readout'),
   };
   for (const [key, node] of Object.entries(entries)) {
-    if (node) node.textContent = diagnostics[key] || '—';
+    if (!node) continue;
+    node.textContent =
+      typeof diagnostics[key] === 'string'
+        ? diagnostics[key] || '—'
+        : diagnostics[key]?.text || '—';
+    if (key === 'routes' || key === 'osmCache')
+      node.title = diagnostics[key]?.title || '';
   }
   const assetsList = panel.querySelector('#developer-assets-list');
   if (assetsList && documentRef.createElement) {
@@ -517,16 +602,6 @@ export function initDeveloperMode({
   const deriveEnabledState = () =>
     Boolean(toggle.checked) || readDeveloperMode(storage);
 
-  const body = documentRef?.body || documentRef?.querySelector?.('body');
-  if (
-    panel.parentElement &&
-    panel.parentElement.id === 'command-dock' &&
-    body
-  ) {
-    panel.remove();
-    body.appendChild(panel);
-  }
-
   let refreshTimer = null;
   const refresh = () => {
     if (!toggle.checked) return;
@@ -542,6 +617,11 @@ export function initDeveloperMode({
     panel.hidden = !active;
     panel.classList.toggle('developer-only', active);
     documentRef.documentElement.classList.toggle('developer-mode', active);
+    documentRef.dispatchEvent?.(
+      new CustomEvent('gev:developer-mode-changed', {
+        detail: { enabled: active },
+      }),
+    );
     if (refreshTimer) {
       clearInterval(refreshTimer);
       refreshTimer = null;
