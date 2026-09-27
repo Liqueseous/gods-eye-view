@@ -129,6 +129,19 @@ npm run dev
 Open **`http://localhost:4173`**. Choose **Live Contacts**, **Space Missions**,
 **Environmental**, or **Explore Manually** from the first-run panel.
 
+### Docker deployment
+
+The Docker Compose deployment uses `PORT` for both the host and container
+port, defaulting to `4173`. Set a different value per checkout in `.env`, or
+provide it when starting the instance:
+
+```bash
+PORT=4281 docker compose up -d --build
+```
+
+That instance is available at **`http://localhost:4281`**. Keep each checkout's
+`PORT` value distinct when running multiple instances on the same host.
+
 <details>
 <summary>Startup performance</summary>
 

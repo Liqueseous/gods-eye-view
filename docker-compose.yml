@@ -5,9 +5,14 @@ services:
     # it was never given. Build+tag first, then deploy this file as-is:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml build
     #   docker compose up -d
+    # Comment out the pre-built image to use the local Dockerfile build instead
+    #image: gods-eye-view:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: gods-eye-view:latest
     ports:
-      - "0.0.0.0:4173:4173"
+      - "0.0.0.0:${PORT:-4173}:4173"
     env_file:
       - path: .env
         required: false
