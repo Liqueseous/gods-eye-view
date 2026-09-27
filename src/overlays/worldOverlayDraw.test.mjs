@@ -377,6 +377,84 @@ test('variant measurement and all six painters remain renderer-local', () => {
   assert.ok(trackLayout.w >= 'CAMERA 12 · LIVE'.length * 6);
 });
 
+test('selected cards reserve space for and paint a type badge', () => {
+  const ctx = mockContext();
+  const entry = {
+    selected: true,
+    title: 'FLASH FLOOD WARNING',
+    details: ['Severe'],
+    badge: 'FLOOD',
+    badgeAccent: '#39d0ff',
+    accent: '#ff7a00',
+  };
+  const layout = measureOverlayEntry(ctx, entry, {});
+  assert.equal(layout.badgeH, 18);
+  assert.equal(layout.h, 8 * 2 + 15 + 15 + 18);
+  entry._overlayLayout = layout;
+  const placement = placementVariants({
+    anchorX: 100,
+    anchorY: 100,
+    width: layout.w,
+    height: layout.h,
+    viewportWidth: 400,
+    viewportHeight: 300,
+  })[0];
+  paintSelected(ctx, entry, placement);
+  assert.ok(ctx.calls.some(([name, value]) => name === 'fillText' && value === 'FLOOD'));
+});
+
+test('selected cards without a width cap retain their natural width', () => {
+  const ctx = mockContext();
+  const entry = {
+    selected: true,
+    title: 'FIRE · WIDE PERIMETER',
+    details: ['15,956 ac · 74% contained · US-NM'],
+  };
+  const layout = measureOverlayEntry(ctx, entry, {});
+  assert.equal(layout.maxWidth, null);
+  assert.ok(layout.w > 80);
+});
+
+test('selected cards wrap long details inside their configured width', () => {
+  const ctx = mockContext();
+  const entry = {
+    selected: true,
+    title: 'FLASH FLOOD WARNING',
+    details: [
+      'Take immediate action and move to higher ground before conditions worsen.',
+    ],
+    maxWidth: 120,
+  };
+  const layout = measureOverlayEntry(ctx, entry, {});
+  assert.equal(layout.w, 120);
+  assert.ok(layout.detailLines.length > 1);
+  assert.ok(layout.detailLines.every((line) => line.length <= 16));
+  assert.equal(
+    layout.h,
+    8 * 2 + layout.titleH + layout.detailLines.length * 15,
+  );
+  entry._overlayLayout = layout;
+  const placement = placementVariants({
+    anchorX: 100,
+    anchorY: 100,
+    width: layout.w,
+    height: layout.h,
+    viewportWidth: 400,
+    viewportHeight: 300,
+  })[0];
+  paintSelected(ctx, entry, placement);
+  assert.ok(
+    ctx.calls.some(
+      ([name, value]) => name === 'fillText' && value === 'Take immediate',
+    ),
+  );
+  assert.ok(
+    !ctx.calls.some(
+      ([name, value]) => name === 'fillText' && value === entry.details[0],
+    ),
+  );
+});
+
 test('thumbnail painter preserves the shipped CCTV 104x77 geometry and drawing coordinates', () => {
   const ctx = mockContext();
   const frameSlot = createFrameSlot();

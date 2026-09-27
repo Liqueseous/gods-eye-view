@@ -20,6 +20,7 @@ How to read this:
 | **NOAA nowCOAST observed weather** (`nowcoast.noaa.gov/geoserver/observations/{weather_radar,satellite}/ows`, WMS 1.1.1) | Rain radar (MRMS base reflectivity, contiguous US, about 4-minute updates) and Satellite clouds (GOES-19/18 Band 14 regional infrared, about 5-minute updates; global infrared mosaic, hourly). Keyless; layer metadata refreshed every 2 minutes, exact-time images cached for up to 24 hours | [NOAA disclaimer](https://oceanservice.noaa.gov/disclaimer.html) | "NOAA nowCOAST · NWS/OAR MRMS radar; NESDIS GOES and global satellite partners" |
 | **NOAA nowCOAST lightning density** (`nowcoast.noaa.gov/geoserver/observations/lightning_detection/ows`) | Lightning density: 15-minute accumulated strike density on an approximately 8 km grid, Americas and Pacific. Keyless; layer metadata refreshed every 10 minutes, exact-time images cached for up to 24 hours | NOAA Level-5 derived product from Vaisala NLDN/GLD360; the [product description](https://ocean.weather.gov/lightning/lightning_pdd.php) permits public distribution of this density product, not of raw Vaisala detections | "NOAA/NWS nowCOAST; derived from Vaisala NLDN/GLD360" |
 | **NOAA NHC / CPHC advisories** (`www.nhc.noaa.gov/CurrentStorms.json` + the `mapservices.weather.noaa.gov` tropical weather summary MapServer) | Cyclone advisories: storm positions, forecast tracks, points and cones for the Atlantic and eastern/central North Pacific. Keyless through `/api/cyclones`; cached for 5 minutes | [NWS public-data terms](https://www.weather.gov/disclaimer); no endorsement implied | "NOAA/NWS NHC / CPHC" |
+| **NOAA/NWS active weather alerts** (`api.weather.gov/alerts/active`) | Active U.S. weather alerts with inline Polygon/MultiPolygon hazard geometry, severity, timing, and instructions. Keyless through `/api/nws-alerts`; cached for 2 minutes and refreshed on a 3-minute layer cadence. Alerts that only reference affected zones without inline geometry are omitted in v1. | [NWS public-data terms](https://www.weather.gov/disclaimer) | "NOAA/National Weather Service" |
 | **OpenStreetMap ALPR camera locations** (including DeFlock community mapping) | Optional mapped automatic license-plate-reader camera layer | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/); commercial use permitted with applicable attribution and database share-alike obligations | [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright); [DeFlock](https://deflock.org) community mapping |
 | **Google Map Tiles API** (Photorealistic 3D Tiles) + Places/Geocoding | The 3D globe, voice scene context, and on-demand nearby installation search                                                         | Google Maps Platform ToS (proprietary, your own key + billing)                                                                                                                                                                                                                                                                                        | "Google" / "Google Maps" logo — **shown in-app**, required                                                                                  |
 | **OpenSky Network**                                                   | Primary worldwide live-flight snapshot                                                                                              | Non-commercial research/education license                                                                                                                                                                                                                                                                                                             | Schäfer et al., _"Bringing Up OpenSky"_, IPSN 2014 + opensky-network.org                                                                    |
@@ -308,6 +309,22 @@ This implementation is original; those contributions have not been merged here.
 - **Delivery:** keyless same-origin `/api/cyclones`, five-minute singleflight cache,
   fixed upstream endpoints, bounded bodies/geometry/deadline, explicit unavailable/stale states.
   Direct status fetching is unsuitable in browsers because NHC does not advertise CORS.
+
+### Weather: NWS active alerts
+
+- **Source:** [NOAA/NWS active alerts](https://api.weather.gov/alerts/active), fetched through the same-origin
+  `/api/nws-alerts` proxy with the required descriptive User-Agent.
+- **Meaning:** The Weather Alerts layer displays active `Actual` alerts that include inline Polygon or
+  MultiPolygon geometry. It uses NWS severity for the map accent and exposes the alert headline, affected
+  area, timing, sender, and instructions on selection.
+- **Coverage limitation:** Many active NWS alerts are zone-only records with `geometry: null` and
+  `affectedZones` links. Version 1 intentionally skips those records rather than issuing an unbounded
+  request per alert. Zone-geometry resolution is a future enhancement; the layer is not an all-alert
+  count until that work is added.
+- **Delivery:** keyless, bounded, same-origin proxy; two-minute server cache, three-minute client refresh,
+  20-second upstream timeout, 16 MiB body cap, request coalescing, rate limiting, and stale last-good
+  fallback.
+- **Rights/credit:** NOAA/National Weather Service; [NWS public-data terms](https://www.weather.gov/disclaimer).
 
 ### Weather: observed lightning density
 
