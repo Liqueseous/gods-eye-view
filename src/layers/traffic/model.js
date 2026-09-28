@@ -10,6 +10,8 @@ import {
   DENSITY_MULT,
   JAM_DOT_FAR_SCALE,
   JAM_DOT_DEPTH_PUNCH,
+  MAX_HEIGHT_SAMPLES_PER_PARSE,
+  MAX_HEIGHT_SAMPLE_MS_PER_PARSE,
 } from './policy.js';
 
 export function createModel({ state: layerState, services, parts, source }) {
@@ -23,8 +25,16 @@ export function createModel({ state: layerState, services, parts, source }) {
     // scene.sampleHeight() is a synchronous GPU readback; calling it once per
     // road with no dedup froze the tab on a dense full-graph pass (hundreds+
     // roads, most sharing a neighborhood). Roads within the same ~111m cell
-    // reuse one sample instead of each paying for their own GPU stall.
-    const heightCellCache = new Map();
+    // reuse one sample instead of each paying for their own GPU stall. The
+    // cache is persisted on layerState (not recreated per call) so a later
+    // pan doesn't re-stall on cells already sampled, and new samples are
+    // capped per pass — by count and by cumulative time, since each call's
+    // cost varies with GPU contention — so a single pan revealing many new
+    // cells at once can't freeze the tab. Uncapped cells fall back to 0 until
+    // a later pass.
+    const heightCellCache = layerState._heightCellCache;
+    let newSamples = 0;
+    let sampleTimeMs = 0;
     for (const road of roadData.roads) {
       if (!road.coordinates || road.coordinates.length < 2) continue;
 
@@ -59,15 +69,24 @@ export function createModel({ state: layerState, services, parts, source }) {
         const cellKey = `${firstCoord[1].toFixed(3)},${firstCoord[0].toFixed(3)}`;
         if (heightCellCache.has(cellKey)) {
           baseHeight = heightCellCache.get(cellKey);
-        } else {
+        } else if (
+          newSamples < MAX_HEIGHT_SAMPLES_PER_PARSE &&
+          sampleTimeMs < MAX_HEIGHT_SAMPLE_MS_PER_PARSE
+        ) {
           const carto = Cesium.Cartographic.fromDegrees(
             firstCoord[0],
             firstCoord[1],
           );
+          const sampleStart = performance.now();
           const sampled = layerState._viewer.scene.sampleHeight(carto);
+          sampleTimeMs += performance.now() - sampleStart;
+          newSamples += 1;
           if (Number.isFinite(sampled)) baseHeight = sampled;
           heightCellCache.set(cellKey, baseHeight);
         }
+        // else: cap reached this pass — leaves baseHeight at 0 (not cached),
+        // so a later parseRoads() pass retries this cell instead of latching
+        // a wrong height.
       }
 
       // Pre-compute Cartesian3 waypoints (lon, lat, height) for fast lerp animation

@@ -344,7 +344,7 @@ export function createDeveloperDiagnosticsSnapshot(
   const layers = app?.dataManager?.getAll?.() || [];
   const transitLayer = app?.dataManager?.layers?.get?.('transit')?.module;
   const transitRouteData =
-    transitLayer?.getTransitRouteDiagnostics?.({ includeGeometry: true }) ||
+    transitLayer?.getTransitRouteDiagnostics?.({ includeGeometry: false }) ||
     null;
   const view = readDiagnosticView(app || {});
   const nearestTransitFeeds = view.center

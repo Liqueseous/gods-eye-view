@@ -4,7 +4,7 @@ services:
   gods-eye-view:
     environment:
       # Keep the proxy from sending out-of-region bboxes to this regional DB.
-      OVERPASS_SELF_HOSTED_BBOX: "40.9,-73.8,47.6,-66.7"
+      OVERPASS_SELF_HOSTED_BBOX: '40.9,-73.8,47.6,-66.7'
 
   overpass:
     environment:
@@ -30,9 +30,11 @@ services:
         /db/rhode-island.osm.pbf /db/vermont.osm.pbf &&
         osmium cat -o /db/planet.osm.bz2 /db/new-england.osm.pbf &&
         rm -f /db/new-england.osm.pbf
-      OVERPASS_DIFF_URL: ""
+      OVERPASS_DIFF_URL: ''
+    entrypoint: ['/bin/sh', '/app/overpass-dev-entrypoint.sh']
     volumes:
       - overpass-db-new-england:/db
+      - ./scripts/overpass-dev-entrypoint.sh:/app/overpass-dev-entrypoint.sh:ro
 
 volumes:
   overpass-db-new-england:

@@ -25,7 +25,14 @@ const COVERAGE = parseCoverage();
 
 /** First `(s,w,n,e)` bbox tuple in an Overpass QL body, or null. */
 function firstBbox(body) {
-  const match = OVERPASS_BBOX_RE.exec(String(body || ''));
+  let query = String(body || '');
+  try {
+    const data = new URLSearchParams(query).get('data');
+    if (data) query = data;
+  } catch {
+    // Treat non-form input as raw Overpass QL for direct callers and tests.
+  }
+  const match = OVERPASS_BBOX_RE.exec(query);
   if (!match) return null;
   const [south, west, north, east] = match[0]
     .slice(1, -1)

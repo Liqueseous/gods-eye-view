@@ -25,6 +25,14 @@ export function createState({ services }) {
 
   layerState._roads = [];
 
+  /** @type {Map<string, number>} scene.sampleHeight() results keyed by ~111m
+   * cell, persisted across parseRoads() passes for the layer's lifetime.
+   * scene.sampleHeight is a synchronous GPU readback (readPixels) \u2014 without a
+   * session-lasting cache, every fresh pan re-pays that stall for cells it had
+   * already sampled minutes earlier. */
+
+  layerState._heightCellCache = new Map();
+
   /** @type {boolean} Whether the layer is currently enabled */
 
   layerState._enabled = false;

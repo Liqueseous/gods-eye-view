@@ -72,6 +72,29 @@ export function adaptTrafficDotCap(currentCap, constructionMs) {
 
 export const MAX_WAYPOINTS_PER_ROAD = 80;
 
+/** @const {number} Max NEW scene.sampleHeight() calls per parseRoads() pass.
+ * scene.sampleHeight is a synchronous GPU readback (readPixels) — a pan that
+ * reveals hundreds of never-before-seen ~111 m cells at once froze the tab for
+ * several seconds spending nearly all of that time inside readPixels. Capping
+ * new samples per pass and persisting the cache across passes (state.js
+ * `_heightCellCache`) means only a bounded number of stalls happen per parse;
+ * the rest fall back to the nearest already-cached height until a later pass
+ * fills them in. This is a hard ceiling — MAX_HEIGHT_SAMPLE_MS_PER_PARSE is
+ * what actually limits the pass under real GPU contention (each call can cost
+ * anywhere from <1ms idle to 10s of ms busy). */
+
+export const MAX_HEIGHT_SAMPLES_PER_PARSE = 40;
+
+/** @const {number} Milliseconds of cumulative scene.sampleHeight() time
+ * allowed per parseRoads() pass, checked between calls. A dense pan measured
+ * ~14ms per call under GPU contention, so the 40-call ceiling above still let
+ * a single pass stall 300-560ms. Bailing out once this budget is spent makes
+ * the per-pass stall adapt to current GPU cost instead of a fixed call count:
+ * cheap/idle GPU still gets up to the ceiling above, busy GPU bails after a
+ * couple of calls and retries the rest on a later pass. */
+
+export const MAX_HEIGHT_SAMPLE_MS_PER_PARSE = 8;
+
 /** @const {number} Km — minimum viewport center shift before allowing refresh */
 
 export const MIN_CENTER_SHIFT_KM = 0.35;

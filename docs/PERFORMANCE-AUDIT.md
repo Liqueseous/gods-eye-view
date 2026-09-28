@@ -319,6 +319,89 @@ FunctionCall, so aggregate high-volume work remains unresolved. A controlled
 capture with identical populations and holds is required before further fleet
 budget tuning.
 
+### Traffic recovery and diagnostics-export bottleneck
+
+The latest Boston diagnostic confirms that the traffic data path is now
+working: 2,703 roads are loaded, flow coverage is 95%, ten flow tiles were
+fetched, and the local OSM cache is serving road/tunnel/transit requests with
+local, disk, and memory hits. The remaining road-cache errors are limited and
+are no longer the original all-requests-public-mirror failure.
+
+The same diagnostic reports a 20.7-second maximum long task and 414 MiB live
+heap while its exported Transit route data contains full line geometry. The
+default Developer diagnostics snapshot was requesting
+`includeGeometry: true`, copying thousands of route coordinates into the
+export and creating avoidable serialization/allocation pressure. It now
+requests route metadata and line counts without geometry; full geometry
+remains available through the explicit route diagnostics API.
+
+The focused Developer tests pass and the production build succeeds. A new
+diagnostic export is required to quantify the reduction in export-time heap and
+long-task cost.
+
+### Root cause: uncapped, per-parse `scene.sampleHeight()` during traffic pans
+
+A pan-only trace (`Trace-20260928T150347.json.gz`) captured multi-second
+freezes reported as "still having the same performance issues related to
+traffic": three `RunTask`/`RunMicrotasks` main-thread tasks of **11.57 s**,
+**7.02 s**, and **4.33 s**. Reconstructing the CPU profile for the renderer
+main thread showed the time was overwhelmingly spent in
+`readPixels` — 66%, 63%, and 60% of samples respectively — reached through
+Cesium's `Scene.sampleHeight()` via the stack `sampleHeight → ... → readPixels`.
+
+`scene.sampleHeight()` is a synchronous GPU readback: it forces the render
+pipeline to flush and blocks the main thread until the GPU replies. Traffic's
+`parseRoads()` ([src/layers/traffic/model.js](../src/layers/traffic/model.js))
+already deduplicated calls per ~111 m cell, but the dedup cache was recreated
+on every `parseRoads()` invocation and had no cap on new samples per pass. A
+pan that reveals hundreds of never-before-seen cells at once (a dense road
+network, e.g. Boston) made every one of those cells pay for its own
+synchronous GPU stall in a single tight loop — exactly the multi-second
+main-thread block seen in the trace.
+
+Fix: the height-cell cache is now persisted on `layerState._heightCellCache`
+for the traffic layer's lifetime (session-scoped, mirroring the established
+`meshFloorSampler.js` one-shot-cell pattern), and each `parseRoads()` pass is
+capped at `MAX_HEIGHT_SAMPLES_PER_PARSE = 40` **new** `sampleHeight()` calls
+([src/layers/traffic/policy.js](../src/layers/traffic/policy.js)). Cells
+beyond the cap are left unsampled (height 0 for that pass only, not cached)
+and retried on the next pass instead of latching a wrong height. The debug
+timing twin (`parseRoadsTimed` in
+[src/layers/traffic/timing.js](../src/layers/traffic/timing.js)) mirrors the
+same cache/cap so causal-timing captures match production behavior.
+
+New focused tests
+([src/layers/traffic/model.test.mjs](../src/layers/traffic/model.test.mjs))
+cover the cap, cross-pass cache reuse, and cap-skip retry. All 29 traffic
+tests and the production build pass.
+
+### Follow-up: count cap alone still stalled 300-560ms under GPU contention
+
+A second dense-panning trace (`Trace-20260928T151258.json.gz`), captured
+after the fix above, confirmed the worst-case main-thread stall dropped from
+**11.57s to 563ms** — a ~20x reduction — but repeated stalls of 300-560ms
+still appeared throughout the pan, still dominated by `readPixels` (60-66% of
+samples in each) reached through the same
+`sampleHeight → ... → readPixels` stack.
+
+The fixed count cap (40 calls) doesn't adapt to how expensive each call
+currently is: under the GPU contention in this capture, each `sampleHeight()`
+call cost ~14ms, so 40 calls in one pass still cost ~560ms. Added
+`MAX_HEIGHT_SAMPLE_MS_PER_PARSE = 8` in
+[src/layers/traffic/policy.js](../src/layers/traffic/policy.js): the sampling
+loop in `parseRoads()` now bails out once cumulative `sampleHeight()` time for
+the pass exceeds 8ms, in addition to the existing 40-call ceiling — whichever
+limit is hit first. On an idle/cheap GPU this still allows up to 40 calls per
+pass; under contention it now bails after roughly one call instead of
+continuing to the full count. The debug timing twin mirrors the same budget.
+
+A new test (`parseRoads bails out early once cumulative sampleHeight time
+exceeds budget`) simulates a costly `sampleHeight()` and asserts the pass
+stops well short of the count ceiling. All 30 traffic tests and the
+production build pass. A third trace under the same dense-panning scenario
+would confirm the remaining stalls shrink further; the mechanism is
+well-evidenced from the two captures already gathered.
+
 ## Runtime Model
 
 ### Browser

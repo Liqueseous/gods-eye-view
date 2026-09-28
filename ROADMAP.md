@@ -30,7 +30,9 @@ The next step is to expand into operational use cases: monitoring, analysis, bri
 - [x] Promote hot Overpass memory entries for true LRU eviction.
 - [x] Budget hidden flight and military contact work across fleet ticks.
 - [x] Throttle Developer Mode in-view projections during camera pans.
+- [x] Keep default Developer diagnostics exports free of route geometry.
 - [x] Coordinate hidden fleet work through a shared frame budget.
+- [x] Cap and cache traffic layer `scene.sampleHeight()` calls so a pan revealing many new roads at once can't freeze the tab.
 
 ## Roadmap priorities
 
