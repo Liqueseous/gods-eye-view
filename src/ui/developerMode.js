@@ -1,8 +1,11 @@
 import * as Cesium from 'cesium';
 import { TRANSIT_ENABLED_FEEDS, haversineKm } from '../data/transitFeeds.js';
 import { getOsmTileCacheDiagnostics } from '../data/osmCacheBounds.js';
+import { getSharedFrameBudgetDiagnostics } from '../frameBudget.js';
 
 let performanceProbe = null;
+let assetDiagnosticsCache = null;
+const ASSET_DIAGNOSTICS_CACHE_MS = 3000;
 
 /** Persisted opt-in switch for tools intended for development and QA. */
 export const DEVELOPER_MODE_STORAGE_KEY = 'godsEyeView.developerMode.enabled';
@@ -196,6 +199,7 @@ function ensurePerformanceProbe(app) {
         hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || null,
         deviceMemoryGB: globalThis.navigator?.deviceMemory || null,
         devicePixelRatio: globalThis.devicePixelRatio || 1,
+        frameBudget: getSharedFrameBudgetDiagnostics(),
       };
     },
     destroy() {
@@ -227,6 +231,7 @@ function readStaticPerformanceDiagnostics() {
     hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || null,
     deviceMemoryGB: globalThis.navigator?.deviceMemory || null,
     devicePixelRatio: globalThis.devicePixelRatio || 1,
+    frameBudget: getSharedFrameBudgetDiagnostics(),
   };
 }
 
@@ -251,6 +256,12 @@ function readPerformanceDiagnostics(app, startProbe = true) {
       Number.isFinite(values.frameIntervalMs) &&
         `FRAME ${values.frameIntervalMs.toFixed(1)}ms · P95 ${values.frameIntervalP95Ms?.toFixed(1) || '—'}ms`,
       `LONG TASKS ${values.longTaskTotalMs.toFixed(1)}ms TOTAL · ${values.longTaskMaxMs.toFixed(1)}ms MAX`,
+      values.frameBudget &&
+        `FRAME BUDGET ${values.frameBudget.elapsedMs.toFixed(1)}/${values.frameBudget.budgetMs}ms`,
+      ...Object.entries(values.frameBudget?.owners || {}).map(
+        ([owner, value]) =>
+          `${owner} ${value.calls} calls/${value.elapsedMs.toFixed(1)}ms`,
+      ),
       values.hardwareConcurrency && `CPU ${values.hardwareConcurrency} THREADS`,
       values.deviceMemoryGB && `DEVICE ${values.deviceMemoryGB}GB`,
       `DPR ${values.devicePixelRatio}`,
@@ -563,7 +574,21 @@ function sourceDiagnostics(layer) {
 
 function readAssetDiagnostics(app) {
   const layers = app.dataManager?.getAll?.() || [];
-  return layers
+  const signature = layers
+    .filter((layer) => layer.enabled)
+    .map(
+      (layer) =>
+        `${layer.id}:${layer.stats?.count || 0}:${layer.stats?.lastUpdate || 0}`,
+    )
+    .join('|');
+  const now = Date.now();
+  if (
+    assetDiagnosticsCache &&
+    assetDiagnosticsCache.signature === signature &&
+    now - assetDiagnosticsCache.capturedAt < ASSET_DIAGNOSTICS_CACHE_MS
+  )
+    return assetDiagnosticsCache.assets;
+  const assets = layers
     .filter((layer) => layer.enabled)
     .map((layer) => {
       const loaded = Number(layer.stats?.count) || 0;
@@ -576,6 +601,8 @@ function readAssetDiagnostics(app) {
         source: sourceDiagnostics(layer),
       };
     });
+  assetDiagnosticsCache = { capturedAt: now, assets, signature };
+  return assets;
 }
 
 function osmTileCacheReadout(cache) {
@@ -739,6 +766,7 @@ export function initDeveloperMode({
   storage,
   documentRef = globalThis.document,
 } = {}) {
+  assetDiagnosticsCache = null;
   const toggle = documentRef?.querySelector('#developer-mode-toggle');
   const analyst = documentRef?.querySelector('#analyst-console');
   const panel = documentRef?.querySelector('#developer-tools-panel');

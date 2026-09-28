@@ -30,10 +30,16 @@ import {
   TRACKED_MODEL_MIN_PX,
   TRACKED_MODEL_MAX_PX,
   FLEET_DR_INTERVAL_MS,
+  FLEET_HIDDEN_BUDGET_MS,
   COURSE_SLEW_DT_MAX_SEC,
   ROTATION_REFRESH_MS,
   COURSE_MAX_DPS,
 } from './policy.js';
+import {
+  beginSharedFrameBudget,
+  recordSharedFrameBudget,
+  sharedFrameBudgetAllows,
+} from '../../frameBudget.js';
 
 export function createRendering({
   flightState,
@@ -821,6 +827,7 @@ export function createRendering({
     const scene = flightState._viewer.scene;
     const camera = flightState._viewer.camera;
     const nowMs = focusNowMs(Date.now());
+    beginSharedFrameBudget(flightState._viewer.scene.frameState?.frameNumber);
 
     // (The tracked trail head is now the per-frame _trailHeadEntity segment — no 1 Hz
     // primitive rebuild needed here anymore.)
@@ -931,8 +938,24 @@ export function createRendering({
       for (const icao of toRelease) _releaseModel(icao);
     }
 
+    let hiddenSeen = 0;
+    let hiddenProcessed = 0;
+    const hiddenCursor = flightState._fleetHiddenCursor || 0;
+    const hiddenStartedAt = performance.now();
     for (const [icao24, bb] of flightState._billboards) {
       if (icao24 === flightState._trackedIcao) continue; // tracked entity owns its own motion
+      const hidden = bb.show !== true;
+      if (hidden) {
+        const ordinal = hiddenSeen++;
+        if (ordinal < hiddenCursor) continue;
+        if (
+          hiddenProcessed > 0 &&
+          (performance.now() - hiddenStartedAt >= FLEET_HIDDEN_BUDGET_MS ||
+            !sharedFrameBudgetAllows(0.15))
+        )
+          continue;
+        hiddenProcessed += 1;
+      }
 
       const info = flightState.records.data.get(icao24);
 
@@ -1126,6 +1149,13 @@ export function createRendering({
         }
       }
     }
+    flightState._fleetHiddenCursor = hiddenSeen
+      ? (hiddenCursor + hiddenProcessed) % hiddenSeen
+      : 0;
+    recordSharedFrameBudget(
+      'flights-hidden',
+      performance.now() - hiddenStartedAt,
+    );
   }
   return {
     _fleetBillboardColor,

@@ -28,6 +28,9 @@ The next step is to expand into operational use cases: monitoring, analysis, bri
 - [x] Time-budget Transit floor rereads and expose their runtime diagnostics.
 - [x] Time-budget Transit visibility sweeps for large fleets.
 - [x] Promote hot Overpass memory entries for true LRU eviction.
+- [x] Budget hidden flight and military contact work across fleet ticks.
+- [x] Throttle Developer Mode in-view projections during camera pans.
+- [x] Coordinate hidden fleet work through a shared frame budget.
 
 ## Roadmap priorities
 

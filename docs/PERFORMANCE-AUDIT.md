@@ -126,6 +126,10 @@ The post-change artifacts are:
 - `diag/gods-eye-view-diagnostics-2026-09-28T17-20-09-689Z.json`
 - `diag/Trace-20260928T132945.json.gz`
 - `diag/gods-eye-view-diagnostics-2026-09-28T17-31-46-829Z.json`
+- `diag/Trace-20260928T133920.json.gz`
+- `diag/gods-eye-view-diagnostics-2026-09-28T17-40-24-009Z.json`
+- `diag/Trace-20260928T135500.json.gz`
+- `diag/gods-eye-view-diagnostics-2026-09-28T17-55-19-163Z.json`
 
 The maximum observed JavaScript timer slice decreased from approximately
 3,593 ms in the original trace to approximately 530 ms in the post-change
@@ -209,6 +213,29 @@ DevTools overhead and not application work. The next meaningful investigation
 is therefore Cesium's approximately 417 ms render/geometry callback, followed
 by a controlled same-scene capture without profiler-start overhead.
 
+### Pan-only trace: Developer diagnostics projection cost
+
+The pan-only trace `diag/Trace-20260928T134243.json.gz` contains 11,784 mouse
+move events and repeated 120-158 ms application callbacks at the same deployed
+bundle location. Mapping that location identifies the Developer Mode asset
+refresh path, whose `countInView()` projection scans up to 10,000 objects per
+enabled layer every refresh.
+
+This is diagnostic overhead during camera movement, not Cesium rendering. The
+asset list now caches the expensive in-view projection for 3 seconds while
+invalidating immediately when enabled-layer populations or update timestamps
+change. The Developer Mode test suite passes all 8 tests. A new pan trace is
+still needed to measure the reduction directly.
+
+The follow-up artifacts are `diag/Trace-20260928T134711.json.gz` and
+`diag/gods-eye-view-diagnostics-2026-09-28T17-47-58-226Z.json`. The follow-up
+trace no longer shows the repeated 120-158 ms named Developer asset-refresh
+callbacks among its dominant long calls, which is consistent with the cache
+working. It is not a clean A/B: the run is longer, contains 13,104 mouse moves,
+12,918 flights, 6,844 vessels, five continuous holds, 16 FPS, and 488 MiB live
+heap. Therefore the direct FPS improvement from this diagnostic change remains
+unquantified.
+
 ### High-volume stress capture
 
 The latest trace is a different stress scenario and must not be compared as a
@@ -234,6 +261,63 @@ still overwhelming the frame budget. The next optimization should prioritize
 cross-layer render-hold coordination and high-volume fleet update budgets,
 especially for flights and vessels, rather than further tuning the already
 sliced Transit visibility pass.
+
+### Implementation update: hidden fleet frame budgets
+
+Flights and Military now preserve visible and tracked contact updates while
+rotating a bounded 4 ms budget across hidden contacts on each fleet tick. The
+off-screen cursor advances across ticks so large hidden cohorts are not
+permanently starved, while visible contacts continue through the existing
+motion, horizon, model, and styling paths.
+
+The focused flights and military suite passes 134 tests. A new high-volume
+browser trace is still required to measure aggregate FPS and Cesium command
+pressure under the 13,000-flight/12,000-vessel scenario.
+
+### Shared scheduler result
+
+The post-scheduler artifacts provide a partial stress comparison. The latest
+diagnostic still has a similar high-volume population: 12,685 flights, 7,085
+vessels, 254 military contacts, and five continuous holds. It reports `16 FPS`
+and a `60.7 ms` average frame interval, effectively unchanged from the prior
+16 FPS stress capture.
+
+The trace tail improved: the prior capture contained 3.19 s and 811 ms
+application/runtime slices, while the post-scheduler trace's largest
+non-profiler task is approximately 172 ms. This indicates the shared budget
+reduces long hidden-fleet bursts, but does not improve aggregate FPS under the
+current workload. The next dominant limit is likely visible fleet work, AIS
+visibility/label processing, or Cesium command/upload pressure.
+
+The Developer budget readout recorded `flights-hidden` at 4.1 ms and
+`military-hidden` at 0.7 ms in its latest sample. These are current-window
+diagnostics, not cumulative trace totals.
+
+### Implementation update: shared fleet frame budget
+
+Flights and Military now join a shared 12 ms per-frame coordinator. Their
+hidden-contact work is admitted only while shared budget remains, while visible
+and tracked contacts retain their existing update path. Owner timings are
+available through Developer performance diagnostics for `flights-hidden` and
+`military-hidden`.
+
+The scheduler and focused fleet tests pass. A controlled high-volume trace is
+still required to measure aggregate FPS and confirm that vessel and Cesium
+command pressure, rather than hidden aircraft work, is the remaining limit.
+
+### Latest hidden-fleet trace
+
+The newest capture is not a controlled A/B run: vessels decreased from 12,000
+to 5,446, Transit no longer held continuous rendering, and the flight count
+changed from 13,037 to 12,746. FPS rose from `7.1` to `8.8`, but that change
+cannot be attributed to the hidden-fleet budget alone.
+
+The latest diagnostic reports `604 MiB` live JS heap, 331 long tasks, and a
+Transit floor cycle of `728 ms` for 528 candidates and 431 cells. The trace
+still contains a 3.19 s unattributed `RunTask` and an 811 ms application
+FunctionCall, so aggregate high-volume work remains unresolved. A controlled
+capture with identical populations and holds is required before further fleet
+budget tuning.
 
 ## Runtime Model
 

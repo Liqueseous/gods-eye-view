@@ -230,6 +230,8 @@ export const LANDED_SPEED_MAX_MPS = 23;
 /** @constant {number} Fleet dead-reckoning tick interval (ms) — ~12Hz, not per-frame. */
 
 export const FLEET_DR_INTERVAL_MS = 80;
+/** Maximum synchronous hidden-contact work per fleet tick. */
+export const FLEET_HIDDEN_BUDGET_MS = 4;
 
 /** @constant {number} Max ms between rotation passes while the camera is idle. */
 
