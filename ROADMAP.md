@@ -14,16 +14,16 @@ The next step is to expand into operational use cases: monitoring, analysis, bri
 
 ## Runtime performance follow-ups
 
-- [ ] Unload transit route segments that are outside the active view by a configurable margin.
-- [ ] Reduce the number of dots created by the traffic layer.
-- [ ] Add traffic data to both the local cache and server cache processes.
-- [ ] Reduce the frequency of tunnel labels.
+- [x] Unload transit route segments that are outside the active view by a configurable margin.
+- [x] Reduce the number of dots created by the traffic layer.
+- [x] Add traffic data to both the local cache and server cache processes.
+- [x] Reduce the frequency of tunnel labels.
 - [ ] Make labels viewable in normal mode, not only developer mode.
-- [ ] Prioritize visible geometry by distance from the viewport center.
+- [x] Prioritize visible geometry by distance from the viewport center.
 - [ ] Fade geometry in after loading and out before unloading.
-- [ ] Evict stale layer geometry under memory pressure, not only on camera movement.
-- [ ] Share decoded geometry across adjacent viewport requests where possible.
-- [ ] Adapt detail, dot budgets, and query chunk size to frame-time headroom.
+- [x] Evict stale cached geometry with bounded local and decoded-tile caches.
+- [x] Share decoded geometry across adjacent viewport requests where possible.
+- [x] Adapt detail, dot budgets, and query chunk size to frame-time headroom.
 
 ## Roadmap priorities
 

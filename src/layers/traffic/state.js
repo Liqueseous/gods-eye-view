@@ -1,5 +1,9 @@
 import * as Cesium from 'cesium';
-import { FLOW_BUCKET_COLORS, TRAFFIC_TIMING_ENABLED } from './policy.js';
+import {
+  FLOW_BUCKET_COLORS,
+  MAX_DOTS,
+  TRAFFIC_TIMING_ENABLED,
+} from './policy.js';
 
 export function createState({ services }) {
   const layerState = {};
@@ -65,7 +69,7 @@ export function createState({ services }) {
   /** @type {number} User-adjustable density multiplier (clamped 0.2–2.5) */
 
   layerState._densityScale = 1.0;
-  layerState._adaptiveDotCap = 6000;
+  layerState._adaptiveDotCap = MAX_DOTS;
 
   /** @type {number} User-adjustable speed multiplier (clamped 0.3–3.0) */
 

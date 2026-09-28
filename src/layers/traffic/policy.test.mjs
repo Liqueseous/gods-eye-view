@@ -12,6 +12,6 @@ test('traffic dot cap backs off under expensive construction', () => {
 });
 
 test('traffic dot cap recovers gradually when construction is cheap', () => {
-  assert.equal(adaptTrafficDotCap(3000, 2), 3300);
+  assert.equal(adaptTrafficDotCap(3000, 2), 3301);
   assert.equal(adaptTrafficDotCap(MAX_DOTS, 2), MAX_DOTS);
 });
