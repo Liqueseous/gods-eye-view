@@ -181,3 +181,71 @@ test('a newly visible area supersedes an in-flight priority request', async () =
   assert.ok(calls[1].north - calls[1].south <= 0.12);
   layer.destroy();
 });
+
+test('route geometry unloads after the camera leaves its retention margin', async () => {
+  const secondRequest = Promise.withResolvers();
+  let requestCount = 0;
+  const entities = [];
+  const layer = createTransitRouteLines({
+    routeSource: {
+      requestRoutes() {
+        requestCount += 1;
+        if (requestCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            async json() {
+              return {
+                routes: [{
+                  id: 'route-1',
+                  routeId: '1',
+                  name: 'Line 1',
+                  type: 'subway',
+                  color: '#FF0000',
+                  lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
+                }],
+              };
+            },
+          });
+        }
+        return secondRequest.promise;
+      },
+    },
+  });
+  layer.init({
+    scene: { requestRender() {} },
+    entities: {
+      add(entity) {
+        entities.push(entity);
+        return entity;
+      },
+      remove(entity) {
+        const index = entities.indexOf(entity);
+        if (index >= 0) entities.splice(index, 1);
+      },
+    },
+  });
+  layer.enable();
+  layer.setVisible(true);
+  await layer.update({ south: 42.3, west: -71.2, north: 42.4, east: -71 });
+  assert.equal(layer.diagnostics().count, 1);
+
+  const moved = layer.update({
+    south: 40,
+    west: -74,
+    north: 40.1,
+    east: -73.9,
+  });
+  assert.equal(layer.diagnostics().count, 0);
+  assert.equal(entities.length, 0);
+  secondRequest.resolve({
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    async json() {
+      return { routes: [] };
+    },
+  });
+  await moved;
+});

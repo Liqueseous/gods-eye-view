@@ -55,6 +55,19 @@ export const OVERLAP_THRESHOLD = 0.6;
 
 export const MAX_DOTS = 6000;
 
+export const MIN_ADAPTIVE_DOTS = 1000;
+export const TRAFFIC_DOT_TARGET_MS = 8;
+
+export function adaptTrafficDotCap(currentCap, constructionMs) {
+  const current = Number.isFinite(currentCap) ? currentCap : MAX_DOTS;
+  const duration = Number.isFinite(constructionMs) ? constructionMs : 0;
+  if (duration > TRAFFIC_DOT_TARGET_MS * 1.5)
+    return Math.max(MIN_ADAPTIVE_DOTS, Math.floor(current * 0.8));
+  if (duration < TRAFFIC_DOT_TARGET_MS * 0.5)
+    return Math.min(MAX_DOTS, Math.ceil(current * 1.1));
+  return Math.min(MAX_DOTS, Math.max(MIN_ADAPTIVE_DOTS, Math.floor(current)));
+}
+
 /** @const {number} Polylines longer than this are simplified by sub-sampling */
 
 export const MAX_WAYPOINTS_PER_ROAD = 80;

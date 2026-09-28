@@ -7,6 +7,7 @@ const MIN_VIEW_SPAN_DEG = 0.1;
 const QUERY_GRID_DEG = 0.01;
 const ROUTE_CACHE_TTL_MS = 6 * 60 * 60_000;
 const FAILURE_RETRY_MS = 30_000;
+const ROUTE_UNLOAD_MARGIN_DEG = 0.15;
 const OUTLINE_COLOR = '#07131B';
 const OUTLINE_WIDTH = 7;
 const ROUTE_WIDTH = 3.5;
@@ -47,6 +48,16 @@ function boundsContain(outer, inner) {
     outer.west <= inner.west + epsilon &&
     outer.north >= inner.north - epsilon &&
     outer.east >= inner.east - epsilon
+  );
+}
+
+function boundsOverlapWithMargin(a, b, margin) {
+  if (!a || !b) return true;
+  return !(
+    a.north + margin < b.south ||
+    a.south - margin > b.north ||
+    a.east + margin < b.west ||
+    a.west - margin > b.east
   );
 }
 
@@ -355,6 +366,17 @@ export function createTransitRouteLines({
     };
   }
 
+  function unloadRoutes() {
+    removeReplacement(pendingReplacement);
+    pendingReplacement = null;
+    removeGeometry();
+    routes = [];
+    routePickTargets.clear();
+    coverageBounds = null;
+    onRoutesUpdated();
+    viewer?.scene?.requestRender?.();
+  }
+
   async function loadBounds(safeBounds, requestGeneration, signal, stage) {
     const key = routeBoundsKey(safeBounds);
     requestKey = key;
@@ -412,6 +434,18 @@ export function createTransitRouteLines({
     if (!enabled || !visible || !bounds) return;
     const priorityBounds = stableQueryBounds(bounds);
     const now = Date.now();
+
+    if (
+      coverageBounds &&
+      !boundsOverlapWithMargin(
+        coverageBounds,
+        priorityBounds,
+        ROUTE_UNLOAD_MARGIN_DEG,
+      )
+    ) {
+      unloadRoutes();
+    }
+
     const coverageFresh =
       coverageBounds && now - lastUpdate < ROUTE_CACHE_TTL_MS;
 

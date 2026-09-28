@@ -10,6 +10,7 @@ import {
   HEAT_LINE_SLOW_WIDTH,
   TRAFFIC_TIMING_ENABLED,
   MAX_DOTS,
+  adaptTrafficDotCap,
 } from './policy.js';
 
 export function createRendering({
@@ -241,11 +242,13 @@ export function createRendering({
           visibleRoadCount: filteredRoads.length,
         })
       : null;
+    const dotCap = layerState._adaptiveDotCap || MAX_DOTS;
     const roadBudgets = parts.model.allocateRoadDotBudgets(
       filteredRoads,
       altitude,
-      MAX_DOTS,
+      dotCap,
     );
+    const dotConstructionStart = performance.now();
     let batchStartedAt = performance.now();
     for (let i = 0; i < filteredRoads.length; i++) {
       if (!isCurrent()) return false;
@@ -253,13 +256,17 @@ export function createRendering({
       const budget = roadBudgets[i] || 0;
       if (budget <= 0) continue;
       parts.animation.spawnDotsForRoad(road, altitude, budget);
-      if (layerState._dots.length >= MAX_DOTS) break;
+      if (layerState._dots.length >= dotCap) break;
       if (performance.now() - batchStartedAt >= 4) {
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (!isCurrent()) return false;
         batchStartedAt = performance.now();
       }
     }
+    layerState._adaptiveDotCap = adaptTrafficDotCap(
+      dotCap,
+      performance.now() - dotConstructionStart,
+    );
 
     const renderMetrics = state
       ? {

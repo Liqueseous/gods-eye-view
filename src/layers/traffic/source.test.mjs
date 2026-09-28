@@ -103,6 +103,23 @@ test('road requests have finite bounds and retain the two-pass query', async () 
     /residential/,
   );
 });
+test('traffic road queries use small center-first cache chunks', async () => {
+  const tiles = [];
+  const source = createTrafficSource({
+    fetchImpl: async (_url, options) => {
+      tiles.push(new URLSearchParams(options.body).get('data'));
+      return Response.json({ elements: [] });
+    },
+  });
+  await source.requestRoads({
+    south: 30.2,
+    west: -97.8,
+    north: 30.4,
+    east: -97.6,
+  });
+  assert.ok(tiles.length > 1);
+  assert.match(tiles[0], /\(30\.25,-97\.(65|7),30\.3,-97\.(6|65)\)/);
+});
 test('nearby road viewports share cached OSM tiles without a second server call', async () => {
   const queries = [];
   const source = createTrafficSource({

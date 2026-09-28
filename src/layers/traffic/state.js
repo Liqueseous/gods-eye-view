@@ -65,6 +65,7 @@ export function createState({ services }) {
   /** @type {number} User-adjustable density multiplier (clamped 0.2–2.5) */
 
   layerState._densityScale = 1.0;
+  layerState._adaptiveDotCap = 6000;
 
   /** @type {number} User-adjustable speed multiplier (clamped 0.3–3.0) */
 

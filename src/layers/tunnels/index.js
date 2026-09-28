@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { clampBoundsAroundCenter } from '../../data/trafficBounds.js';
+import { getDetectionTuning } from '../../data/detection.js';
 
 const OVERLAY_SOURCE_ID = 'tunnels';
 const OVERLAY_OPTIONS = Object.freeze({
@@ -19,6 +20,11 @@ const RAIL_WIDTH = 2.8;
 const GHOST_MAX_CAMERA_ALTITUDE_M = 18_000;
 const GHOST_CENTER_HEIGHT_M = 4;
 const GHOST_ALPHA = 0.12;
+
+function tunnelLabelLimit(densityPct = getDetectionTuning().densityPct) {
+  const density = Math.max(0, Math.min(100, Number(densityPct) || 0));
+  return Math.round((OVERLAY_OPTIONS.cohortLimit * density) / 100);
+}
 
 function tunnelOverlayEntry(tunnel, position) {
   if (!tunnel.name) return null;
@@ -92,15 +98,28 @@ function ghostTunnelShape(kind) {
 
 function createOverlayPublisher(overlays) {
   let visible = false;
+  let entries = [];
   return {
     show() {
       if (visible) return;
       visible = true;
       overlays.setVisible(OVERLAY_SOURCE_ID, true);
     },
-    publish(entries) {
+    publish(nextEntries) {
+      entries = nextEntries || [];
+      if (visible) {
+        overlays.setEntries(OVERLAY_SOURCE_ID, entries, {
+          ...OVERLAY_OPTIONS,
+          cohortLimit: tunnelLabelLimit(),
+        });
+      }
+    },
+    refresh() {
       if (visible)
-        overlays.setEntries(OVERLAY_SOURCE_ID, entries, OVERLAY_OPTIONS);
+        overlays.setEntries(OVERLAY_SOURCE_ID, entries, {
+          ...OVERLAY_OPTIONS,
+          cohortLimit: tunnelLabelLimit(),
+        });
     },
     hide() {
       if (!visible) return;
@@ -138,6 +157,7 @@ export function createTunnelsLayer({ source, services }) {
   let lastUpdate = null;
   let loading = false;
   let error = null;
+  const tuningListener = () => publisher.refresh();
   let count = 0;
   let roadCount = 0;
   let railCount = 0;
@@ -593,6 +613,10 @@ export function createTunnelsLayer({ source, services }) {
 
   function destroy() {
     disable();
+    globalThis.document?.removeEventListener?.(
+      'gev:detection-tuning-changed',
+      tuningListener,
+    );
     cameraMoveEndRemove?.();
     cameraMoveEndRemove = null;
     postRenderRemove?.();
@@ -612,6 +636,10 @@ export function createTunnelsLayer({ source, services }) {
 
     init(nextViewer) {
       viewer = nextViewer;
+      globalThis.document?.addEventListener?.(
+        'gev:detection-tuning-changed',
+        tuningListener,
+      );
       if (!cameraMoveEndRemove && viewer?.camera?.moveEnd?.addEventListener) {
         cameraMoveEndRemove =
           viewer.camera.moveEnd.addEventListener(onCameraMoveEnd);
@@ -654,4 +682,4 @@ export function createTunnelsLayer({ source, services }) {
   };
 }
 
-export { midpointOfLine, tunnelOverlayEntry };
+export { midpointOfLine, tunnelLabelLimit, tunnelOverlayEntry };

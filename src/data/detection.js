@@ -566,6 +566,13 @@ export function setDetectionTuning(options = {}) {
       _labelSolveDirty = true;
     }
   }
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent?.(
+      new CustomEvent('gev:detection-tuning-changed', {
+        detail: getDetectionTuning(),
+      }),
+    );
+  }
   if (modeChanged && _onModeChange) _onModeChange(MODE_LABELS[_mode]);
   _hostLane?.requestPaint();
 }

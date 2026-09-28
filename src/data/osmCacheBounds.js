@@ -274,7 +274,15 @@ export function osmCacheTiles(
       });
     }
   }
-  return tiles;
+  const centerLat = (bounds.south + bounds.north) / 2;
+  const centerLon = (bounds.west + bounds.east) / 2;
+  return tiles.sort(
+    (a, b) =>
+      Math.abs((a.south + a.north) / 2 - centerLat) +
+        Math.abs((a.west + a.east) / 2 - centerLon) -
+      (Math.abs((b.south + b.north) / 2 - centerLat) +
+        Math.abs((b.west + b.east) / 2 - centerLon)),
+  );
 }
 
 /** Fetch and combine tile responses; each exact tile query gets its own proxy disk entry. */
@@ -286,9 +294,11 @@ export async function fetchOsmCacheTiles(
     signal,
     sourceId = 'osm',
     useLocalCache = false,
+    step = OSM_CACHE_TILE_DEGREES,
+    maxTiles = OSM_CACHE_MAX_TILES_PER_QUERY,
   } = {},
 ) {
-  const tiles = osmCacheTiles(bounds);
+  const tiles = osmCacheTiles(bounds, { step, maxTiles });
   signal?.throwIfAborted();
   const responses = [];
   let cancelled = false;

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as Cesium from 'cesium';
-import { createTunnelsLayer, midpointOfLine } from './index.js';
+import {
+  createTunnelsLayer,
+  midpointOfLine,
+  tunnelLabelLimit,
+} from './index.js';
 
 const road = {
   id: 'road-1',
@@ -160,6 +164,13 @@ test('tunnel labels anchor at the distance midpoint of their line', () => {
   );
 });
 
+test('tunnel label capacity follows detection density', () => {
+  assert.equal(tunnelLabelLimit(0), 0);
+  assert.equal(tunnelLabelLimit(25), 24);
+  assert.equal(tunnelLabelLimit(50), 48);
+  assert.equal(tunnelLabelLimit(100), 96);
+});
+
 test('tunnel layer fetches bounded geometry, styles road and rail separately, and publishes named labels', async (t) => {
   const app = harness(t);
   await app.layer.enable(app.viewer);
@@ -203,6 +214,7 @@ test('tunnel layer fetches bounded geometry, styles road and rail separately, an
     ['Downtown Tunnel', 'Orange Line'],
   );
   assert.equal(published.options.moving, false);
+  assert.equal(published.options.cohortLimit, 48);
   assert.deepEqual(app.layer.getStats(), {
     count: 3,
     roadCount: 2,

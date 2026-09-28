@@ -116,6 +116,8 @@ export function createTrafficSource({
             }),
           fetchImpl,
           useLocalCache: true,
+          step: 0.05,
+          maxTiles: 64,
           signal,
         },
       );
