@@ -224,6 +224,7 @@ export function createLifecycle({ state, services, parts }) {
       state._maintenanceTimer = null;
       clearTimeout(state._visibilityTimer);
       state._visibilityTimer = null;
+      state._visibilityJob = null;
       state._detectCache = null;
       state._detectBuiltAt = -Infinity;
       state._visible.clear();

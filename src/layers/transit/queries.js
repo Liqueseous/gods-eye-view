@@ -229,6 +229,7 @@ export function createQueries({ state, parts }) {
         source: 'GTFS-RT',
         coverage,
         feeds: active.map((feed) => feed.id),
+        floorReread: state._floorRereadDiagnostics,
       };
     },
   };

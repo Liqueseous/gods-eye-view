@@ -59,15 +59,15 @@ post-GC comparison.
 
 Largest self-size families in the captured heap:
 
-| Family | Self-size |
-|---|---:|
-| Native external string data | 24.6 MiB |
-| Native ArrayBuffer data | 13.5 MiB |
-| Plain objects | 9.7 MiB |
-| Compiled code | 18.1 MiB |
-| Strings | 16.5 MiB |
-| Arrays | 11.9 MiB |
-| Numbers | 7.7 MiB |
+| Family                                    |   Self-size |
+| ----------------------------------------- | ----------: |
+| Native external string data               |    24.6 MiB |
+| Native ArrayBuffer data                   |    13.5 MiB |
+| Plain objects                             |     9.7 MiB |
+| Compiled code                             |    18.1 MiB |
+| Strings                                   |    16.5 MiB |
+| Arrays                                    |    11.9 MiB |
+| Numbers                                   |     7.7 MiB |
 | Maps/object shapes and related structures | several MiB |
 
 There are approximately 397,000 plain `Object` instances and 52,000 Maps.
@@ -87,22 +87,153 @@ The primary freeze mechanism in this capture is Transit floor rereading, not
 the detection canvas or GPU paint path. The existing audit's Transit section
 should therefore be treated as P0/P1 work:
 
-1. Make floor rereads time-budgeted and resumable, yielding after a bounded
-   number of entries or milliseconds.
-2. Avoid calling `parts.trails.prepareEntry()` twice for the same entry in one
-   reread unless the first call changed the floor state.
-3. Cache trail-cell lists per entry and invalidate them only when the trail or
+1. Cache trail-cell lists per entry and invalidate them only when the trail or
    displayed pose changes.
-4. Preserve selected-entry priority but cap selected trail cells separately
+2. Preserve selected-entry priority but cap selected trail cells separately
    from the ambient fleet budget.
-5. Coalesce a pending reread rather than scheduling another timer while a prior
-   pass is still executing.
-6. Record `transit-floor-reread` duration, candidate count, cell count, DEM
-   admissions, mesh admissions, and yield count in the Developer diagnostics.
+3. Run a controlled same-scene browser trace to isolate GC and dropped-frame changes.
 
 The capture also reinforces the Overpass deployment priority: failed road
 queries and unavailable local service add network retries and cache churn while
 the application is already performing expensive transit work.
+
+### Implementation update: Transit floor rereads
+
+The first mitigation slice is now implemented in
+`src/layers/transit/height.js`:
+
+- rereads process entries in resumable 6 ms slices;
+- a new anchor or clear cancels the pending reread job;
+- overlapping reread callbacks are ignored;
+- the unconditional second `prepareEntry()` pass was removed; and
+- `floorReread` diagnostics expose duration, candidate count, cell count, DEM
+  admissions, mesh admissions, yield count, and running state.
+
+The focused Transit and Developer diagnostics tests pass, and the production
+build succeeds.
+
+### Post-change diagnostic comparison
+
+The post-change artifacts are:
+
+- `diag/Trace-20260928T130157.json.gz`
+- `diag/gods-eye-view-diagnostics-2026-09-28T17-02-32-361Z.json`
+- `diag/Trace-20260928T130819.json.gz`
+- `diag/Heap-20260928T131007.heaptimeline`
+- `diag/gods-eye-view-diagnostics-2026-09-28T17-08-09-727Z.json`
+- `diag/Trace-20260928T131824.json.gz`
+- `diag/Heap-20260928T132014.heaptimeline`
+- `diag/gods-eye-view-diagnostics-2026-09-28T17-20-09-689Z.json`
+- `diag/Trace-20260928T132945.json.gz`
+- `diag/gods-eye-view-diagnostics-2026-09-28T17-31-46-829Z.json`
+
+The maximum observed JavaScript timer slice decreased from approximately
+3,593 ms in the original trace to approximately 530 ms in the post-change
+trace. The post-change Gods Eye snapshot recorded one completed Transit floor
+cycle with 377 candidates, 1,366 cells, 37 yields, and 448 ms total duration.
+This confirms that the time-budgeting change removes the original multi-second
+monolithic callback.
+
+The traces are not identical workloads: the post-change recording is longer
+and contains more frames and GC activity. Its 62 major-GC events and 58.3 ms
+maximum major collection require a controlled same-scene rerun before being
+classified as a regression. The next measurement should hold layer state,
+camera path, capture duration, and enabled diagnostics constant.
+
+### Latest trace: Transit visibility sweep is the next hotspot
+
+The newest artifacts show that the floor-reread fix moved the dominant timer
+work rather than eliminating all Transit cost:
+
+- The latest diagnostic reports a valid rolling `35 FPS` measurement, a
+  `28.6 ms` average frame interval, and a `93.3 ms` P95 interval.
+- Transit floor reread duration is down to `320 ms` for 427 candidates and 355
+  cells, with 8 yields.
+- The newest trace's longest JavaScript callback is approximately `1,183 ms`.
+  Its deployed bundle location maps to `refreshVisibility()` in
+  `src/layers/transit/rendering.js`.
+- `refreshVisibility()` scans every vehicle and can perform playback updates,
+  Cartesian conversion, `camera.getPixelSize()`, horizon tests, frustum-plane
+  tests, marker writes, scheduling, and conditional trail preparation for each
+  entry. This is now the next confirmed Transit main-thread hotspot.
+
+The visibility-sweep mitigations are now implemented:
+
+1. Time-budget the visibility sweep and resume from an entry cursor.
+2. Snapshot camera-derived pixel radius and frustum data for the sweep instead of
+   recomputing expensive values for every unchanged entry.
+3. Avoid `prepareEntry()` during the sweep unless visibility admission or
+   surface state actually changed.
+4. Keep selected and previously visible entries in a priority queue while
+   processing the ambient fleet in bounded batches.
+
+### Implementation update: Transit visibility sweep
+
+The visibility sweep is now processed in resumable 6 ms slices over a stable
+vehicle and camera/frustum snapshot. The sweep yields through zero-delay timer
+callbacks instead of holding the main thread for the full fleet. Small fleets
+still complete in one call, while large fleets retain selected/visible state
+and converge to the same visibility result.
+
+The focused Transit suite passes all 98 tests, including large-fleet fixtures.
+The latest browser trace confirms that the previous approximately 1,183 ms
+application callback no longer appears among the dominant calls.
+
+The newest heap snapshot contains 3,198,512 nodes, 10,323,034 edges, and
+157.3 MiB of node self-size. Native allocations account for 77.6 MiB in that
+snapshot, while the diagnostic JSON reports 297 MiB of live JS heap. These
+values are not a leak verdict because the enabled layers and capture point do
+not exactly match the earlier snapshot, but they justify retaining heap
+measurement in the next controlled run.
+
+### Visibility-sweep result
+
+The visibility-sweep implementation has now been measured:
+
+- The prior trace contained a 1,183 ms application callback mapped to
+  `refreshVisibility()`.
+- In the newest trace, no comparable application-bundle callback appears in
+  the top long calls. The largest non-tooling JavaScript slice is about 417 ms
+  in Cesium itself.
+- The latest diagnostic reports `53 FPS`, a `19.0 ms` average frame interval,
+  and a `49.0 ms` P95 interval.
+- Transit floor reread remains bounded at `287 ms` for 270 candidates and 993
+  cells across 12 yields.
+- The latest heap snapshot is `127.3 MiB` node self-size, down from `157.3 MiB`
+  in the previous snapshot. The diagnostic reports `122 MiB` live JS heap,
+  down from `297 MiB`; the captures still differ in enabled layers and timing,
+  so this is a favorable observation rather than a controlled memory proof.
+
+The trace's largest 602 ms slice is `CpuProfiler::StartProfiling`, which is
+DevTools overhead and not application work. The next meaningful investigation
+is therefore Cesium's approximately 417 ms render/geometry callback, followed
+by a controlled same-scene capture without profiler-start overhead.
+
+### High-volume stress capture
+
+The latest trace is a different stress scenario and must not be compared as a
+like-for-like regression test. It enables:
+
+- 13,037 flights;
+- 12,000 live vessels;
+- 263 military contacts;
+- traffic, transit, bikeshare, radio, and other active layers; and
+- five continuous-render holds: `ais-vessels`, `flights`, `military`,
+  `traffic`, and `transit`.
+
+Under that workload, the diagnostic reports `7 FPS`, a `140.5 ms` average frame
+interval, a `246.9 ms` P95 interval, 1,252 long tasks, and 270 MiB live JS
+heap. Transit has 608 vehicles and its floor job remains active after 7.8 s,
+with 17 yields and 2,030 cells. The trace contains 3,870 dropped frames over
+approximately 33.6 seconds.
+
+This confirms the combined high-volume scene as a separate P0/P1 workload:
+the individual Transit visibility callback is no longer the dominant isolated
+application slice, but the aggregate continuous animation and Cesium work is
+still overwhelming the frame budget. The next optimization should prioritize
+cross-layer render-hold coordination and high-volume fleet update budgets,
+especially for flights and vessels, rather than further tuning the already
+sliced Transit visibility pass.
 
 ## Runtime Model
 
@@ -138,19 +269,19 @@ Camera or layer activation
 
 ## Hotspot Map
 
-| Area | Evidence | Blocking risk | Priority |
-|---|---|---:|---:|
-| Local Overpass import | Current container is unhealthy and preprocessing an 18.1 GB extract | High operational impact | P0 |
-| CCTV activation | 19,608 ms measured cold activation | Main-thread bursts plus terrain/network latency | P0 |
-| Detection overlay | 34.4 FPS at 100% density; 48k to 54k text draws in combined tests | Main-thread and canvas/GPU pressure | P0 |
-| AIS vessels | 12,000-vessel test population; 22 to 30 FPS in keyed baseline | High per-frame and reconciliation cost | P1 |
-| FIRMS | 100,430 detections in the keyed baseline | Memory, parsing, and overlay pressure | P1 |
-| Traffic | 4,222 dots and 45 to 52 FPS in the keyed baseline | Geometry and animation cost | P1 |
-| Wind | Up to 7,200 curves with up to 33 points each | GPU upload and animation cost | P1 |
-| Weather | Up to 4096x2048 images and detail windows | Decode, upload, and GPU memory pressure | P1 |
-| Submarine cables | 412 MiB heap in the documented baseline | Retained geometry and GPU memory | P1 |
-| Datacenters | 328 MiB heap in the documented baseline | Large static GeoJSON and primitive allocation | P1 |
-| Startup bundle | Approximately 2.6 MB main JS plus large Cesium/data assets | Startup parse/compile and memory | P2 |
+| Area                  | Evidence                                                            |                                   Blocking risk | Priority |
+| --------------------- | ------------------------------------------------------------------- | ----------------------------------------------: | -------: |
+| Local Overpass import | Current container is unhealthy and preprocessing an 18.1 GB extract |                         High operational impact |       P0 |
+| CCTV activation       | 19,608 ms measured cold activation                                  | Main-thread bursts plus terrain/network latency |       P0 |
+| Detection overlay     | 34.4 FPS at 100% density; 48k to 54k text draws in combined tests   |             Main-thread and canvas/GPU pressure |       P0 |
+| AIS vessels           | 12,000-vessel test population; 22 to 30 FPS in keyed baseline       |          High per-frame and reconciliation cost |       P1 |
+| FIRMS                 | 100,430 detections in the keyed baseline                            |           Memory, parsing, and overlay pressure |       P1 |
+| Traffic               | 4,222 dots and 45 to 52 FPS in the keyed baseline                   |                     Geometry and animation cost |       P1 |
+| Wind                  | Up to 7,200 curves with up to 33 points each                        |                   GPU upload and animation cost |       P1 |
+| Weather               | Up to 4096x2048 images and detail windows                           |         Decode, upload, and GPU memory pressure |       P1 |
+| Submarine cables      | 412 MiB heap in the documented baseline                             |                Retained geometry and GPU memory |       P1 |
+| Datacenters           | 328 MiB heap in the documented baseline                             |   Large static GeoJSON and primitive allocation |       P1 |
+| Startup bundle        | Approximately 2.6 MB main JS plus large Cesium/data assets          |                Startup parse/compile and memory |       P2 |
 
 The documented baseline is from August 22, 2026 on an Apple M5. It is historical evidence, not a current Windows measurement.
 
@@ -217,6 +348,9 @@ Flights, military flights, vessels, traffic, satellites, and other moving layers
 
 `server/providers/overpass/cache.js` evicts the oldest inserted map entry. Cache hits do not refresh insertion order, so the memory cache is FIFO-like rather than true LRU.
 
+This has now been corrected: fresh memory hits refresh insertion order before
+returning, and the focused proxy tests verify hot-entry promotion.
+
 ### Large disk-cache serialization can block Node
 
 `JSON.stringify(payload)` occurs before the asynchronous disk write. Large responses can therefore block the Node event loop even though the filesystem write is asynchronous.
@@ -252,6 +386,18 @@ The captured trace shows the Transit floor reread timer monopolizing the main
 thread for multi-second intervals. Apply the six mitigations in the captured
 diagnostics section before tuning visual density or GPU effects.
 
+### P0/P1: Budget combined high-volume animation
+
+The latest stress capture reaches 7 FPS with flights, vessels, military,
+traffic, transit, bikeshare, and radio active together. Add cross-layer frame
+budgets and render-hold diagnostics before optimizing another isolated layer:
+
+- cap fleet interpolation work per frame and carry the remainder forward;
+- prioritize on-screen and selected contacts;
+- release or downgrade holds when a layer has no visible motion; and
+- measure aggregate Cesium upload/command work separately from JavaScript
+  callback time.
+
 ### P1: Reduce detection repaint work
 
 - Cache composed label text by record/version.
@@ -278,7 +424,7 @@ Record renderer, viewport, device pixel ratio, live population counts, heap befo
 
 ### P2: Improve cache accounting
 
-- Convert the Overpass memory cache to true LRU.
+- Add hit, stale-hit, miss, and upstream latency accounting.
 - Track cache hits, stale hits, misses, and upstream latency.
 - Bound refusal-cooldown state independently.
 - Avoid repeated large JSON parsing when a canonical serialized payload can be reused.
@@ -334,7 +480,7 @@ steady state:
   cache hit/miss/stale state
 ```
 
-Use Chrome DevTools Performance and Memory panels together with the existing Puppeteer QA scripts. The September 28 capture now provides a current trace-backed Transit diagnosis, but a before/after capture is still needed to confirm the effect of the fix and to distinguish retained memory from normal Cesium/browser allocations.
+Use Chrome DevTools Performance and Memory panels together with the existing Puppeteer QA scripts. The September 28 captures now confirm the Transit timer improvement; a controlled same-scene rerun is still needed to isolate GC, dropped-frame, and retained-memory changes from workload differences.
 
 ## Bottom Line
 

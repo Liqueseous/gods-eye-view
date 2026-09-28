@@ -133,8 +133,7 @@ function ensurePerformanceProbe(app) {
   const onFrame = () => {
     const now = globalThis.performance?.now?.() || 0;
     frameTimes.push(now);
-    while (frameTimes.length && now - frameTimes[0] > 2_000)
-      frameTimes.shift();
+    while (frameTimes.length && now - frameTimes[0] > 2_000) frameTimes.shift();
   };
   const attach = (nextApp) => {
     if (removeFrameListener) return;
@@ -232,10 +231,15 @@ function readStaticPerformanceDiagnostics() {
 }
 
 function readPerformanceDiagnostics(app, startProbe = true) {
+  performanceProbe?.attach?.(app);
   const values =
     performanceProbe?.read?.() ||
-    (startProbe ? ensurePerformanceProbe(app).read() : readStaticPerformanceDiagnostics());
-  const fps = Number.isFinite(values.fps) ? `${Math.round(values.fps)} FPS` : 'FPS —';
+    (startProbe
+      ? ensurePerformanceProbe(app).read()
+      : readStaticPerformanceDiagnostics());
+  const fps = Number.isFinite(values.fps)
+    ? `${Math.round(values.fps)} FPS`
+    : 'FPS —';
   const longTasks = `${values.longTaskCount} LONG TASKS`;
   const heap = Number.isFinite(values.jsHeapUsedBytes)
     ? ` · ${(values.jsHeapUsedBytes / 1048576).toFixed(0)} MB HEAP`
@@ -277,6 +281,7 @@ const EXPORTED_LAYER_STATS = [
   'flowBuckets',
   'closedRoads',
   'heatLines',
+  'floorReread',
 ];
 
 function exportLayerStats(stats = {}) {

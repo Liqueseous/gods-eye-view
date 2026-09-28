@@ -59,6 +59,15 @@ export function createState({ services }) {
   state._moving = new Set();
   /** Vehicles whose sampled height landed after they were drawn. @type {Set<object>} */
   state._heightDirty = new Set();
+  state._floorRereadDiagnostics = {
+    durationMs: 0,
+    candidates: 0,
+    cells: 0,
+    demAdmissions: 0,
+    meshAdmissions: 0,
+    yields: 0,
+    running: false,
+  };
   /**
    * Inflated camera view bounds in degrees, or null before the first camera
    * read. Decides which vehicles are worth animating frame by frame.
@@ -70,6 +79,7 @@ export function createState({ services }) {
   /** Deferred shown/hidden sweep bookkeeping. */
   state._visibilityDirty = true;
   state._visibilityAt = 0;
+  state._visibilityJob = null;
   /** Throttle bookkeeping for the screen-space rotation pass. */
   state._rotationAt = 0;
   state._rotationPose = null;

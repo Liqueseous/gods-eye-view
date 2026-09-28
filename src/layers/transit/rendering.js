@@ -27,6 +27,7 @@ import {
   SELECTED_PIXEL_SIZE,
   TRANSIT_MODE_COLORS,
   VISIBILITY_EXIT_GRACE_SWEEPS,
+  VISIBILITY_REFRESH_BUDGET_MS,
   vehicleNearView,
 } from './policy.js';
 
@@ -489,7 +490,12 @@ export function createRendering({ state, services, parts }) {
   /** Visibility work runs off the frame path, coalesced at four sweeps/second. */
   function requestVisibility() {
     state._visibilityDirty = true;
-    if (!state._enabled || state._visibilityTimer !== null) return;
+    if (
+      !state._enabled ||
+      state._visibilityTimer !== null ||
+      state._visibilityJob !== null
+    )
+      return;
     state._visibilityTimer = setTimeout(
       () => {
         state._visibilityTimer = null;
@@ -501,37 +507,63 @@ export function createRendering({ state, services, parts }) {
   function refreshVisibility() {
     if (!state._enabled) return 0;
     const now = Date.now();
-    if (now - state._visibilityAt < VISIBILITY_REFRESH_MS) {
+    if (
+      !state._visibilityJob &&
+      now - state._visibilityAt < VISIBILITY_REFRESH_MS
+    ) {
       requestVisibility();
       return state._shownCount;
     }
-    state._visibilityAt = now;
-    state._visibilityDirty = false;
-    const viewer = state._viewer,
-      camera = viewer?.camera;
-    if (!camera) return 0;
-    const position =
-      camera.positionWC ||
-      Cesium.Ellipsoid.WGS84.cartographicToCartesian(
-        camera.positionCartographic,
-        cameraPosition,
-      );
-    occluder.cameraPosition = position;
-    const frustum = camera.frustum?.computeCullingVolume(
-      position,
-      camera.directionWC,
-      camera.upWC,
-    );
+    if (!state._visibilityJob) {
+      state._visibilityAt = now;
+      state._visibilityDirty = false;
+      const viewer = state._viewer,
+        camera = viewer?.camera;
+      if (!camera) return 0;
+      const position =
+        camera.positionWC ||
+        Cesium.Ellipsoid.WGS84.cartographicToCartesian(
+          camera.positionCartographic,
+          cameraPosition,
+        );
+      state._visibilityJob = {
+        entries: [...state._vehicles.values()],
+        index: 0,
+        changed: false,
+        startedAt: performance.now(),
+        now,
+        viewer,
+        camera,
+        position,
+        frustum: camera.frustum?.computeCullingVolume(
+          position,
+          camera.directionWC,
+          camera.upWC,
+        ),
+      };
+    }
+    const job = state._visibilityJob;
+    const viewer = job.viewer;
+    const camera = job.camera;
+    const frustum = job.frustum;
     const planes = frustum?.planes;
-    let changed = false;
-    for (const entry of state._vehicles.values()) {
+    occluder.cameraPosition = job.position;
+    const startedAt = performance.now();
+    for (
+      ;
+      job.index < job.entries.length &&
+      (job.index === 0 ||
+        performance.now() - startedAt < VISIBILITY_REFRESH_BUDGET_MS);
+      job.index++
+    ) {
+      const entry = job.entries[job.index];
       if (!entry.marker) continue;
       // Refresh hidden clocks before testing admission, even if no frame has
       // ever sampled them. Do not write the billboard until it is admitted.
       const noSample = !entry.sample || !Number.isFinite(entry.sample.lat);
       if (entry.track?.count && (!state._visible.has(entry) || noSample)) {
         entry.sample ||= {};
-        updatePlayback(entry, now, performance.now());
+        updatePlayback(entry, job.now, performance.now());
       }
       sphere.center =
         state._visible.has(entry) || !entry.sample
@@ -594,7 +626,7 @@ export function createRendering({ state, services, parts }) {
       if (visible) state._visible.add(entry);
       else state._visible.delete(entry);
       if (visible && entry.track?.count) {
-        if (!wasVisible && !entry.qaFixture) syncPlayback(entry, now);
+        if (!wasVisible && !entry.qaFixture) syncPlayback(entry, job.now);
         // Re-entry can advance into an unprepared corridor; loaded tiles can
         // also resolve a cold path without a poll or a render-loop wakeup.
         if (!wasVisible || entry.surfaceReady === false || entry.heightPending)
@@ -602,7 +634,7 @@ export function createRendering({ state, services, parts }) {
         // Surface completion must recover while requestRenderMode is idle.
         // Otherwise surfaceReady=false prevents the very frame that clears it.
         if (!state._moving.has(entry)) {
-          updatePlayback(entry, now, performance.now());
+          updatePlayback(entry, job.now, performance.now());
           placeSample(entry);
         }
       }
@@ -613,10 +645,18 @@ export function createRendering({ state, services, parts }) {
       visibility.heightPending = !!entry.heightPending;
       visibility.surfaceReady = entry.surfaceReady ?? null;
       schedulePlayback(entry);
-      changed ||= visible !== wasVisible || wasShown !== entry.marker.show;
+      job.changed ||= visible !== wasVisible || wasShown !== entry.marker.show;
     }
+    if (job.index < job.entries.length) {
+      state._visibilityTimer = setTimeout(() => {
+        state._visibilityTimer = null;
+        refreshVisibility();
+      }, 0);
+      return state._shownCount;
+    }
+    state._visibilityJob = null;
     state._shownCount = state._visible.size;
-    if (changed) state._detectRevision++;
+    if (job.changed) state._detectRevision++;
     syncRenderHold();
     governorRequestRender('transit-visibility');
     return state._shownCount;

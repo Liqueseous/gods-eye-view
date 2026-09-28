@@ -5,6 +5,7 @@ This roadmap captures the highest-value features to add to God's Eye View as it 
 ## Objective
 
 The project already has a strong foundation in:
+
 - live global tracking
 - multi-layer geospatial context
 - voice-driven interaction
@@ -24,10 +25,14 @@ The next step is to expand into operational use cases: monitoring, analysis, bri
 - [x] Evict stale cached geometry with bounded local and decoded-tile caches.
 - [x] Share decoded geometry across adjacent viewport requests where possible.
 - [x] Adapt detail, dot budgets, and query chunk size to frame-time headroom.
+- [x] Time-budget Transit floor rereads and expose their runtime diagnostics.
+- [x] Time-budget Transit visibility sweeps for large fleets.
+- [x] Promote hot Overpass memory entries for true LRU eviction.
 
 ## Roadmap priorities
 
 Priority is ranked by:
+
 - product impact
 - alignment with the current platform
 - differentiation from similar tools
@@ -35,17 +40,18 @@ Priority is ranked by:
 
 ## Phase 1: High-impact core features
 
-| Priority | Feature | Why it matters | Target outcome |
-| --- | --- | --- | --- |
-| 1 | ~~Mission / Incident Command Mode~~ | Turns the app into a practical operations dashboard instead of only a visualizer | A usable live command surface for emergencies, security, and logistics |
-| 2 | Natural-Language Analyst Assistant | Makes the app more accessible and turns complex queries into natural interactions | Users can ask for insights instead of manually filtering layers |
-| 3 | Custom Live Data Ingestion and User-Defined Layers | Enables domain-specific monitoring and community-driven extension | Anyone can add their own feeds, layers, and geospatial data |
+| Priority | Feature                                            | Why it matters                                                                    | Target outcome                                                         |
+| -------- | -------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 1        | ~~Mission / Incident Command Mode~~                | Turns the app into a practical operations dashboard instead of only a visualizer  | A usable live command surface for emergencies, security, and logistics |
+| 2        | Natural-Language Analyst Assistant                 | Makes the app more accessible and turns complex queries into natural interactions | Users can ask for insights instead of manually filtering layers        |
+| 3        | Custom Live Data Ingestion and User-Defined Layers | Enables domain-specific monitoring and community-driven extension                 | Anyone can add their own feeds, layers, and geospatial data            |
 
 ### 1) Mission / Incident Command Mode
 
 **Status: Complete.** The first operational slice is implemented in Command Mode.
 
 Delivered capabilities:
+
 - Command Mode toggle in the Display panel
 - manually entered incident coordinates
 - click-to-place incident coordinates on the globe
@@ -84,6 +90,7 @@ Remaining follow-up capabilities:
 - [ ] multi-resource tracking for emergency or logistics teams
 
 Best fit:
+
 - emergency response
 - public safety
 - infrastructure monitoring
@@ -94,6 +101,7 @@ Best fit:
 **Status: In progress.** The first operational slice is implemented as the Analyst control in the command dock.
 
 Delivered capabilities:
+
 - compact Analyst control in the command dock, matching the dock's visual style
 - typed natural-language query console with example prompts
 - the same query engine and providers wired into voice's existing `analyst_query` action, so typed and spoken questions share one answer
@@ -114,6 +122,7 @@ Remaining follow-up capabilities:
 - [ ] source state explanations for stale or fallback data surfaced directly in the Analyst console (voice already reports warm-up/provenance)
 
 Best fit:
+
 - local monitoring
 - research
 - city operations
@@ -124,6 +133,7 @@ Best fit:
 Allow users to import their own geospatial data sources and fuse them into the map.
 
 Planned capabilities:
+
 - GeoJSON, CSV, KML, and API feed import
 - customizable symbols and styling
 - refresh scheduling
@@ -131,6 +141,7 @@ Planned capabilities:
 - saved layer presets
 
 Best fit:
+
 - local monitoring
 - research
 - city operations
@@ -138,17 +149,18 @@ Best fit:
 
 ## Phase 2: Operational depth and collaboration
 
-| Priority | Feature | Why it matters | Target outcome |
-| --- | --- | --- | --- |
-| 4 | Replay, Historical Timeline, and Event Playback | Adds incident investigation and storytelling capability | Users can analyze what happened and when |
-| 5 | Watchlists, Alerts, and Geofenced Triggers | Converts passive monitoring into active surveillance | Teams can track key assets and zones automatically |
-| 6 | Shared Collaboration and Team Briefings | Enables multi-user workflows and briefing workflows | Operators can work together on the same scene |
+| Priority | Feature                                         | Why it matters                                          | Target outcome                                     |
+| -------- | ----------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------- |
+| 4        | Replay, Historical Timeline, and Event Playback | Adds incident investigation and storytelling capability | Users can analyze what happened and when           |
+| 5        | Watchlists, Alerts, and Geofenced Triggers      | Converts passive monitoring into active surveillance    | Teams can track key assets and zones automatically |
+| 6        | Shared Collaboration and Team Briefings         | Enables multi-user workflows and briefing workflows     | Operators can work together on the same scene      |
 
 ### 4) Replay, Historical Timeline, and Event Playback
 
 Add time-based exploration across tracked objects and environmental layers.
 
 Planned capabilities:
+
 - historic aircraft, ship, and weather playback
 - timeline scrubber
 - event-driven scene replay
@@ -159,6 +171,7 @@ Planned capabilities:
 Create an event-driven monitoring layer.
 
 Planned capabilities:
+
 - asset watchlists
 - geofence notifications
 - route deviation alerts
@@ -170,6 +183,7 @@ Planned capabilities:
 Enable multi-user analysis and briefing workflows.
 
 Planned capabilities:
+
 - shared annotations
 - collaborative scene sessions
 - mission brief links
@@ -178,18 +192,19 @@ Planned capabilities:
 
 ## Phase 3: Field readiness and specialty deployments
 
-| Priority | Feature | Why it matters | Target outcome |
-| --- | --- | --- | --- |
-| 7 | Offline Mode and Local-First Resilience | Supports field operations and low-connectivity environments | The app remains useful in remote deployment scenarios |
-| 8 | Domain-Specific Monitoring Dashboards | Makes the platform valuable for specific industries and agencies | Vertical solutions built on top of the base globe |
-| 9 | Better Scene Authoring and Publishing | Improves training, demos, and communication | Users can create reusable narrated experiences |
-| 10 | AR / Immersive Field View | Adds deeper on-the-ground situational context | Physical-world overlays for field professionals |
+| Priority | Feature                                 | Why it matters                                                   | Target outcome                                        |
+| -------- | --------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
+| 7        | Offline Mode and Local-First Resilience | Supports field operations and low-connectivity environments      | The app remains useful in remote deployment scenarios |
+| 8        | Domain-Specific Monitoring Dashboards   | Makes the platform valuable for specific industries and agencies | Vertical solutions built on top of the base globe     |
+| 9        | Better Scene Authoring and Publishing   | Improves training, demos, and communication                      | Users can create reusable narrated experiences        |
+| 10       | AR / Immersive Field View               | Adds deeper on-the-ground situational context                    | Physical-world overlays for field professionals       |
 
 ### 7) Offline Mode and Local-First Resilience
 
 Support connected and disconnected operation.
 
 Planned capabilities:
+
 - cached map layers
 - offline scene loading
 - queued synchronization when connectivity returns
@@ -200,6 +215,7 @@ Planned capabilities:
 Build vertical dashboards on top of the live globe.
 
 Potential domains:
+
 - air quality and emissions
 - utility and outage monitoring
 - ports and shipping
@@ -216,6 +232,7 @@ mapping; broader transportation dashboards remain future work.
 Improve the creator workflow for camera-led storytelling and mission briefings.
 
 Planned capabilities:
+
 - scene templates
 - narrative camera paths
 - exportable briefing packages
@@ -226,6 +243,7 @@ Planned capabilities:
 Extend the platform into physical-world situational awareness.
 
 Planned capabilities:
+
 - mobile AR overlays
 - location-aware field context
 - route and hazard visualization in physical space
@@ -233,16 +251,19 @@ Planned capabilities:
 ## Recommended execution order
 
 ### Phase 1
+
 1. ~~Mission / Incident Command Mode~~
 2. Natural-Language Analyst Assistant
 3. Custom Live Data Ingestion and User-Defined Layers
 
 ### Phase 2
+
 4. Replay, Historical Timeline, and Event Playback
 5. Watchlists, Alerts, and Geofenced Triggers
 6. Shared Collaboration and Team Briefings
 
 ### Phase 3
+
 7. Offline Mode and Local-First Resilience
 8. Domain-Specific Monitoring Dashboards
 9. Better Scene Authoring and Publishing
@@ -253,6 +274,7 @@ Planned capabilities:
 The strongest path forward is to evolve God's Eye View from a live-world explorer into a geospatial operations platform.
 
 The three highest-priority additions are:
+
 - Mission / Incident Command Mode
 - Natural-Language Analyst Assistant
 - Custom Live Data Ingestion and User-Defined Layers
