@@ -5,6 +5,8 @@ services:
     # it was never given. Build+tag first, then deploy this file as-is:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml build
     #   docker compose up -d
+      # Development can use docker-compose.dev.yml for a New England-only
+      # Overpass database and a separate overpass volume.
     # Comment out the pre-built image to use the local Dockerfile build instead
     #image: gods-eye-view:latest
     build:

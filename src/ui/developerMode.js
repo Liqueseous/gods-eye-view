@@ -2,6 +2,8 @@ import * as Cesium from 'cesium';
 import { TRANSIT_ENABLED_FEEDS, haversineKm } from '../data/transitFeeds.js';
 import { getOsmTileCacheDiagnostics } from '../data/osmCacheBounds.js';
 
+let performanceProbe = null;
+
 /** Persisted opt-in switch for tools intended for development and QA. */
 export const DEVELOPER_MODE_STORAGE_KEY = 'godsEyeView.developerMode.enabled';
 
@@ -117,6 +119,143 @@ function readDiagnosticView(app) {
   };
 }
 
+function ensurePerformanceProbe(app) {
+  if (performanceProbe) {
+    performanceProbe.attach?.(app);
+    return performanceProbe;
+  }
+  const startedAt = globalThis.performance?.now?.() || 0;
+  const frameTimes = [];
+  let removeFrameListener = null;
+  let longTaskCount = 0;
+  let longTaskTotalMs = 0;
+  let longTaskMaxMs = 0;
+  const onFrame = () => {
+    const now = globalThis.performance?.now?.() || 0;
+    frameTimes.push(now);
+    while (frameTimes.length && now - frameTimes[0] > 2_000)
+      frameTimes.shift();
+  };
+  const attach = (nextApp) => {
+    if (removeFrameListener) return;
+    removeFrameListener =
+      nextApp?.viewer?.scene?.postRender?.addEventListener?.(onFrame) || null;
+  };
+  attach(app);
+  let longTaskObserver = null;
+  try {
+    if (typeof globalThis.PerformanceObserver === 'function') {
+      longTaskObserver = new globalThis.PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          longTaskCount += 1;
+          longTaskTotalMs += entry.duration || 0;
+          longTaskMaxMs = Math.max(longTaskMaxMs, entry.duration || 0);
+        }
+      });
+      longTaskObserver.observe({ type: 'longtask', buffered: true });
+    }
+  } catch {
+    longTaskObserver = null;
+  }
+  performanceProbe = {
+    attach,
+    read() {
+      const now = globalThis.performance?.now?.() || startedAt;
+      const elapsed = Math.max(0, now - startedAt);
+      while (frameTimes.length && now - frameTimes[0] > 2_000)
+        frameTimes.shift();
+      const recent = frameTimes.filter((time) => now - time <= 1_000);
+      const recentIntervals = [];
+      for (let index = 1; index < recent.length; index += 1)
+        recentIntervals.push(recent[index] - recent[index - 1]);
+      const sorted = [...recentIntervals].sort((a, b) => a - b);
+      const p95 = sorted.length
+        ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+        : null;
+      const memory = globalThis.performance?.memory;
+      return {
+        elapsedMs: elapsed,
+        fps:
+          recent.length > 1 && recent.at(-1) > recent[0]
+            ? ((recent.length - 1) * 1000) / (recent.at(-1) - recent[0])
+            : null,
+        frameIntervalMs: recentIntervals.length
+          ? recentIntervals.reduce((sum, value) => sum + value, 0) /
+            recentIntervals.length
+          : null,
+        frameIntervalP95Ms: p95,
+        frameCount: frameTimes.length,
+        longTaskCount,
+        longTaskTotalMs,
+        longTaskMaxMs,
+        jsHeapUsedBytes: Number.isFinite(memory?.usedJSHeapSize)
+          ? memory.usedJSHeapSize
+          : null,
+        jsHeapLimitBytes: Number.isFinite(memory?.jsHeapSizeLimit)
+          ? memory.jsHeapSizeLimit
+          : null,
+        hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || null,
+        deviceMemoryGB: globalThis.navigator?.deviceMemory || null,
+        devicePixelRatio: globalThis.devicePixelRatio || 1,
+      };
+    },
+    destroy() {
+      removeFrameListener?.();
+      longTaskObserver?.disconnect?.();
+      performanceProbe = null;
+    },
+  };
+  return performanceProbe;
+}
+
+function readStaticPerformanceDiagnostics() {
+  const memory = globalThis.performance?.memory;
+  return {
+    elapsedMs: 0,
+    fps: null,
+    frameIntervalMs: null,
+    frameIntervalP95Ms: null,
+    frameCount: 0,
+    longTaskCount: 0,
+    longTaskTotalMs: 0,
+    longTaskMaxMs: 0,
+    jsHeapUsedBytes: Number.isFinite(memory?.usedJSHeapSize)
+      ? memory.usedJSHeapSize
+      : null,
+    jsHeapLimitBytes: Number.isFinite(memory?.jsHeapSizeLimit)
+      ? memory.jsHeapSizeLimit
+      : null,
+    hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || null,
+    deviceMemoryGB: globalThis.navigator?.deviceMemory || null,
+    devicePixelRatio: globalThis.devicePixelRatio || 1,
+  };
+}
+
+function readPerformanceDiagnostics(app, startProbe = true) {
+  const values =
+    performanceProbe?.read?.() ||
+    (startProbe ? ensurePerformanceProbe(app).read() : readStaticPerformanceDiagnostics());
+  const fps = Number.isFinite(values.fps) ? `${Math.round(values.fps)} FPS` : 'FPS —';
+  const longTasks = `${values.longTaskCount} LONG TASKS`;
+  const heap = Number.isFinite(values.jsHeapUsedBytes)
+    ? ` · ${(values.jsHeapUsedBytes / 1048576).toFixed(0)} MB HEAP`
+    : '';
+  return {
+    ...values,
+    text: `${fps} · ${longTasks}${heap}`,
+    title: [
+      Number.isFinite(values.frameIntervalMs) &&
+        `FRAME ${values.frameIntervalMs.toFixed(1)}ms · P95 ${values.frameIntervalP95Ms?.toFixed(1) || '—'}ms`,
+      `LONG TASKS ${values.longTaskTotalMs.toFixed(1)}ms TOTAL · ${values.longTaskMaxMs.toFixed(1)}ms MAX`,
+      values.hardwareConcurrency && `CPU ${values.hardwareConcurrency} THREADS`,
+      values.deviceMemoryGB && `DEVICE ${values.deviceMemoryGB}GB`,
+      `DPR ${values.devicePixelRatio}`,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  };
+}
+
 const EXPORTED_LAYER_STATS = [
   'count',
   'lastUpdate',
@@ -225,6 +364,7 @@ export function createDeveloperDiagnosticsSnapshot(
       routeData: transitRouteData,
     },
     render: app?.getRenderGovernorDiagnostics?.() || null,
+    performance: readPerformanceDiagnostics(app, false),
     voiceState: app?.voiceCommands?.session?.state || 'idle',
     layers: layers.map((layer) => {
       const availability = layerAvailability(layer);
@@ -467,6 +607,7 @@ function readLiveDiagnostics() {
   const camera = viewer?.camera;
   const carto = camera?.positionCartographic;
   const render = app.getRenderGovernorDiagnostics?.() || {};
+  const performance = readPerformanceDiagnostics(app);
   const totalLayers = app.dataManager?.getAll?.().length ?? 0;
   const enabledLayers =
     app.dataManager?.getAll?.().filter((layer) => layer.enabled).length ?? 0;
@@ -523,6 +664,7 @@ function readLiveDiagnostics() {
     render: render.installed
       ? `${String(render.mode || 'idle').toUpperCase()} · ${render.holds?.length || 0} HOLDS`
       : 'RENDER OFFLINE',
+    performance,
     layers: `${enabledLayers}/${totalLayers || 0} ACTIVE`,
     voice: formattedVoiceState || 'OFF',
     osmCache: osmTileCacheReadout(osmTileCache),
@@ -539,6 +681,7 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
   const entries = {
     camera: panel.querySelector('#developer-camera-readout'),
     render: panel.querySelector('#developer-render-readout'),
+    performance: panel.querySelector('#developer-performance-readout'),
     layers: panel.querySelector('#developer-layers-readout'),
     voice: panel.querySelector('#developer-voice-readout'),
     osmCache: panel.querySelector('#developer-osm-cache-readout'),
@@ -550,7 +693,7 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
       typeof diagnostics[key] === 'string'
         ? diagnostics[key] || '—'
         : diagnostics[key]?.text || '—';
-    if (key === 'routes' || key === 'osmCache')
+    if (key === 'routes' || key === 'osmCache' || key === 'performance')
       node.title = diagnostics[key]?.title || '';
   }
   const assetsList = panel.querySelector('#developer-assets-list');
@@ -627,9 +770,10 @@ export function initDeveloperMode({
       refreshTimer = null;
     }
     if (active) {
+      ensurePerformanceProbe(globalThis.__godsEyeView);
       refresh();
       refreshTimer = globalThis.setInterval(refresh, 1000);
-    }
+    } else performanceProbe?.destroy?.();
   };
   const onChange = () => {
     writeDeveloperMode(toggle.checked, storage);
@@ -649,6 +793,7 @@ export function initDeveloperMode({
         clearInterval(refreshTimer);
         refreshTimer = null;
       }
+      performanceProbe?.destroy?.();
       toggle.removeEventListener('change', onChange);
       exportButton?.removeEventListener('click', onExport);
     },

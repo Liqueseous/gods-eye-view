@@ -1,0 +1,38 @@
+# Development-only Overpass override: import New England instead of the
+# continent-scale extract configured by docker-compose.yml.
+services:
+  gods-eye-view:
+    environment:
+      # Keep the proxy from sending out-of-region bboxes to this regional DB.
+      OVERPASS_SELF_HOSTED_BBOX: "40.9,-73.8,47.6,-66.7"
+
+  overpass:
+    environment:
+      # The image downloads this bootstrap file to /db/planet.osm.bz2. The
+      # preprocess command then downloads and merges the other five states.
+      OVERPASS_PLANET_URL: https://download.geofabrik.de/north-america/us/connecticut-latest.osm.pbf
+      OVERPASS_PLANET_PREPROCESS: >-
+        mv /db/planet.osm.bz2 /db/connecticut.osm.pbf &&
+        for state in maine massachusetts new-hampshire rhode-island vermont; do
+        curl -fL --retry 3
+        "https://download.geofabrik.de/north-america/us/$${state}-latest.osm.pbf"
+        -o "/db/$${state}.osm.pbf" || exit 1; done &&
+        osmium merge
+        /db/connecticut.osm.pbf
+        /db/maine.osm.pbf
+        /db/massachusetts.osm.pbf
+        /db/new-hampshire.osm.pbf
+        /db/rhode-island.osm.pbf
+        /db/vermont.osm.pbf
+        -o /db/new-england.osm.pbf &&
+        rm -f /db/connecticut.osm.pbf /db/maine.osm.pbf
+        /db/massachusetts.osm.pbf /db/new-hampshire.osm.pbf
+        /db/rhode-island.osm.pbf /db/vermont.osm.pbf &&
+        osmium cat -o /db/planet.osm.bz2 /db/new-england.osm.pbf &&
+        rm -f /db/new-england.osm.pbf
+      OVERPASS_DIFF_URL: ""
+    volumes:
+      - overpass-db-new-england:/db
+
+volumes:
+  overpass-db-new-england:
