@@ -1147,6 +1147,22 @@ test('a finer claim wins while it stands, and the coarser one survives it', asyn
   assert.equal(app.viewer.camera.percentageChanged, 0.5);
 });
 
+test('the ROUTES row chip toggles route-line visibility independent of the altitude gate', async (t) => {
+  const app = harness(t);
+  assert.deepEqual(app.layer.getParams(), { routes: true });
+  assert.equal(app.layer.getRowControls().chips[0].active, true);
+
+  app.layer.enable(app.viewer);
+  app.layer.setParams({ routes: false });
+  assert.deepEqual(app.layer.getParams(), { routes: false });
+  const chip = app.layer.getRowControls().chips[0];
+  assert.equal(chip.active, false);
+  assert.deepEqual(chip.params, { routes: true });
+
+  app.layer.setParams({ routes: true });
+  assert.deepEqual(app.layer.getParams(), { routes: true });
+});
+
 test('destroy releases every shared registration this layer took', async (t) => {
   const app = harness(t);
   app.serve('mbta', () => ({

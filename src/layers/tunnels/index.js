@@ -20,6 +20,10 @@ const RAIL_WIDTH = 2.8;
 const GHOST_MAX_CAMERA_ALTITUDE_M = 18_000;
 const GHOST_CENTER_HEIGHT_M = 4;
 const GHOST_ALPHA = 0.12;
+// No globe means no terrain surface to classify against — the depth-tested
+// ghost tube becomes the only correctly-occluded (behind-buildings) stand-in,
+// so it needs to read as a real tunnel line rather than a faint hint.
+const GHOST_ALPHA_NO_GLOBE = 0.78;
 
 function tunnelLabelLimit(densityPct = getDetectionTuning().densityPct) {
   const density = Math.max(0, Math.min(100, Number(densityPct) || 0));
@@ -267,7 +271,10 @@ export function createTunnelsLayer({ source, services }) {
           color: Cesium.Color.fromCssColorString(cssColor),
         }),
       }),
-      classificationType: Cesium.ClassificationType.BOTH,
+      // Tunnels are underground; classifying onto 3D tile buildings paints
+      // them up building facades instead of hiding them. Terrain only — the
+      // ghost tube (depth-tested, naturally occluded) covers the no-terrain case.
+      classificationType: Cesium.ClassificationType.TERRAIN,
       asynchronous: true,
       allowPicking: false,
       show: false,
@@ -292,6 +299,8 @@ export function createTunnelsLayer({ source, services }) {
             width,
             material,
             clampToGround: true,
+            // See addGroundPrimitive — terrain only, never painted onto buildings.
+            classificationType: Cesium.ClassificationType.TERRAIN,
             zIndex: width === OUTLINE_WIDTH ? 10 : 11,
           },
         }),
@@ -323,8 +332,8 @@ export function createTunnelsLayer({ source, services }) {
 
   async function addGhostPrimitive(tunnels, kind, cssColor, isCurrent) {
     if (!viewer.scene.primitives?.add) return null;
-    const color =
-      Cesium.Color.fromCssColorString(cssColor).withAlpha(GHOST_ALPHA);
+    const alpha = globeHidden() ? GHOST_ALPHA_NO_GLOBE : GHOST_ALPHA;
+    const color = Cesium.Color.fromCssColorString(cssColor).withAlpha(alpha);
     const geometryInstances = [];
     const matching = tunnels.filter((tunnel) => tunnel.kind === kind);
     for (let index = 0; index < matching.length; index++) {
@@ -363,11 +372,16 @@ export function createTunnelsLayer({ source, services }) {
     return viewer.scene.primitives.add(primitive);
   }
 
+  function globeHidden() {
+    return viewer?.scene?.globe?.show === false;
+  }
+
   function updateGhostVisibility() {
     const visible =
       enabled &&
-      (viewer?.camera?.positionCartographic?.height ?? 0) <=
-        GHOST_MAX_CAMERA_ALTITUDE_M;
+      (globeHidden() ||
+        (viewer?.camera?.positionCartographic?.height ?? 0) <=
+          GHOST_MAX_CAMERA_ALTITUDE_M);
     for (const primitive of ghostPrimitives) primitive.show = visible;
   }
 

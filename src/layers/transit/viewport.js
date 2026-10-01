@@ -100,7 +100,8 @@ export function createViewport({ state, services, parts }) {
     refreshViewBounds();
     const altitude = getCameraAltitude();
     state._altitudeGateOpen = altitudeGateOpen(altitude);
-    const routesVisible = altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M;
+    const routesVisible =
+      altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M && state._params.routes !== false;
     parts.routes.setVisible(routesVisible);
     if (routesVisible)
       void parts.routes.update(cameraBounds || state._viewBounds);
