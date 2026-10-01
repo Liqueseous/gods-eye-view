@@ -33,6 +33,11 @@ The next step is to expand into operational use cases: monitoring, analysis, bri
 - [x] Keep default Developer diagnostics exports free of route geometry.
 - [x] Coordinate hidden fleet work through a shared frame budget.
 - [x] Cap and cache traffic layer `scene.sampleHeight()` calls so a pan revealing many new roads at once can't freeze the tab.
+- [x] Stop tunnel ground primitives from painting onto Google 3D building facades (terrain-only classification; ghost tube covers the globe-hidden case).
+- [x] Expose transit route lines as a ROUTES row-controls chip, toggleable independently of the altitude gate.
+- [ ] Anchor rail transit vehicle positions to their route polyline rather than raw feed coordinates.
+- [ ] Investigate why rendered aircraft models/billboards do not face their direction of travel.
+- [ ] Give AIS vessels a close-up model treatment comparable to the flights layer's 3D models.
 
 ## Roadmap priorities
 

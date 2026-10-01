@@ -267,8 +267,11 @@ export function createTunnelsLayer({ source, services }) {
     const primitive = new Cesium.GroundPolylinePrimitive({
       geometryInstances,
       appearance: new Cesium.PolylineMaterialAppearance({
-        material: Cesium.Material.fromType('Color', {
-          color: Cesium.Color.fromCssColorString(cssColor),
+        // Glow (not solid Color) reads as light shining through geometry rather
+        // than a line painted on it — tunnels under Google 3D buildings.
+        material: Cesium.Material.fromType('PolylineGlow', {
+          color: Cesium.Color.fromCssColorString(cssColor).withAlpha(0.9),
+          glowPower: 0.22,
         }),
       }),
       // Tunnels are underground; classifying onto 3D tile buildings paints

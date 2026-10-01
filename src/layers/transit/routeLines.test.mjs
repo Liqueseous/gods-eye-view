@@ -126,6 +126,78 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(layer.diagnostics().count, 0);
 });
 
+test('route lines draw as depth-tested primitives when the globe is hidden (Google 3D)', async (t) => {
+  // Cesium's Primitive constructor reaches for the DOM when building.
+  for (const name of ['HTMLCanvasElement', 'HTMLImageElement', 'ImageBitmap', 'OffscreenCanvas']) {
+    const prior = globalThis[name];
+    globalThis[name] = class {};
+    t.after(() => {
+      if (prior === undefined) delete globalThis[name];
+      else globalThis[name] = prior;
+    });
+  }
+
+  const scenePrimitives = [];
+  const layer = createTransitRouteLines({
+    routeSource: {
+      async requestRoutes() {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          async json() {
+            return {
+              routes: [
+                {
+                  id: '12:99',
+                  routeId: '12',
+                  name: 'Blue Line',
+                  type: 'subway',
+                  color: '#1267B1',
+                  lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
+                },
+              ],
+            };
+          },
+        };
+      },
+    },
+  });
+  layer.init({
+    scene: {
+      requestRender() {},
+      primitives: {
+        add(primitive) {
+          scenePrimitives.push(primitive);
+          return primitive;
+        },
+        remove(primitive) {
+          const index = scenePrimitives.indexOf(primitive);
+          if (index >= 0) scenePrimitives.splice(index, 1);
+        },
+      },
+      // The Google 3D path: no globe at all, so ground primitives never run.
+      globe: { show: false },
+    },
+    entities: { add: () => ({}), remove() {} },
+  });
+  layer.enable();
+  layer.setVisible(true);
+  await layer.update({ south: 42.3, west: -71.2, north: 42.4, east: -71 });
+
+  assert.equal(layer.diagnostics().count, 1);
+  assert.ok(
+    scenePrimitives.length >= 2,
+    'outline and colored route primitives exist in the scene',
+  );
+  assert.ok(
+    scenePrimitives.every((primitive) => primitive.show === true),
+    'primitives are shown once ready',
+  );
+  layer.destroy();
+  assert.equal(scenePrimitives.length, 0);
+});
+
 test('a newly visible area supersedes an in-flight priority request', async () => {
   const calls = [];
   const priorityStarted = Promise.withResolvers();

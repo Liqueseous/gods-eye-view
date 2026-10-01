@@ -102,6 +102,7 @@ export function createTransitRouteLines({
   let error = null;
   let primitives = [];
   let entities = [];
+  let spacePrimitives = [];
   let pendingReplacement = null;
   let postRenderRemove = null;
   let selectedRouteId = null;
@@ -111,8 +112,11 @@ export function createTransitRouteLines({
     for (const primitive of primitives)
       viewer?.scene?.groundPrimitives?.remove(primitive);
     for (const entity of entities) viewer?.entities?.remove(entity);
+    for (const primitive of spacePrimitives)
+      viewer?.scene?.primitives?.remove(primitive);
     primitives = [];
     entities = [];
+    spacePrimitives = [];
   }
 
   function raiseRouteLinesToTop() {
@@ -157,11 +161,16 @@ export function createTransitRouteLines({
     const primitive = new Cesium.GroundPolylinePrimitive({
       geometryInstances: instances,
       appearance: new Cesium.PolylineMaterialAppearance({
-        material: Cesium.Material.fromType('Color', {
-          color: Cesium.Color.fromCssColorString(cssColor),
+        // Glow (not solid Color) reads as light shining through geometry rather
+        // than a line painted on it — routes passing under Google 3D buildings.
+        material: Cesium.Material.fromType('PolylineGlow', {
+          color: Cesium.Color.fromCssColorString(cssColor).withAlpha(0.9),
+          glowPower: 0.22,
         }),
       }),
-      classificationType: Cesium.ClassificationType.BOTH,
+      // Same fix as tunnels/index.js: BOTH paints routes up building facades
+      // under Google 3D; GLOBE classification should handle visibility in 3D mode.
+      classificationType: Cesium.ClassificationType.GLOBE,
       allowPicking: true,
       asynchronous: true,
       show: false,
@@ -196,6 +205,8 @@ export function createTransitRouteLines({
               width,
               material,
               clampToGround: true,
+              // Terrain only, never draped onto 3D tile buildings.
+              classificationType: Cesium.ClassificationType.TERRAIN,
               zIndex:
                 width === OUTLINE_WIDTH
                   ? ROUTE_OUTLINE_Z_INDEX
@@ -209,18 +220,79 @@ export function createTransitRouteLines({
     return created;
   }
 
+  // With the globe hidden (Google 3D) the globe pass never runs, so a
+  // GroundPolylinePrimitive draws nothing at all. Real-space primitives
+  // depth-test against the tileset (buildings occlude them), and a
+  // depthFailAppearance lets the occluded parts still read through the
+  // buildings as a soft underglow instead of disappearing behind them.
+  async function addSpacePrimitive(
+    items,
+    width,
+    cssColor,
+    pickTargets,
+    isCurrent,
+  ) {
+    const color = Cesium.Color.fromCssColorString(cssColor);
+    const glowColor = color.withAlpha(0.25);
+    const created = [];
+    for (const route of items) {
+      for (let index = 0; index < route.lines.length; index++) {
+        if (!isCurrent())
+          throw Object.assign(new Error('Route build superseded'), {
+            name: 'AbortError',
+          });
+        const positions = routePositions(route.lines[index]);
+        if (positions.length < 2) continue;
+        const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
+        pickTargets.set(id, route.routeId);
+        created.push(
+          new Cesium.Primitive({
+            geometryInstances: new Cesium.GeometryInstance({
+              id,
+              geometry: new Cesium.PolylineGeometry({
+                positions,
+                width,
+                arcType: Cesium.ArcType.NONE,
+                vertexFormat: Cesium.PolylineMaterialAppearance.VERTEX_FORMAT,
+              }),
+            }),
+            appearance: new Cesium.PolylineMaterialAppearance({
+              material: Cesium.Material.fromType('Color', { color }),
+            }),
+            depthFailAppearance: new Cesium.PolylineMaterialAppearance({
+              material: Cesium.Material.fromType('PolylineGlow', {
+                color: glowColor,
+                glowPower: 0.3,
+              }),
+            }),
+            asynchronous: true,
+            allowPicking: true,
+            show: false,
+          }),
+        );
+      }
+      if (created.length % 64 === 0) await yieldRouteBuild();
+    }
+    for (const primitive of created) viewer.scene.primitives.add(primitive);
+    return created;
+  }
+
   function removeReplacement(replacement) {
     for (const primitive of replacement?.primitives || [])
       viewer?.scene?.groundPrimitives?.remove(primitive);
     for (const entity of replacement?.entities || [])
       viewer?.entities?.remove(entity);
+    for (const primitive of replacement?.spacePrimitives || [])
+      viewer?.scene?.primitives?.remove(primitive);
   }
 
   function commitRoutes(replacement) {
     const previousPrimitives = primitives;
     const previousEntities = entities;
+    const previousSpace = spacePrimitives;
     primitives = replacement.primitives;
     entities = replacement.entities;
+    spacePrimitives = replacement.spacePrimitives || [];
     routes = replacement.routes;
     routePickTargets.clear();
     for (const [id, routeId] of replacement.pickTargets)
@@ -228,9 +300,12 @@ export function createTransitRouteLines({
     pendingReplacement = null;
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
+    for (const primitive of spacePrimitives) primitive.show = visible;
     for (const primitive of previousPrimitives)
       viewer?.scene?.groundPrimitives?.remove(primitive);
     for (const entity of previousEntities) viewer?.entities?.remove(entity);
+    for (const primitive of previousSpace)
+      viewer?.scene?.primitives?.remove(primitive);
     raiseRouteLinesToTop();
     onRoutesUpdated();
     viewer?.scene?.requestRender?.();
@@ -238,15 +313,20 @@ export function createTransitRouteLines({
 
   function promoteReadyReplacement() {
     if (!pendingReplacement) return;
-    if (!primitives.length && !entities.length) {
+    // Entities and real-space primitives commit immediately: their own `show`
+    // flag governs visibility and a not-yet-ready Primitive simply draws
+    // nothing until it is, so there's no old-geometry gap to guard against.
+    // Only the in-place GroundPolylinePrimitive replacement needs the
+    // ready-gate so the current routes don't blank while their successors build.
+    if (!pendingReplacement.primitives.length) {
       commitRoutes(pendingReplacement);
       return;
     }
-    if (
-      pendingReplacement.primitives.some(
-        (primitive) => primitive.ready !== true,
-      )
-    )
+    if (!primitives.length && !entities.length && !spacePrimitives.length) {
+      commitRoutes(pendingReplacement);
+      return;
+    }
+    if (pendingReplacement.primitives.some((primitive) => primitive.ready !== true))
       return;
     commitRoutes(pendingReplacement);
   }
@@ -254,10 +334,18 @@ export function createTransitRouteLines({
   async function replaceRoutes(nextRoutes, isCurrent = () => true) {
     const nextPrimitives = [];
     const nextEntities = [];
+    const nextSpacePrimitives = [];
     const nextPickTargets = new Map();
+    // With the globe hidden (Google 3D) the globe pass never runs, so a
+    // GroundPolylinePrimitive draws nothing at all. Real-space primitives
+    // depth-test against the tileset (buildings occlude them), and a
+    // depthFailAppearance lets the occluded parts still read through the
+    // buildings as a soft underglow instead of disappearing behind them.
+    const globeHidden = viewer?.scene?.globe?.show === false;
     let canUseGround = false;
     try {
       canUseGround =
+        !globeHidden &&
         !!viewer?.scene?.context &&
         !!viewer.scene.groundPrimitives?.add &&
         typeof Cesium.GroundPolylinePrimitive.isSupported === 'function' &&
@@ -267,7 +355,27 @@ export function createTransitRouteLines({
     }
 
     try {
-      if (canUseGround) {
+      if (globeHidden) {
+        nextSpacePrimitives.push(
+          ...(await addSpacePrimitive(
+            nextRoutes,
+            OUTLINE_WIDTH,
+            OUTLINE_COLOR,
+            nextPickTargets,
+            isCurrent,
+          )),
+        );
+        for (const route of nextRoutes)
+          nextSpacePrimitives.push(
+            ...(await addSpacePrimitive(
+              [route],
+              ROUTE_WIDTH,
+              route.color,
+              nextPickTargets,
+              isCurrent,
+            )),
+          );
+      } else if (canUseGround) {
         const outline = await addGroundPrimitive(
           nextRoutes,
           OUTLINE_WIDTH,
@@ -316,6 +424,8 @@ export function createTransitRouteLines({
       for (const primitive of nextPrimitives)
         viewer?.scene?.groundPrimitives?.remove(primitive);
       for (const entity of nextEntities) viewer?.entities?.remove(entity);
+      for (const primitive of nextSpacePrimitives)
+        viewer?.scene?.primitives?.remove(primitive);
       throw caught;
     }
 
@@ -323,15 +433,18 @@ export function createTransitRouteLines({
     const replacement = {
       primitives: nextPrimitives,
       entities: nextEntities,
+      spacePrimitives: nextSpacePrimitives,
       routes: nextRoutes,
       pickTargets: nextPickTargets,
     };
     removeReplacement(pendingReplacement);
     pendingReplacement = replacement;
-    if (!primitives.length && !entities.length) {
-      if (!nextPrimitives.length) commitRoutes(replacement);
+    if (!primitives.length && !entities.length && !spacePrimitives.length) {
+      if (!nextPrimitives.length && !nextSpacePrimitives.length)
+        commitRoutes(replacement);
       else {
         for (const primitive of nextPrimitives) primitive.show = visible;
+        for (const primitive of nextSpacePrimitives) primitive.show = visible;
         promoteReadyReplacement();
       }
     } else promoteReadyReplacement();
@@ -343,7 +456,10 @@ export function createTransitRouteLines({
     visible = enabled && next === true;
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
+    for (const primitive of spacePrimitives) primitive.show = visible;
     for (const primitive of pendingReplacement?.primitives || [])
+      primitive.show = false;
+    for (const primitive of pendingReplacement?.spacePrimitives || [])
       primitive.show = false;
     if (visible) {
       raiseRouteLinesToTop();

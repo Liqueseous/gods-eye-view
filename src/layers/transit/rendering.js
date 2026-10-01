@@ -558,6 +558,21 @@ export function createRendering({ state, services, parts }) {
     ) {
       const entry = job.entries[job.index];
       if (!entry.marker) continue;
+
+      // Bypass visibility culling for ground primitives (GLOBE classification)
+      // when in Google 3D visual preset. This prevents them from being
+      // occluded by 3D tileset geometry.
+      if (state._stylePreset === 'google3d' &&
+          entry.marker.classificationType === Cesium.ClassificationType.GLOBE) {
+        // Manually set visible to true to bypass frustum/horizon checks
+        entry.visibility = { ...entry.visibility, frustum: true, occluder: true, boundsApplied: true };
+        entry.marker.show = true;
+        entry.visibilityMisses = 0;
+        schedulePlayback(entry);
+        job.changed = true;
+        job.index++;
+        continue;
+      }
       // Refresh hidden clocks before testing admission, even if no frame has
       // ever sampled them. Do not write the billboard until it is admitted.
       const noSample = !entry.sample || !Number.isFinite(entry.sample.lat);
