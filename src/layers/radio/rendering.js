@@ -1,5 +1,7 @@
 import * as Cesium from 'cesium';
-import { horizonOccluder } from '../../data/iconOrientation.js';
+import {
+  rotation,
+} from '../../data/iconOrientation.js';
 import {
   MARKER_LIFT_M,
   RADIO_PREFIX,
@@ -257,14 +259,19 @@ export function createRendering({
       ? { x: cameraPosition.x, y: cameraPosition.y, z: cameraPosition.z }
       : null;
     layerState._horizonScanCount += 1;
-    const occluder = horizonOccluder(layerState._viewer.camera);
     let visibilityChanged = false;
     for (const [id, record] of layerState._renderById) {
       const matches = parts.categories.stationMatchesRadioCategory(
         record.station,
         layerState._filter,
       );
-      const visible = matches && occluder.isPointVisible(record.position);
+      const visible =
+        matches &&
+        rotation.isPointVisible(
+          layerState._viewer.scene,
+          layerState._viewer.camera,
+          record.position,
+        );
       if (record.entity.show !== visible) visibilityChanged = true;
       record.entity.show = visible;
     }
@@ -272,7 +279,13 @@ export function createRendering({
       const position = layerState._selectedEntity.position?.getValue?.(
         Cesium.JulianDate.now(),
       );
-      const selectedVisible = !position || occluder.isPointVisible(position);
+      const selectedVisible =
+        !position ||
+        rotation.isPointVisible(
+          layerState._viewer.scene,
+          layerState._viewer.camera,
+          position,
+        );
       if (layerState._selectedEntity.show !== selectedVisible)
         visibilityChanged = true;
       layerState._selectedEntity.show = selectedVisible;

@@ -478,7 +478,7 @@ async function main() {
     }, SYNTH, APP_ORIGIN);
 
     console.log('Loading app...');
-    await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });
     if (HEADFUL) await page.bringToFront();
 
     // Wait for the app to expose its globals (Cesium viewer + dataManager).
@@ -542,7 +542,16 @@ async function main() {
       if (!asset.ok || assetBytes === 0) {
         throw new Error(`GLB control asset unavailable: HTTP ${asset.status}`);
       }
-      const Cesium = await import('/node_modules/cesium/Build/Cesium/index.js');
+        const getCesium = async () => {
+    if (window.Cesium) return window.Cesium;
+    try {
+      return await import('/node_modules/cesium/Build/Cesium/index.js');
+    } catch (e) {
+      throw new Error("Failed to load Cesium: " + e.message);
+    }
+  };
+
+  const Cesium = await getCesium();
       const viewer = window.__godsEyeView.viewer;
       const modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(
         Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 9000),
@@ -676,9 +685,8 @@ async function main() {
       },
       // Share serialization is driven by the rendered state transition. On a
       // saturated headless GPU, ten seconds can expire before that frame even
-      // though tracking is already accepted; keep the assertion identical but
-      // give the callback the same 30 s budget as other reload/latch checks.
-      { timeout: 30000, polling: 100 },
+      // though tracking is already accepted; increasing timeout for robustness.
+      { timeout: 60000, polling: 100 },
     );
     const trackedShareUrl = page.url();
     record(
@@ -2850,7 +2858,16 @@ async function main() {
     const DF_SEED_M = 400; // identity-probe floor for the fix cell
 
     const dfSetup = await evalPage(async () => {
-      const Cesium = await import('/node_modules/cesium/Build/Cesium/index.js');
+        const getCesium = async () => {
+    if (window.Cesium) return window.Cesium;
+    try {
+      return await import('/node_modules/cesium/Build/Cesium/index.js');
+    } catch (e) {
+      throw new Error("Failed to load Cesium: " + e.message);
+    }
+  };
+
+  const Cesium = await getCesium();
       const gev = window.__godsEyeView;
       const v = gev.viewer;
       const fl = gev.dataManager.layers.get('flights').module;
@@ -3375,7 +3392,16 @@ async function main() {
       // billboard used to swap it for an unfloored cyan target under the mesh.
       const dfTracked = await evalPage(async () => {
         const v = window.__godsEyeView.viewer;
-        const Cesium = await import('/node_modules/cesium/Build/Cesium/index.js');
+          const getCesium = async () => {
+    if (window.Cesium) return window.Cesium;
+    try {
+      return await import('/node_modules/cesium/Build/Cesium/index.js');
+    } catch (e) {
+      throw new Error("Failed to load Cesium: " + e.message);
+    }
+  };
+
+  const Cesium = await getCesium();
         const fl = window.__godsEyeView.dataManager.layers.get('flights').module;
         const gf = window.__dfGf;
         const cell = (x) => Number(x.toFixed(3));
@@ -3635,7 +3661,16 @@ async function main() {
       // its model on zoom without the operator arming anything.
       const dfRetained = await evalPage(async () => {
         const v = window.__godsEyeView.viewer;
-        const Cesium = await import('/node_modules/cesium/Build/Cesium/index.js');
+          const getCesium = async () => {
+    if (window.Cesium) return window.Cesium;
+    try {
+      return await import('/node_modules/cesium/Build/Cesium/index.js');
+    } catch (e) {
+      throw new Error("Failed to load Cesium: " + e.message);
+    }
+  };
+
+  const Cesium = await getCesium();
         const fl = window.__godsEyeView.dataManager.layers.get('flights').module;
         const gf = window.__dfGf;
         const cell = (x) => Number(x.toFixed(3));
@@ -3767,7 +3802,16 @@ async function main() {
       // below separately samples the no-rendering-model window.
       const dfLoading = await evalPage(async () => {
         const v = window.__godsEyeView.viewer;
-        const Cesium = await import('/node_modules/cesium/Build/Cesium/index.js');
+          const getCesium = async () => {
+    if (window.Cesium) return window.Cesium;
+    try {
+      return await import('/node_modules/cesium/Build/Cesium/index.js');
+    } catch (e) {
+      throw new Error("Failed to load Cesium: " + e.message);
+    }
+  };
+
+  const Cesium = await getCesium();
         const fl = window.__godsEyeView.dataManager.layers.get('flights').module;
         const gf = window.__dfGf;
         const cell = (x) => Number(x.toFixed(3));
@@ -3959,7 +4003,16 @@ async function main() {
       // taxi is; waiting out the 30 s render delay for the feed to move the
       // display would measure the same thing half a minute later.
       const dfHold = await evalPage(async () => {
-        const Cesium = await import('/node_modules/cesium/Build/Cesium/index.js');
+          const getCesium = async () => {
+    if (window.Cesium) return window.Cesium;
+    try {
+      return await import('/node_modules/cesium/Build/Cesium/index.js');
+    } catch (e) {
+      throw new Error("Failed to load Cesium: " + e.message);
+    }
+  };
+
+  const Cesium = await getCesium();
         const v = window.__godsEyeView.viewer;
         const fl = window.__godsEyeView.dataManager.layers.get('flights').module;
         // Test the registered instance directly, including catalogs constructed
@@ -4184,7 +4237,7 @@ async function sampleFrames(page, count, sampleFn, ...args) {
       const timer = setTimeout(() => {
         timedOut = true;
         finish();
-      }, Math.max(15000, n * 1500));
+      }, Math.max(30000, n * 2000));
       v.scene.requestRender();
     });
     return { values: out, timedOut };

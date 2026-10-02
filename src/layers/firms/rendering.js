@@ -1,6 +1,5 @@
 import * as Cesium from 'cesium';
 import { FIRMS_OVERLAY_SOURCE_ID } from '../../data/firmsLabels.js';
-import { horizonOccluder } from '../../data/iconOrientation.js';
 import { LOD_LEVELS, CONTEXT_TOP_N } from './policy.js';
 
 export function createRendering({
@@ -10,6 +9,10 @@ export function createRendering({
   config,
   feed,
 }) {
+  const fireOccluder = new Cesium.EllipsoidalOccluder(
+    Cesium.Ellipsoid.WGS84,
+    new Cesium.Cartesian3(),
+  );
   const { warmFireAnchorFloors } = services.anchors;
   const { registerSpriteCollection, restoreSpriteOrder } = services.sprites;
   const { overlayHost } = config;
@@ -323,7 +326,8 @@ export function createRendering({
       ? layerState._viewer.camera
       : layerState._viewer?.scene?.camera;
     if (!camera?.positionWC) return null;
-    return horizonOccluder(camera);
+    fireOccluder.cameraPosition = camera.positionWC;
+    return fireOccluder;
   }
 
   /**
@@ -350,6 +354,7 @@ export function createRendering({
     ensureDetectionCollections,
     removeDetectionCollections,
     fireHorizonOccluder,
+    fireIsPointVisible: fireHorizonOccluder,
     refreshHorizonCulling,
   };
 }

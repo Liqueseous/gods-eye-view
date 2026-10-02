@@ -1,5 +1,7 @@
 import * as Cesium from 'cesium';
-import { horizonOccluder } from '../../data/iconOrientation.js';
+import {
+  rotation,
+} from '../../data/iconOrientation.js';
 import { selectModelEligible } from '../../data/modelEligibility.js';
 import { civilAircraftModelSpec } from '../flights/modelSpec.js';
 import {
@@ -213,13 +215,19 @@ export function createLocalAdsbModels({
         lastEligibilityAt = nowMs;
         refreshEligibility(markers, preferences);
       }
-      const occluder = horizonOccluder(viewer.camera);
       for (const [id, marker] of markers) {
         const model = models.get(id);
         marker.modelOwnsVisual = false;
         if (!model || !marker.position) continue;
         const position = placement(id, marker);
-        if (!position || !occluder.isPointVisible(marker.position)) {
+        if (
+          !position ||
+          !rotation.isPointVisible(
+            viewer.scene,
+            viewer.camera,
+            marker.position,
+          )
+        ) {
           model.show = false;
           continue;
         }

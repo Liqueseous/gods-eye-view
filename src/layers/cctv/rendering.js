@@ -1,5 +1,7 @@
 import * as Cesium from 'cesium';
-import { horizonOccluder } from '../../data/iconOrientation.js';
+import {
+  rotation,
+} from '../../data/iconOrientation.js';
 import { isHeadingEstimated } from './headingConfidence.js';
 import {
   ACTIVE_CAMERA_COLOR,
@@ -142,11 +144,14 @@ export function createRendering({
       !layerState._records.length
     )
       return;
-    const occluder = horizonOccluder(layerState._viewer.camera);
     for (const record of layerState._records) {
       const bb = record.billboard;
       if (!bb) continue;
-      const visible = occluder.isPointVisible(bb.position);
+      const visible = rotation.isPointVisible(
+        layerState._viewer.scene,
+        layerState._viewer.camera,
+        bb.position,
+      );
       if (bb.show !== visible) bb.show = visible;
     }
   }

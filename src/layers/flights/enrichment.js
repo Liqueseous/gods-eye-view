@@ -1,5 +1,7 @@
 import { classifyAircraft } from '../../data/aircraftClass.js';
-import { horizonOccluder } from '../../data/iconOrientation.js';
+import {
+  rotation,
+} from '../../data/iconOrientation.js';
 import * as Cesium from 'cesium';
 import {
   ENRICH_MAX_INFLIGHT,
@@ -188,7 +190,6 @@ export function createEnrichment({
     try {
       const camera = flightState._viewer.camera;
       const camPos = camera.positionWC;
-      const occluder = horizonOccluder(camera);
       const cull = camera.frustum.computeCullingVolume(
         camPos,
         camera.directionWC,
@@ -199,7 +200,15 @@ export function createEnrichment({
         if (flightState._enrichSeen.has(`t:${icao24}`)) continue; // answered / queued / negative this session
         if (!/^[0-9a-f]{6}$/i.test(icao24)) continue; // adsbdb keys are 6-char hex only
         if (flightState.records.data.get(icao24)?.onGround) continue; // ground traffic never spends ambient budget (click-to-enrich still works)
-        if (!bb.position || !occluder.isPointVisible(bb.position)) continue; // beyond the limb
+        if (
+          !bb.position ||
+          !rotation.isPointVisible(
+            flightState._viewer.scene,
+            camera,
+            bb.position,
+          )
+        )
+          continue; // beyond the limb
         Cesium.Cartesian3.clone(
           bb.position,
           flightState._scratchModelBS.center,

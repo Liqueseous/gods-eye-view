@@ -27,7 +27,9 @@ import {
   DETECTION_THEME_MAP,
   SKY_PLATE_SCALE,
 } from '../overlays/worldOverlayTokens.js';
-import { skyBackdropFactor } from './iconOrientation.js';
+import {
+  rotation,
+} from './iconOrientation.js';
 import { paintDetectionCallout } from '../overlays/worldOverlayDraw.js';
 import { allocateLayerQuotas, LabelArbiter } from './labelArbiter.js';
 import {
@@ -1249,7 +1251,7 @@ function _materializeCandidate(
     // observation in view, while this runs only for callouts that actually
     // placed — a budgeted handful per frame.
     plateScale: _plateScaleForBackdrop(
-      skyBackdropFactor(cameraPosition, obj.position),
+      rotation.skyBackdropFactor(cameraPosition, obj.position),
     ),
     primary,
     micro,

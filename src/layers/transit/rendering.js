@@ -1,7 +1,6 @@
 import * as Cesium from 'cesium';
 import {
-  cameraPoseSignature,
-  perspectiveProjectedRotation,
+  rotation,
 } from '../../data/iconOrientation.js';
 import {
   updatePlayback,
@@ -354,7 +353,7 @@ export function createRendering({ state, services, parts }) {
     if (!scene?.camera) return;
     if (now - state._rotationAt < ROTATION_REFRESH_MS) return;
     state._rotationAt = now;
-    const pose = cameraPoseSignature(scene.camera);
+    const pose = rotation.cameraPoseSignature(scene.camera);
     const cameraChanged =
       state._rotationPose !== pose ||
       state._rotationRevision !== state._cameraRevision;
@@ -392,7 +391,7 @@ export function createRendering({ state, services, parts }) {
       // camera-basis helper aircraft use is orthographic — fine at altitude,
       // and wrong by twenty-odd degrees for a street-level contact away from
       // the centre of an obliquely pitched view, which is most of them.
-      entry.marker.rotation = perspectiveProjectedRotation(
+      entry.marker.rotation = rotation.perspectiveProjectedRotation(
         scene,
         entry.marker.position,
         course,
@@ -471,7 +470,7 @@ export function createRendering({ state, services, parts }) {
     const selected = state._vehicles.get(state._selectedKey);
     if (selected && state._visible.has(selected)) {
       selected.marker.rotation = Number.isFinite(selected.courseDeg)
-        ? perspectiveProjectedRotation(
+        ? rotation.perspectiveProjectedRotation(
             state._viewer.scene,
             selected.marker.position,
             selected.courseDeg,

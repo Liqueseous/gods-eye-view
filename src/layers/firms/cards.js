@@ -40,7 +40,7 @@ export function createCards({
     // in applyFirmsOverlayPolicy) — near-side fires silently lose their cards.
     // Shared with the sprite pass (fireHorizonOccluder) so cards and sprites
     // never disagree about which hemisphere a detection is on.
-    const occluder = components.rendering.fireHorizonOccluder();
+    const occluder = components.rendering.fireIsPointVisible();
     const beyondHorizon = (position) =>
       occluder ? occluder.isPointVisible(position) !== true : false;
     layerState._fireByCardId.clear();

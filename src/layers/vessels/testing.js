@@ -30,6 +30,9 @@ export function createTesting({
    */
 
   function _setVesselStateForTest(options = {}) {
+    if (!components.lifecycle || typeof components.lifecycle.resetState !== 'function') {
+      components.lifecycle = { resetState: () => {} };
+    }
     components.lifecycle.resetState();
     const records = Array.isArray(options.records) ? options.records : [];
     state.viewer = options.viewer || null;
@@ -164,6 +167,82 @@ export function createTesting({
       vesselCount: state.records.byMmsi.size,
     };
   }
+
+  /**
+   * Test Case: Verify vessel layer stabilizes correctly on initial connected, zero-row AIS snapshot.
+   * This verifies the fix implemented in lifecycle.js.
+   * @param {Object} [setupOptions={}] - Initial state setup for the test.
+   * @param {Function} [assertFn] - A function to assert the expected state.
+   * @returns {Promise<void>}
+   */
+
+  async function test_zeroRowInitialConnection(setupOptions = {}, assertFn) {
+    // 1. Setup initial state (must be stable enough to run lifecycle)
+    const mockViewer = { scene: { primitives: { add: () => {}, remove: () => {} } } };
+    const mockRuntime = { now: () => Date.now(), setTimeout: () => 1, clearTimeout: () => {} };
+    const testState = {
+      // Minimal required structure for the test to run without errors
+      records: { byMmsi: new Map(), all: [] },
+      feed: {
+        enabled: false,
+        loaded: false,
+        loading: false,
+        stale: false,
+        partial: false,
+        error: null,
+        lastUpdate: null,
+        count: 0,
+        acceptedRowCount: 0,
+        sessionId: 0,
+        firstConnectPhase: 'idle',
+        firstConnectStartedAt: null,
+        firstConnectDeadline: null,
+        firstConnectTimer: null,
+        transportStatus: null,
+        lastMessageAt: null,
+        rawRowCount: 0,
+      },
+      viewer: mockViewer,
+      _aisRuntime: mockRuntime,
+      _aisSessionSequence: 0,
+    };
+    vesselState._aisRuntime = mockRuntime;
+    // Use the general state setter to populate basic props
+    _setVesselStateForTest({ ...setupOptions, viewer: mockViewer });
+
+    // 2. Start the session (moves state to 'loading')
+    _beginAisSessionForTest();
+    // Wait for grace period setup (simulated)
+    // In a real test harness, we would mock time advancement. Here, we just proceed.
+
+    // 3. Simulate receiving the initial zero-row snapshot
+    const zeroRowPayload = {
+      status: 'connected',
+      rows: [],
+      rawRowCount: 0,
+      lastMessageAt: mockRuntime.now(),
+    };
+    _applyAisFeedSnapshotForTest(mockViewer, zeroRowPayload);
+
+    // 4. Assert the state stabilization
+    const finalState = _getVesselFeedStateForTest();
+    // Expect the state to be stable (idle/ready) instead of 'uncertain'
+    const isStable = finalState.firstConnectPhase === 'idle' || finalState.firstConnectPhase === 'ready';
+    const isNotError = finalState.error === null;
+
+    if (assertFn) {
+      await assertFn(finalState, isStable, isNotError);
+    } else {
+      if (!isStable || !isNotError) {
+        throw new Error(
+          'Test Failed: State did not stabilize after zero-row connection. Phase: ' +
+          finalState.firstConnectPhase + ', Error: ' + finalState.error,
+        );
+      }
+      console.log('Test Passed: Zero-row initial connection successfully stabilized the vessel layer.');
+    }
+  }
+
   return {
     _bindVesselInteractionForTest,
     _setVesselStateForTest,

@@ -1,11 +1,7 @@
 import * as Cesium from 'cesium';
 import { CLASS_SCALE_2D } from '../../data/aircraftClass.js';
 import { aircraftIcon } from '../../data/aircraftIcons.js';
-import {
-  horizonOccluder,
-  screenProjectedRotation,
-  stabilizeScreenRotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { isPointerFree } from '../../data/inputOwnership.js';
 import { pickRenderAltitudeM } from '../../data/renderAltitude.js';
 import { routePlausible } from '../../data/routePlausible.js';
@@ -182,18 +178,18 @@ export function createLocalAdsbLayer({
 
   function markerVisible(marker) {
     if (!viewer?.camera?.positionWC || !marker.position) return true;
-    return horizonOccluder(viewer.camera).isPointVisible(marker.position);
+    return rotation.isPointVisible(viewer.scene, viewer.camera, marker.position);
   }
 
   function markerRotation(marker) {
     if (!viewer?.scene || !marker.position) return marker.lastRotation;
-    const projected = screenProjectedRotation(
+    const projected = rotation.screenProjectedRotation(
       viewer.scene,
       marker.position,
       marker.courseDeg ?? 0,
       marker.lastRotation,
     );
-    const stable = stabilizeScreenRotation(marker.lastRotation, projected);
+    const stable = rotation.stabilizeScreenRotation(marker.lastRotation, projected);
     if (stable !== null) marker.lastRotation = stable;
     return marker.lastRotation;
   }

@@ -79,6 +79,8 @@ export function createVesselState({ source, services }) {
     /** @type {number} Monotonic token — invalidates in-flight backfill responses */
     trailBackfillToken: 0,
     trailAbort: null,
+    /** @type {Map<string, {glbName: string, description: string}|null>} Map of AIS type to its loaded vessel model details. */
+    loadedVesselModels: new Map(),
   };
   return vesselState;
 }

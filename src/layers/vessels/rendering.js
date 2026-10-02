@@ -7,8 +7,7 @@ import {
   VESSEL_CARD_FADE_DISTANCE_M,
 } from '../../data/vesselLabels.js';
 import {
-  cameraPoseSignature,
-  screenProjectedRotation,
+  rotation,
 } from '../../data/iconOrientation.js';
 import {
   VESSEL_LIFT_M,
@@ -36,29 +35,70 @@ export function createRendering({
   }
 
   function prepareRecordVisual(record) {
-    let visual = visualRecords.get(record);
-    if (!visual) {
-      visual = { billboard: record.billboard || null };
-      visualRecords.set(record, visual);
+    // Use the presentation registry to determine the visual representation
+    const presentation = options.vesselPresentation;
+    const visualData = presentation?.getScaledRepresentation
+      ? presentation.getScaledRepresentation(record)
+      : { scale: 0, visual: { billboard: record.billboard || {} } };
+
+    if (visualData.scale > 1 && record.distanceToCamera < VESSEL_CARD_FADE_DISTANCE_M) {
+      // Use Cesium.Model for close-up viewing
+      visualData.visual = {
+        model: new Cesium.Model({
+          uri: visualData.iconPath, // Assuming iconPath now holds the GLB name
+          scale: visualData.scale,
+          minimumPixelSize: 32,
+          maximumScale: 10,
+        }),
+      };
+    } else {
+      // Fallback to Billboard for distant viewing
+      visualData.visual = { billboard: record.billboard || {} };
     }
-    const heightM = components.queries.vesselDatumHeightM(
-      components.tracking.currentGeoidN(record.lat, record.lon),
-      VESSEL_LIFT_M,
-    );
-    visual.position = Cesium.Cartesian3.fromDegrees(
-      record.lon,
-      record.lat,
-      heightM,
-    );
-    visual.surfacePosition = Cesium.Cartesian3.fromDegrees(
-      record.lon,
-      record.lat,
-      0,
-    );
-    visual.normal = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
-      visual.position,
-      new Cesium.Cartesian3(),
-    );
+
+    const visual = visualRecords.get(record) || visualData.visual;
+    visualRecords.set(record, visual);
+
+    // Update positioning for both Model and Billboard
+    if (visual.billboard) {
+      const heightM = components.queries.vesselDatumHeightM(
+        components.tracking.currentGeoidN(record.lat, record.lon),
+        VESSEL_LIFT_M,
+      );
+      visual.position = Cesium.Cartesian3.fromDegrees(
+        record.lon,
+        record.lat,
+        heightM,
+      );
+      visual.surfacePosition = Cesium.Cartesian3.fromDegrees(
+        record.lon,
+        record.lat,
+        0,
+      );
+      visual.normal = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
+        visual.position,
+        new Cesium.Cartesian3(),
+      );
+    } else if (visual.model) {
+      // Update model position based on record if it's a model
+      const heightM = components.queries.vesselDatumHeightM(
+        components.tracking.currentGeoidN(record.lat, record.lon),
+        VESSEL_LIFT_M,
+      );
+      const position = Cesium.Cartesian3.fromDegrees(
+        record.lon,
+        record.lat,
+        heightM,
+      );
+      visual.model.position = position;
+      visual.model.orientation = Cesium.Transforms.headingPitchRollQuaternion(
+        Cesium.Cartesian3.fromDegrees(record.lon, record.lat),
+        record.heading,
+        record.pitch,
+        record.roll,
+      );
+    }
+
     return visual;
   }
 
@@ -226,7 +266,7 @@ export function createRendering({
     if (regularPass) {
       // Candidate construction stays on the original 800 ms selector cadence.
       // The 80 ms focus-only pass below never allocates label candidates.
-      const poseSig = camera ? cameraPoseSignature(camera) : '';
+      const poseSig = camera ? rotation.cameraPoseSignature(camera) : '';
       const doRotations = force || poseSig !== vesselState._lastCamPoseSig;
       if (doRotations) vesselState._lastCamPoseSig = poseSig;
       const occluder = makeOccluder();
@@ -237,7 +277,7 @@ export function createRendering({
         if (visual.billboard) {
           visual.billboard.show = visible;
           if (visible && doRotations && scene) {
-            const rot = screenProjectedRotation(
+            const rot = rotation.screenProjectedRotation(
               scene,
               visual.position,
               vesselCourseDeg(record),
@@ -358,6 +398,7 @@ export function createRendering({
     const viewer = state.viewer;
     const scene = viewer?.scene;
     const selected = state.selectedRecord;
+    const selectedMmsi = String(selected?.mmsi || '').trim();
     const entries = selected
       ? [components.cards.buildSelectedVesselCard(selected)]
       : [];
@@ -372,7 +413,11 @@ export function createRendering({
     const cells = new Map();
     for (const record of records) {
       const visual = getVisual(record);
-      if (record === selected) continue;
+      if (
+        record === selected ||
+        (selectedMmsi && String(record.mmsi || '').trim() === selectedMmsi)
+      )
+        continue;
       const screen = Cesium.SceneTransforms.worldToWindowCoordinates(
         scene,
         visual.position,

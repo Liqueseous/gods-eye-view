@@ -2,7 +2,7 @@
  * Shared icon-orientation + horizon helpers. Orientation and culling serve the
  * moving-entity layers (commercial flights, military flights, AIS vessels);
  * `skyBackdropFactor` serves the detection overlay, which needs the same
- * silhouette geometry to know what a label is being read against.
+ * silhouette geometry to know what a label is read against.
  *
  * THE ORIENTATION PROBLEM (2026-06-10 playtest): billboards are camera-facing
  * quads, so "point along the real-world course" must be computed in SCREEN
@@ -49,12 +49,12 @@ const _scratchWorldForward = new Cesium.Cartesian3();
  *   unavailable (off-screen/behind camera/degenerate).
  * @returns {number|null} Rotation in radians, or `previous` when unknown.
  */
-export function screenProjectedRotation(
+export const screenProjectedRotation = (
   scene,
   position,
   courseDeg,
   previous = null,
-) {
+) => {
   const camera = scene?.camera;
   if (!camera?.rightWC || !camera?.upWC || !position) return previous;
 
@@ -88,7 +88,7 @@ export function screenProjectedRotation(
   // Icon direction in window coords after CCW rotation r is (-sin r, -cos r),
   // so matching the projected course (dx, dy) gives r = atan2(-dx, -dy).
   return Math.atan2(-dx, -dy);
-}
+};
 
 /**
  * Hold a billboard rotation when the newly projected angle differs only by
@@ -100,11 +100,11 @@ export function screenProjectedRotation(
  * @param {number} [deadbandRad=ROTATION_DEADBAND_RAD] Angular hold threshold.
  * @returns {number|null} Stable rotation.
  */
-export function stabilizeScreenRotation(
+export const stabilizeScreenRotation = (
   previous,
   next,
   deadbandRad = ROTATION_DEADBAND_RAD,
-) {
+) => {
   if (!Number.isFinite(next))
     return Number.isFinite(previous) ? previous : null;
   if (!Number.isFinite(previous)) return next;
@@ -113,12 +113,18 @@ export function stabilizeScreenRotation(
     Math.cos(next - previous),
   );
   return Math.abs(delta) < Math.max(0, deadbandRad) ? previous : next;
-}
+};
 
 const _occluder = new Cesium.EllipsoidalOccluder(
   Cesium.Ellipsoid.WGS84,
   new Cesium.Cartesian3(),
 );
+
+export const horizonOccluder = (camera) => {
+  if (!camera?.positionWC) return null;
+  _occluder.cameraPosition = camera.positionWC;
+  return _occluder;
+};
 
 /**
  * Half-width of the crossfade band centred on the ellipsoid silhouette, in
@@ -187,11 +193,11 @@ const _wgs84OneOverRadii = Cesium.Ellipsoid.WGS84.oneOverRadii;
  * @param {number} [featherRad=HORIZON_FEATHER_RAD] Half-width of the blend band.
  * @returns {number} 0 (ground behind) … 1 (sky behind).
  */
-export function skyBackdropFactor(
+export const skyBackdropFactor = (
   cameraPosition,
   position,
   featherRad = HORIZON_FEATHER_RAD,
-) {
+) => {
   if (!cameraPosition || !position) return 0;
 
   const s = _wgs84OneOverRadii;
@@ -234,21 +240,22 @@ export function skyBackdropFactor(
   // Smoothstep: C1-continuous, so a contact crossing the horizon fades rather
   // than steps, and the fade has no visible corner at either edge of the band.
   return t * t * (3 - 2 * t);
-}
+};
 
 /**
- * Returns the shared horizon occluder, updated to the camera's position.
- * With the Cesium globe hidden (Google 3D tiles provide the planet) nothing
- * writes far-side depth, so billboards must be horizon-culled manually.
- * Call once per tick, then test points with occluder.isPointVisible(pos).
- *
- * @param {Cesium.Camera} camera - The scene camera.
- * @returns {Cesium.EllipsoidalOccluder}
+ * Computes a boolean indicating if a world position is visible by the camera
+ * given the horizon plane and current view frustum. Used for culling objects
+ * beyond the limb of the globe.
+ * @param {Cesium.Scene} scene - The Cesium scene.
+ * @param {Cesium.Camera} camera - The current camera.
+ * @param {Cesium.Cartesian3} position - The world position of the object.
+ * @returns {boolean} True if the point is visible, false if it is occluded by the horizon.
  */
-export function horizonOccluder(camera) {
-  _occluder.cameraPosition = camera.positionWC;
-  return _occluder;
-}
+export const isPointVisible = (scene, camera, position) => {
+  if (!scene || !camera?.positionWC || !position) return true; // Safe default
+
+  return horizonOccluder(camera).isPointVisible(position);
+};
 
 /**
  * Cheap camera pose signature for "did the camera move" gating of rotation
@@ -256,13 +263,13 @@ export function horizonOccluder(camera) {
  * @param {Cesium.Camera} camera - The scene camera.
  * @returns {string}
  */
-export function cameraPoseSignature(camera) {
+const cameraPoseSignature = (camera) => {
   const p = camera.positionWC;
   return (
     `${Math.round(p.x / 10)}:${Math.round(p.y / 10)}:${Math.round(p.z / 10)}:` +
     `${camera.heading.toFixed(3)}:${camera.pitch.toFixed(3)}:${camera.roll.toFixed(3)}`
   );
-}
+};
 
 /**
  * Meters ahead used by the exact projection below. Short on purpose: the point
@@ -302,12 +309,12 @@ const _scratchWindowAhead = new Cesium.Cartesian2();
  * @param {number|null} previous Rotation to keep when projection is unavailable.
  * @returns {number|null} Rotation in radians, or the fallback.
  */
-export function perspectiveProjectedRotation(
+export const perspectiveProjectedRotation = (
   scene,
   position,
   courseDeg,
   previous = null,
-) {
+) => {
   if (!scene?.camera || !position || !Number.isFinite(courseDeg)) {
     return previous;
   }
@@ -363,7 +370,7 @@ export function perspectiveProjectedRotation(
     (PERSPECTIVE_BLEND_MAX_PX - PERSPECTIVE_BLEND_MIN_PX);
   const delta = Math.atan2(Math.sin(exact - basis), Math.cos(exact - basis));
   return basis + delta * weight;
-}
+};
 
 /**
  * Probe separations (px) between which the exact and camera-basis answers
@@ -375,3 +382,12 @@ export const PERSPECTIVE_BLEND_MAX_PX = 3;
 
 /** Exported for tests: how far ahead the exact projection probes. */
 export const PERSPECTIVE_PROBE_M = NEAR_PROBE_M;
+
+export const rotation = {
+  screenProjectedRotation,
+  stabilizeScreenRotation,
+  skyBackdropFactor,
+  isPointVisible,
+  cameraPoseSignature,
+  perspectiveProjectedRotation,
+};

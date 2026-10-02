@@ -13,9 +13,7 @@ import { cyberSonarBaseAlpha } from '../../cyberSonar.js';
 import { cockpitContactDotImage } from '../../data/cockpitContactDot.js';
 import { aircraftIcon, TRACKED_ICON_PX } from '../../data/aircraftIcons.js';
 import {
-  cameraPoseSignature,
-  horizonOccluder,
-  screenProjectedRotation,
+  rotation,
 } from '../../data/iconOrientation.js';
 import { limitCourseStep, courseSlewCapDps } from '../../data/motionModel.js';
 import {
@@ -829,7 +827,7 @@ export function createRendering({
     _drainIrReloadQueue(); // bounded per-tick slice of any pending boost-flip reload
     if (flightState._cockpitContactMode)
       parts.tracking._refreshCockpitNearContacts();
-    const poseSig = cameraPoseSignature(camera);
+    const poseSig = rotation.cameraPoseSignature(camera);
     // Only nearby Cockpit silhouettes need projected course; far dots remain
     // rotation-free through the per-contact gate below.
     const doRotations =
@@ -840,7 +838,6 @@ export function createRendering({
       flightState._lastRotPassMs = nowMs;
     }
 
-    const occluder = horizonOccluder(camera);
     const focusTarget = getFocusTarget();
 
     // 3D model regime: only when enabled AND the camera is zoomed in past the altitude ceiling.
@@ -943,7 +940,9 @@ export function createRendering({
       // Round 6: occlusion-test a LIFTED point for contacts at/below the
       // ellipsoid (mirror of flights.js — sub-ellipsoid points near the limb
       // read "beyond the horizon" and would hide low contacts awaiting floors).
-      const beyondHorizon = !occluder.isPointVisible(
+      const beyondHorizon = !rotation.isPointVisible(
+        scene,
+        camera,
         flightState.records.data.get(icao24)?.cullPosition || bb.position,
       );
       // A billboard flipping INTO view (horizon reveal while the camera idles)
@@ -1084,7 +1083,7 @@ export function createRendering({
         (!flightState._cockpitContactMode || isCockpitNear) &&
         (doRotations || revealed)
       ) {
-        const rot = screenProjectedRotation(
+        const rot = rotation.screenProjectedRotation(
           scene,
           bb.position,
           course,

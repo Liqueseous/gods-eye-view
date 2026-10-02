@@ -3,8 +3,7 @@ import { nextCockpitNearContacts } from '../../data/cockpitAirLod.js';
 import { aircraftIcon, TRACKED_ICON_PX } from '../../data/aircraftIcons.js';
 import { trackedModelZoomActive } from '../../data/trackedModelRegime.js';
 import {
-  screenProjectedRotation,
-  stabilizeScreenRotation,
+  rotation,
 } from '../../data/iconOrientation.js';
 import { trailHeadStart } from '../../data/modelVisualAnchor.js';
 import { CLASS_SCALE_2D } from '../../data/aircraftClass.js';
@@ -409,18 +408,19 @@ export function createTracking({
       parts.motion._trackedDisplayCached() ||
       flightState._billboards.get(flightState._trackedIcao)?.position;
     if (!pos) return;
-    const projected = screenProjectedRotation(
+    const projected = rotation.screenProjectedRotation(
       flightState._viewer.scene,
       pos,
       parts.motion._trackedDisplayCourse(),
       flightState._lastTrackedRotation,
     );
-    const rotation = stabilizeScreenRotation(
+    const stableRotation = rotation.stabilizeScreenRotation(
       flightState._lastTrackedRotation,
       projected,
       0,
     );
-    if (rotation !== null) flightState._lastTrackedRotation = rotation;
+    if (stableRotation !== null)
+      flightState._lastTrackedRotation = stableRotation;
   }
 
   /**
@@ -945,13 +945,13 @@ export function createTracking({
           const pos = getTrackedPosition();
           if (!tracked || !pos || !flightState._viewer)
             return flightState._lastTrackedRotation;
-          const projected = screenProjectedRotation(
+          const projected = rotation.screenProjectedRotation(
             flightState._viewer.scene,
             pos,
             parts.motion._trackedDisplayCourse(),
             flightState._lastTrackedRotation,
           );
-          const rot = stabilizeScreenRotation(
+          const rot = rotation.stabilizeScreenRotation(
             flightState._lastTrackedRotation,
             projected,
           );

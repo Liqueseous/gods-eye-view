@@ -254,8 +254,8 @@ export function createTiming({ state: layerState, services, parts, source }) {
     let _trafficTimingWaypointMaterializationMs = 0;
     /* TRACE_ONLY_END */
     const heightCellCache = layerState._heightCellCache;
-    let _trafficTimingNewSamples = 0;
-    let _trafficTimingSampleBudgetMs = 0;
+    let newSamples = 0;
+    let sampleTimeMs = 0;
     for (const road of roadData.roads) {
       if (!road.coordinates || road.coordinates.length < 2) continue;
 
@@ -289,8 +289,8 @@ export function createTiming({ state: layerState, services, parts, source }) {
         if (heightCellCache.has(cellKey)) {
           baseHeight = heightCellCache.get(cellKey);
         } else if (
-          _trafficTimingNewSamples < MAX_HEIGHT_SAMPLES_PER_PARSE &&
-          _trafficTimingSampleBudgetMs < MAX_HEIGHT_SAMPLE_MS_PER_PARSE
+          newSamples < MAX_HEIGHT_SAMPLES_PER_PARSE &&
+          sampleTimeMs < MAX_HEIGHT_SAMPLE_MS_PER_PARSE
         ) {
           const carto = Cesium.Cartographic.fromDegrees(
             firstCoord[0],
@@ -300,10 +300,10 @@ export function createTiming({ state: layerState, services, parts, source }) {
           _trafficTimingSampleHeightCalls += 1;
           const _trafficTimingSampleStart = performance.now();
           /* TRACE_ONLY_END */
-          const sampleBudgetStart = performance.now();
+          const sampleStart = performance.now();
           const sampled = layerState._viewer.scene.sampleHeight(carto);
-          _trafficTimingSampleBudgetMs += performance.now() - sampleBudgetStart;
-          _trafficTimingNewSamples += 1;
+          sampleTimeMs += performance.now() - sampleStart;
+          newSamples += 1;
           /* TRACE_ONLY_BEGIN */
           _trafficTimingSampleHeightMs +=
             performance.now() - _trafficTimingSampleStart;

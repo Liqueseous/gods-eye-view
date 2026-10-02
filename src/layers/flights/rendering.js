@@ -6,9 +6,7 @@ import { CLASS_SCALE_2D } from '../../data/aircraftClass.js';
 import { cockpitContactDotImage } from '../../data/cockpitContactDot.js';
 import { aircraftIcon, TRACKED_ICON_PX } from '../../data/aircraftIcons.js';
 import {
-  cameraPoseSignature,
-  horizonOccluder,
-  screenProjectedRotation,
+  rotation,
 } from '../../data/iconOrientation.js';
 import { limitCourseStep, courseSlewCapDps } from '../../data/motionModel.js';
 import {
@@ -844,7 +842,7 @@ export function createRendering({
     _drainIrReloadQueue(); // bounded per-tick slice of any pending boost-flip reload
     if (flightState._cockpitContactMode)
       parts.tracking._refreshCockpitNearContacts();
-    const poseSig = cameraPoseSignature(camera);
+    const poseSig = rotation.cameraPoseSignature(camera);
     // Only the nearby Cockpit silhouettes need projected course; far dots are
     // rotation-free. The per-contact gate below keeps the pip path cheap.
     const doRotations =
@@ -855,7 +853,6 @@ export function createRendering({
       flightState._lastRotPassMs = nowMs;
     }
 
-    const occluder = horizonOccluder(camera);
     const focusTarget = getFocusTarget();
 
     // 3D model regime: only when enabled AND the camera is zoomed in past the altitude ceiling.
@@ -985,7 +982,9 @@ export function createRendering({
       // sub-ellipsoid point near the limb "beyond the horizon" and the fleet
       // pass would hide a plane that is really just low over high-N terrain
       // waiting for its floor to warm (ATL grounded contacts at geoid −31 m).
-      const beyondHorizon = !occluder.isPointVisible(
+      const beyondHorizon = !rotation.isPointVisible(
+        scene,
+        camera,
         flightState._cullPositions.get(icao24) || bb.position,
       );
       // A billboard flipping INTO view (horizon reveal while the camera idles)
@@ -1138,7 +1137,7 @@ export function createRendering({
         (!flightState._cockpitContactMode || isCockpitNear) &&
         (doRotations || revealed)
       ) {
-        const rot = screenProjectedRotation(
+        const rot = rotation.screenProjectedRotation(
           scene,
           bb.position,
           course,

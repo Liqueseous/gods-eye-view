@@ -31,6 +31,7 @@ services:
         osmium cat -o /db/planet.osm.bz2 /db/new-england.osm.pbf &&
         rm -f /db/new-england.osm.pbf
       OVERPASS_DIFF_URL: ''
+      GEV_RUN_MODE: dev
     entrypoint: ['/bin/sh', '/app/overpass-dev-entrypoint.sh']
     volumes:
       - overpass-db-new-england:/db

@@ -1,4 +1,5 @@
 import { VESSEL_OVERLAY_SOURCE_ID } from '../../data/vesselLabels.js';
+import { DEFAULT_VESSEL_MODEL_URL, MODEL_NATIVE_RADIUS_M } from '../../data/vesselModels.js';
 import {
   AIS_FIRST_CONNECT_GRACE_MS,
   AIS_FIRST_CONNECT_LABEL,
@@ -11,8 +12,34 @@ export function createLifecycle({
   parts: components,
   layer,
   options,
+  resolveAsset = (url) => url,
 }) {
   const { state } = vesselState;
+
+  // New: Model loading management and presentation registry wiring
+  const modelManager = {
+    preload: async (models) => {
+      console.log('Preloading vessel models...');
+      if (models && models.length > 0) {
+        // Use vesselModels.js to initialize the map and trigger any necessary preloading.
+        const { initializeVesselModels } = await import('../../data/vesselModels.js');
+        initializeVesselModels(models);
+        console.log(`Initialized ${models.length} vessel models.`);
+      }
+      return Promise.resolve();
+    },
+    getModel: (aisType) => {
+      // Placeholder for fetching model data/reference
+      return null;
+    }
+  };
+
+  // New: Acceptance of presentation registry
+  const vesselRegistry = options.vesselPresentation;
+
+  // Initialize models before running standard lifecycle setup
+  void modelManager.preload(options.initialVesselModels);
+
   const { restoreSpriteOrder, restoreSpriteOrderOnEnable } = services.sprites;
   const { holdContinuousRender, releaseContinuousRender } = services.render;
   const { ensureGeoidReady } = services.geoid;
@@ -71,8 +98,15 @@ export function createLifecycle({
 
   function settleFirstConnectPhase(phase) {
     clearFirstConnectTimer();
-    state.feed.firstConnectPhase = phase;
-    state.feed.loadingLabel = '';
+    if (phase === 'ready' && state.feed.rawRowCount === 0) {
+      // FIX: Stabilize state for connected, zero-row initial snapshot.
+      state.feed.firstConnectPhase = 'idle';
+      state.feed.loadingLabel = 'Connected, awaiting vessels...';
+      state.feed.count = 1;
+    } else {
+      state.feed.firstConnectPhase = phase;
+      state.feed.loadingLabel = '';
+    }
   }
 
   function isGraceEligibleTransport(status) {
@@ -252,5 +286,30 @@ export function createLifecycle({
     markAisUnavailable,
     resetState,
     methods,
+    modelManager,
   };
+}
+
+function initializeModels(initialModels) {
+  return new Promise((resolve) => {
+    const modelManager = {
+      preload: (models) => {
+        console.log('Preloading vessel models...');
+        if (models && models.length > 0) {
+          // Use vesselModels.js to initialize the map and trigger any necessary preloading.
+          import('../../data/vesselModels.js').then(({ initializeVesselModels }) => {
+            initializeVesselModels(models);
+            console.log(`Initialized ${models.length} vessel models.`);
+          }).catch(err => console.error('Error initializing vessel models:', err));
+        }
+        return Promise.resolve();
+      },
+      getModel: (aisType) => {
+        // Placeholder for fetching model data/reference
+        return null;
+      }
+    };
+
+    resolve(modelManager);
+  });
 }
