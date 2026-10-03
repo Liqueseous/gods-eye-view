@@ -709,6 +709,7 @@ export class StyleManager extends ShellFacade {
     this._mapSourceControls = createMapSourceControls({
       container: this._mapStackChips,
       statusElement: this._mapStackStatus,
+      qualityElement: this._google3dQuality,
       controller: this.mapStackController,
       subscribe: (onChange) => {
         window.addEventListener('gev:map-stack-changed', onChange);

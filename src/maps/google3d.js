@@ -1,4 +1,39 @@
 const clean = (value) => String(value || '').trim();
+export const GOOGLE_3D_QUALITY_STORAGE_KEY = 'gev-google-3d-quality';
+export const GOOGLE_3D_QUALITY_LEVELS = Object.freeze({
+  performance: 64,
+  balanced: 16,
+  high: 1,
+});
+
+export function getGoogle3dQuality(storage = globalThis.localStorage) {
+  let value = 'balanced';
+  try {
+    value = storage?.getItem(GOOGLE_3D_QUALITY_STORAGE_KEY) || value;
+  } catch {
+    // Private or restricted storage keeps the default.
+  }
+  return Object.hasOwn(GOOGLE_3D_QUALITY_LEVELS, value) ? value : 'balanced';
+}
+
+export function setGoogle3dQuality(value, storage = globalThis.localStorage) {
+  const quality = Object.hasOwn(GOOGLE_3D_QUALITY_LEVELS, value)
+    ? value
+    : 'balanced';
+  try {
+    storage?.setItem(GOOGLE_3D_QUALITY_STORAGE_KEY, quality);
+  } catch {
+    // Keep the in-memory choice for this load when storage is unavailable.
+  }
+  return quality;
+}
+
+export function google3dQualityError(value) {
+  const quality = Object.hasOwn(GOOGLE_3D_QUALITY_LEVELS, value)
+    ? value
+    : getGoogle3dQuality();
+  return GOOGLE_3D_QUALITY_LEVELS[quality];
+}
 
 /**
  * Decide which map provider can deliver the best startup experience.
@@ -65,7 +100,8 @@ export function createGoogleDirectTileset(Cesium, key) {
       progressiveResolutionHeightFraction: 0.1,
       // Default (16) lets zoomed-out views settle for a coarser tile than
       // zoomed-in ones; lower keeps fine detail visible at a farther distance.
-      maximumScreenSpaceError: 4,
+      maximumScreenSpaceError:
+        GOOGLE_3D_QUALITY_LEVELS[getGoogle3dQuality()],
       // This optimization deliberately lowers resolution far from the camera
       // at low altitude/horizon views — reads as blur when zoomed out close
       // to the ground, which is exactly this app's low-altitude camera use.
@@ -101,7 +137,8 @@ export async function createGoogleIonTileset(
     // See createGoogleDirectTileset — coarse-preview only the largest tiles.
     progressiveResolutionHeightFraction: 0.1,
     // See createGoogleDirectTileset — fine detail visible at a farther distance.
-    maximumScreenSpaceError: 4,
+    maximumScreenSpaceError:
+      GOOGLE_3D_QUALITY_LEVELS[getGoogle3dQuality()],
     // See createGoogleDirectTileset — no horizon-distance detail falloff.
     dynamicScreenSpaceError: false,
     // See createGoogleDirectTileset — softens LOD pop-in on refine.

@@ -128,8 +128,14 @@ test('credentialed source factories reject an omitted token instead of consuming
 });
 
 test('both Google 3D routes keep tiles drawing while draped imagery loads', async () => {
-  const { createGoogleDirectTileset, createGoogleIonTileset } =
-    await import('./google3d.js');
+  const {
+    createGoogleDirectTileset,
+    createGoogleIonTileset,
+    google3dQualityError,
+  } = await import('./google3d.js');
+  assert.equal(google3dQualityError('performance'), 64);
+  assert.equal(google3dQualityError('balanced'), 16);
+  assert.equal(google3dQualityError('high'), 1);
   const calls = [];
   const sdk = {
     createGooglePhotorealistic3DTileset: async (...args) => {
@@ -151,7 +157,7 @@ test('both Google 3D routes keep tiles drawing while draped imagery loads', asyn
     {
       asynchronouslyLoadImagery: true,
       progressiveResolutionHeightFraction: 0.1,
-      maximumScreenSpaceError: 4,
+      maximumScreenSpaceError: 16,
       dynamicScreenSpaceError: false,
       skipLevelOfDetail: true,
       baseScreenSpaceError: 1024,
@@ -163,7 +169,7 @@ test('both Google 3D routes keep tiles drawing while draped imagery loads', asyn
   assert.equal(calls[1][1].enableCollision, true);
   assert.equal(calls[1][1].dynamicScreenSpaceError, false);
   assert.equal(calls[1][1].progressiveResolutionHeightFraction, 0.1);
-  assert.equal(calls[1][1].maximumScreenSpaceError, 4);
+  assert.equal(calls[1][1].maximumScreenSpaceError, 16);
   assert.equal(calls[1][1].skipLevelOfDetail, true);
   assert.equal(calls[1][1].baseScreenSpaceError, 1024);
 });
