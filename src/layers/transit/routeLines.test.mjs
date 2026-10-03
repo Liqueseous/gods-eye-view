@@ -1,7 +1,122 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
-import { createTransitRouteLines } from './routeLines.js';
+import {
+  createTransitRouteLines,
+  groupTransitStations,
+  smoothTransitRouteLine,
+} from './routeLines.js';
+
+test('sharp route vertices are replaced by a bounded smooth curve', () => {
+  const line = smoothTransitRouteLine([
+    [0, 0],
+    [1, 0],
+    [1, 1],
+  ]);
+  assert.ok(line.length > 3);
+  assert.deepEqual(line[0], [0, 0]);
+  assert.deepEqual(line.at(-1), [1, 1]);
+  assert.ok(line.some(([lon, lat]) => lon < 1 && lat > 0));
+  assert.deepEqual(
+    smoothTransitRouteLine([
+      [0, 0],
+      [1, 0],
+    ]),
+    [
+      [0, 0],
+      [1, 0],
+    ],
+  );
+});
+
+test('matching station names merge nearby stops and retain both route identities', () => {
+  const groups = groupTransitStations([
+    {
+      routeId: 'A',
+      ref: 'A',
+      name: 'A Line',
+      color: '#0039A6',
+      stops: [{ id: 'a-1', name: 'Central', lat: 40.75, lon: -73.99 }],
+    },
+    {
+      routeId: 'B',
+      ref: 'B',
+      name: 'B Line',
+      color: '#FF6319',
+      stops: [{ id: 'b-1', name: 'Central', lat: 40.7505, lon: -73.9904 }],
+    },
+  ]);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].routeIds, ['A', 'B']);
+  assert.deepEqual(groups[0].routeRefs, ['A', 'B']);
+  assert.deepEqual(groups[0].colors, ['#0039A6', '#FF6319']);
+  assert.deepEqual(
+    groups[0].badges.map(({ text }) => text),
+    ['A', 'B'],
+  );
+  const colorOnly = groupTransitStations([
+    {
+      routeId: 'orange-line',
+      name: 'Orange Line',
+      color: '#ED8B00',
+      stops: [{ id: 'orange-1', name: 'Central', lat: 40.75, lon: -73.99 }],
+    },
+    {
+      routeId: 'green-d',
+      ref: 'Green-D',
+      color: '#00843D',
+      stops: [{ id: 'green-1', name: 'Central', lat: 40.7505, lon: -73.9904 }],
+    },
+  ]);
+  assert.deepEqual(
+    colorOnly[0].badges.map(({ text }) => text),
+    ['', 'D'],
+  );
+  const namedLines = groupTransitStations([
+    {
+      routeId: 'lowell',
+      ref: 'CR-Lowell',
+      type: 'train',
+      color: '#80276C',
+      stops: [
+        { id: 'lowell-1', name: 'North Station', lat: 42.365, lon: -71.06 },
+      ],
+    },
+    {
+      routeId: 'haverhill',
+      ref: 'CR-Haverhill',
+      type: 'train',
+      color: '#D9A6FF',
+      stops: [
+        {
+          id: 'haverhill-1',
+          name: 'North Station',
+          lat: 42.3652,
+          lon: -71.0602,
+        },
+      ],
+    },
+  ]);
+  assert.deepEqual(
+    namedLines[0].lineEntries.map(({ label }) => label),
+    ['Lowell Line', 'Haverhill Line'],
+  );
+  assert.deepEqual(namedLines[0].badges, []);
+});
+
+test('same station name stays separate when locations are far apart', () => {
+  const groups = groupTransitStations([
+    {
+      routeId: 'A',
+      stops: [{ id: 'a-1', name: '86 St', lat: 40.78, lon: -73.97 }],
+    },
+    {
+      routeId: 'B',
+      stops: [{ id: 'b-1', name: '86 St', lat: 40.62, lon: -74.03 }],
+    },
+  ]);
+  assert.equal(groups.length, 2);
+});
 
 test('route lines render with a contrast outline and route color, then release on disable', async () => {
   const sceneEntities = [];
@@ -51,9 +166,20 @@ test('route lines render with a contrast outline and route color, then release o
                   type: 'light_rail',
                   color: '#1267B1',
                   stops: [
-                    { id: '1', role: 'stop', name: 'Central', lat: 42.35, lon: -71.1 },
+                    {
+                      id: '1',
+                      role: 'stop',
+                      name: 'Central',
+                      lat: 42.35,
+                      lon: -71.1,
+                    },
                   ],
-                  lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
+                  lines: [
+                    [
+                      [-71.1, 42.35],
+                      [-71.05, 42.35],
+                    ],
+                  ],
                 },
               ],
             };
@@ -76,22 +202,63 @@ test('route lines render with a contrast outline and route color, then release o
   await update;
   assert.equal(sourceCalls.length, 1);
   assert.ok(sourceCalls[0].north - sourceCalls[0].south <= 1);
-  assert.ok(sourceCalls[0].south <= 42.3, 'query includes the viewport south edge');
-  assert.ok(sourceCalls[0].west <= -71.2, 'query includes the viewport west edge');
-  assert.ok(sourceCalls[0].north >= 42.4, 'query includes the viewport north edge');
-  assert.ok(sourceCalls[0].east >= -71, 'query includes the viewport east edge');
+  assert.ok(
+    sourceCalls[0].south <= 42.3,
+    'query includes the viewport south edge',
+  );
+  assert.ok(
+    sourceCalls[0].west <= -71.2,
+    'query includes the viewport west edge',
+  );
+  assert.ok(
+    sourceCalls[0].north >= 42.4,
+    'query includes the viewport north edge',
+  );
+  assert.ok(
+    sourceCalls[0].east >= -71,
+    'query includes the viewport east edge',
+  );
   assert.ok(sourceCalls[0].north - sourceCalls[0].south <= 0.12);
   assert.ok(sourceCalls[0].east - sourceCalls[0].west <= 0.22);
-  assert.equal(sceneEntities.length, 3, 'outline, colored route, and station are drawn');
+  assert.equal(
+    sceneEntities.length,
+    4,
+    'outline, colored route, station, and line badge are drawn',
+  );
   assert.equal(sceneEntities.filter((entity) => entity.point).length, 1);
-  assert.equal(layer.diagnostics().count, 1, 'in-view routes draw before prefetch');
+  assert.equal(sceneEntities.filter((entity) => entity.billboard).length, 1);
+  const station = sceneEntities.find((entity) => entity.point);
+  assert.equal(
+    station.label.disableDepthTestDistance,
+    Number.POSITIVE_INFINITY,
+  );
+  assert.equal(station.label.pixelOffset.y, -30);
+  assert.equal(station.label.eyeOffset.z, -100);
+  const badge = sceneEntities.find((entity) => entity.billboard).billboard;
+  assert.equal(badge.pixelOffset.y, -14);
+  assert.equal(badge.disableDepthTestDistance, Number.POSITIVE_INFINITY);
+  assert.equal(badge.eyeOffset.z, -100);
+  assert.equal(
+    layer.diagnostics().count,
+    1,
+    'in-view routes draw before prefetch',
+  );
   assert.deepEqual(layer.diagnostics().coverageBounds, sourceCalls[0]);
   assert.equal(layer.selectFromPick(sceneEntities[0].id), true);
   assert.equal(selectedRoute.routeId, '12');
   assert.equal(selectedRoute.name, 'Blue Line');
-  assert.deepEqual(selectedRoute.stops.map(({ name }) => name), ['Central']);
-  assert.deepEqual(sceneEntities[0].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
-  assert.deepEqual(sceneEntities[1].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
+  assert.deepEqual(
+    selectedRoute.stops.map(({ name }) => name),
+    ['Central'],
+  );
+  assert.deepEqual(
+    sceneEntities[0].polyline.material,
+    Cesium.Color.fromCssColorString('#1267B1'),
+  );
+  assert.deepEqual(
+    sceneEntities[1].polyline.material,
+    Cesium.Color.fromCssColorString('#1267B1'),
+  );
   assert.ok(
     sceneEntities
       .filter((entity) => entity.polyline)
@@ -112,7 +279,12 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(routeDiagnostics.cache, 'HIT');
   assert.equal(routeDiagnostics.upstream, 'overpass.example');
   assert.deepEqual(routeDiagnostics.bounds, sourceCalls[0]);
-  assert.deepEqual(routeDiagnostics.routes[0].lines, [[[-71.1, 42.35], [-71.05, 42.35]]]);
+  assert.deepEqual(routeDiagnostics.routes[0].lines, [
+    [
+      [-71.1, 42.35],
+      [-71.05, 42.35],
+    ],
+  ]);
   assert.equal(layer.diagnostics().routes[0].lines, undefined);
   await layer.update({
     south: 42.3,
@@ -120,10 +292,17 @@ test('route lines render with a contrast outline and route color, then release o
     north: 42.4,
     east: -71,
   });
-  assert.equal(sourceCalls.length, 1, 'cached coverage covers nearby view pans');
+  assert.equal(
+    sourceCalls.length,
+    1,
+    'cached coverage covers nearby view pans',
+  );
 
   layer.setVisible(false);
-  assert.equal(sceneEntities.every((entity) => entity.show === false), true);
+  assert.equal(
+    sceneEntities.every((entity) => entity.show === false),
+    true,
+  );
   layer.disable();
   assert.equal(sceneEntities.length, 0);
   assert.equal(layer.diagnostics().count, 0);
@@ -131,7 +310,12 @@ test('route lines render with a contrast outline and route color, then release o
 
 test('route lines draw as depth-tested primitives when the globe is hidden (Google 3D)', async (t) => {
   // Cesium's Primitive constructor reaches for the DOM when building.
-  for (const name of ['HTMLCanvasElement', 'HTMLImageElement', 'ImageBitmap', 'OffscreenCanvas']) {
+  for (const name of [
+    'HTMLCanvasElement',
+    'HTMLImageElement',
+    'ImageBitmap',
+    'OffscreenCanvas',
+  ]) {
     const prior = globalThis[name];
     globalThis[name] = class {};
     t.after(() => {
@@ -157,7 +341,12 @@ test('route lines draw as depth-tested primitives when the globe is hidden (Goog
                   name: 'Blue Line',
                   type: 'subway',
                   color: '#1267B1',
-                  lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
+                  lines: [
+                    [
+                      [-71.1, 42.35],
+                      [-71.05, 42.35],
+                    ],
+                  ],
                 },
               ],
             };
@@ -197,6 +386,11 @@ test('route lines draw as depth-tested primitives when the globe is hidden (Goog
     scenePrimitives.every((primitive) => primitive.show === true),
     'primitives are shown once ready',
   );
+  assert.equal(
+    scenePrimitives.filter((primitive) => primitive.depthFailAppearance).length,
+    1,
+    'only the thin route outline receives the restrained under-building glow',
+  );
   layer.destroy();
   assert.equal(scenePrimitives.length, 0);
 });
@@ -220,7 +414,10 @@ test('a newly visible area supersedes an in-flight priority request', async () =
           return new Promise((_resolve, reject) => {
             signal.addEventListener(
               'abort',
-              () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })),
+              () =>
+                reject(
+                  Object.assign(new Error('Aborted'), { name: 'AbortError' }),
+                ),
               { once: true },
             );
           });
@@ -230,7 +427,10 @@ test('a newly visible area supersedes an in-flight priority request', async () =
       },
     },
   });
-  layer.init({ scene: { requestRender() {} }, entities: { add: () => ({}), remove() {} } });
+  layer.init({
+    scene: { requestRender() {} },
+    entities: { add: () => ({}), remove() {} },
+  });
   layer.enable();
   layer.setVisible(true);
 
@@ -272,14 +472,21 @@ test('route geometry remains through empty intermediate replacements', async () 
             headers: { get: () => null },
             async json() {
               return {
-                routes: [{
-                  id: 'route-1',
-                  routeId: '1',
-                  name: 'Line 1',
-                  type: 'subway',
-                  color: '#FF0000',
-                  lines: [[[-71.1, 42.35], [-71.05, 42.35]]],
-                }],
+                routes: [
+                  {
+                    id: 'route-1',
+                    routeId: '1',
+                    name: 'Line 1',
+                    type: 'subway',
+                    color: '#FF0000',
+                    lines: [
+                      [
+                        [-71.1, 42.35],
+                        [-71.05, 42.35],
+                      ],
+                    ],
+                  },
+                ],
               };
             },
           });

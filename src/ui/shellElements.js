@@ -55,6 +55,8 @@ export function readShellElements(document = globalThis.document) {
     _mapStackChips: document.getElementById('map-stack-chips'),
     _mapStackStatus: document.getElementById('map-stack-status'),
     _google3dQuality: document.getElementById('google-3d-quality'),
+    _appBuildInfo: document.getElementById('app-build-info'),
+    _appSourceInfo: document.getElementById('app-source-info'),
     _cleanViewBtn: document.getElementById('clean-view-toggle'),
     _cleanViewExitBtn: document.getElementById('clean-view-exit'),
     _dataPanel: document.getElementById('data-panel'),

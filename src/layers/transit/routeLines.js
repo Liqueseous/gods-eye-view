@@ -11,13 +11,234 @@ const ROUTE_REUSE_MARGIN_DEG = 0.05;
 const ROUTE_UNLOAD_MARGIN_DEG = 0.15;
 const OUTLINE_WIDTH = 5;
 const ROUTE_WIDTH = 3.5;
-const MAX_ROUTE_GRADE = 0.12;
 const ROUTE_OUTLINE_Z_INDEX = 20;
 const ROUTE_LINE_Z_INDEX = 21;
 const ROUTE_HANDOFF_HOLD_MS = 220;
 const MAX_SECTION_VERTICES = 128;
 const STATION_PIXEL_SIZE = 9;
 const STATION_LABEL_MAX_DISTANCE_M = 150_000;
+const STATION_LIST_MAX_ALTITUDE_M = 5_000;
+const STATION_MATCH_DISTANCE_DEG = 0.003;
+const STATION_EYE_OFFSET_M = -100;
+const MAX_VERTEX_TURN_DEG = 24;
+const CORNER_CUT_FRACTION = 0.28;
+
+export function smoothTransitRouteLine(line) {
+  if (!Array.isArray(line) || line.length < 3) return line || [];
+  const maxTurn = (MAX_VERTEX_TURN_DEG * Math.PI) / 180;
+  const smoothed = [line[0]];
+  for (let index = 1; index < line.length - 1; index += 1) {
+    const previous = line[index - 1];
+    const current = line[index];
+    const next = line[index + 1];
+    const incoming = [current[0] - previous[0], current[1] - previous[1]];
+    const outgoing = [next[0] - current[0], next[1] - current[1]];
+    const incomingLength = Math.hypot(incoming[0], incoming[1]);
+    const outgoingLength = Math.hypot(outgoing[0], outgoing[1]);
+    if (!incomingLength || !outgoingLength) continue;
+    const cosine = Math.max(
+      -1,
+      Math.min(
+        1,
+        (incoming[0] * outgoing[0] + incoming[1] * outgoing[1]) /
+          (incomingLength * outgoingLength),
+      ),
+    );
+    const turn = Math.acos(cosine);
+    if (turn <= maxTurn) {
+      smoothed.push(current);
+      continue;
+    }
+    const cut = Math.min(incomingLength, outgoingLength) * CORNER_CUT_FRACTION;
+    const before = [
+      current[0] - (incoming[0] / incomingLength) * cut,
+      current[1] - (incoming[1] / incomingLength) * cut,
+    ];
+    const after = [
+      current[0] + (outgoing[0] / outgoingLength) * cut,
+      current[1] + (outgoing[1] / outgoingLength) * cut,
+    ];
+    smoothed.push(before);
+    const segments = Math.max(2, Math.ceil(turn / maxTurn));
+    for (let step = 1; step < segments; step += 1) {
+      const t = step / segments;
+      const inverse = 1 - t;
+      smoothed.push([
+        inverse * inverse * before[0] +
+          2 * inverse * t * current[0] +
+          t * t * after[0],
+        inverse * inverse * before[1] +
+          2 * inverse * t * current[1] +
+          t * t * after[1],
+      ]);
+    }
+    smoothed.push(after);
+  }
+  smoothed.push(line.at(-1));
+  return smoothed;
+}
+
+function stationNameKey(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+const ROUTE_COLOR_NAME =
+  /^(red|orange|yellow|green|blue|purple|pink|brown|silver|gold)$/i;
+const ROUTE_COLOR_LINE_NAME =
+  /^(red|orange|yellow|green|blue|purple|pink|brown|silver|gold)\s+line$/i;
+
+function compactRouteRef(ref) {
+  const tokens = String(ref || '')
+    .split(/[\s,;/]+/)
+    .filter(Boolean);
+  return (
+    tokens.length > 0 &&
+    tokens.every((token) => {
+      const parts = token.split('-').filter(Boolean);
+      const candidate = parts.at(-1) || token;
+      return /^[a-z0-9]{1,3}$/i.test(candidate);
+    })
+  );
+}
+
+function namedStationLine(route) {
+  const name = String(route?.name || '').trim();
+  const ref = String(route?.ref || '').trim();
+  if (ROUTE_COLOR_LINE_NAME.test(name)) return null;
+  if (ref && compactRouteRef(ref)) return null;
+  if (/\b(line|railway|rail)\b/i.test(name)) return name;
+  const refName = ref
+    .replace(/^cr[-_:]?/i, '')
+    .replace(/[-_]+/g, ' ')
+    .trim();
+  if (route?.type === 'train' && (name || refName))
+    return `${name || refName} Line`;
+  return null;
+}
+
+function stationBadgeText(route) {
+  const raw = String(route?.ref || route?.name || '').trim();
+  if (namedStationLine(route)) return [];
+  const colors = ROUTE_COLOR_NAME;
+  const values = raw
+    .split(/[\s,;/]+/)
+    .filter(Boolean)
+    .map((token) => {
+      const parts = token.split('-').filter(Boolean);
+      const candidate = parts.at(-1) || token;
+      if (
+        colors.test(candidate) ||
+        colors.test(token) ||
+        /^(line|route|service)$/i.test(candidate)
+      )
+        return '';
+      return candidate.replace(/[^a-z0-9]/gi, '').slice(0, 4);
+    })
+    .filter((value) => value !== '')
+    .slice(0, 4);
+  return values.length || !route?.color ? values : [''];
+}
+
+function stationBadgeImage(text, color) {
+  const safeText = String(text).replace(/[&<>"']/g, (character) => {
+    const entities = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&apos;',
+    };
+    return entities[character];
+  });
+  const safeColor = /^#[\da-f]{6}$/i.test(color || '') ? color : '#00D4FF';
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="${safeColor}" stroke="#fff" stroke-width="2"/><text x="14" y="14" dy=".35em" fill="#fff" font-family="Arial,sans-serif" font-size="13" font-weight="700" text-anchor="middle">${safeText}</text></svg>`,
+  )}`;
+}
+
+/** Merge route stops that describe one physical station. */
+export function groupTransitStations(routes) {
+  const groups = [];
+  const byStopId = new Map();
+  const byName = new Map();
+  for (const route of routes || []) {
+    for (const stop of route?.stops || []) {
+      if (!stop?.id || !Number.isFinite(stop.lat) || !Number.isFinite(stop.lon))
+        continue;
+      const name = String(stop.name || '').trim();
+      const nameKey = stationNameKey(name);
+      const named = nameKey ? byName.get(nameKey) || [] : [];
+      let group = byStopId.get(String(stop.id));
+      let isNewGroup = false;
+      if (!group && named.length) {
+        group = named.find(
+          (candidate) =>
+            Math.abs(candidate.lat - stop.lat) <= STATION_MATCH_DISTANCE_DEG &&
+            Math.abs(candidate.lon - stop.lon) <= STATION_MATCH_DISTANCE_DEG,
+        );
+      }
+      if (!group) {
+        isNewGroup = true;
+        group = {
+          id: nameKey
+            ? `name:${nameKey}:${groups.length}`
+            : `id:${String(stop.id)}`,
+          name: name || null,
+          lat: Number(stop.lat),
+          lon: Number(stop.lon),
+          _latSum: Number(stop.lat),
+          _lonSum: Number(stop.lon),
+          _sampleCount: 1,
+          routeIds: [],
+          routeRefs: [],
+          badges: [],
+          lineEntries: [],
+          colors: [],
+        };
+        groups.push(group);
+        if (nameKey) named.push(group);
+      }
+      if (!isNewGroup) {
+        group._latSum += Number(stop.lat);
+        group._lonSum += Number(stop.lon);
+        group._sampleCount += 1;
+      }
+      group.lat = group._latSum / group._sampleCount;
+      group.lon = group._lonSum / group._sampleCount;
+      byStopId.set(String(stop.id), group);
+      if (nameKey) byName.set(nameKey, named);
+      if (!group.name && name) group.name = name;
+      if (!group.routeIds.includes(route.routeId))
+        group.routeIds.push(route.routeId);
+      const ref = String(route.ref || route.name || route.routeId || '').trim();
+      if (ref && !group.routeRefs.includes(ref)) group.routeRefs.push(ref);
+      const lineName = namedStationLine(route);
+      if (
+        lineName &&
+        !group.lineEntries.some(
+          (entry) => entry.label === lineName && entry.color === route.color,
+        )
+      )
+        group.lineEntries.push({ label: lineName, color: route.color });
+      for (const text of stationBadgeText(route)) {
+        const badgeKey = `${text}:${route.color || ''}`;
+        if (!group.badges.some((badge) => badge.key === badgeKey))
+          group.badges.push({ key: badgeKey, text, color: route.color });
+      }
+      if (route.color && !group.colors.includes(route.color))
+        group.colors.push(route.color);
+    }
+  }
+  return groups.map((group) => {
+    delete group._latSum;
+    delete group._lonSum;
+    delete group._sampleCount;
+    return group;
+  });
+}
 
 function stableQueryBounds(bounds) {
   const safe = clampTransitRouteBounds(bounds);
@@ -76,43 +297,31 @@ function boundsOverlapWithMargin(a, b, margin) {
   );
 }
 
+const routePositionCache = new WeakMap();
+
 function routePositions(line) {
-  return simplifyRouteSection(line).map(([lon, lat]) =>
+  const cached = routePositionCache.get(line);
+  if (cached) return cached;
+  const positions = line.map(([lon, lat]) =>
     Cesium.Cartesian3.fromDegrees(lon, lat),
   );
-}
-
-function cachedRoutePositions(line, getHeight) {
-  const section = simplifyRouteSection(line);
-  const heights = section.map(([lon, lat]) => {
-    const height = getHeight(lat, lon);
-    return Number.isFinite(height) ? height : 0;
-  });
-  for (let index = 1; index < section.length; index += 1) {
-    const [previousLon, previousLat] = section[index - 1];
-    const [lon, lat] = section[index];
-    const horizontalM = Math.hypot(
-      (lon - previousLon) * 111320 * Math.cos((lat * Math.PI) / 180),
-      (lat - previousLat) * 110540,
-    );
-    const maxDelta = Math.max(2, horizontalM * MAX_ROUTE_GRADE);
-    const lower = heights[index - 1] - maxDelta;
-    const upper = heights[index - 1] + maxDelta;
-    heights[index] = Math.min(upper, Math.max(lower, heights[index]));
-  }
-  return section.map(([lon, lat], index) =>
-    Cesium.Cartesian3.fromDegrees(lon, lat, heights[index]),
-  );
+  routePositionCache.set(line, positions);
+  return positions;
 }
 
 function sectionRoutePositions(line, getHeight) {
-  const samples = [line[0], line[Math.floor(line.length / 2)], line.at(-1)]
+  const section = line;
+  const samples = [
+    section[0],
+    section[Math.floor(section.length / 2)],
+    section.at(-1),
+  ]
     .filter(Boolean)
     .map(([lon, lat]) => getHeight(lat, lon))
     .filter(Number.isFinite)
     .sort((a, b) => a - b);
   const height = samples.length ? samples[Math.floor(samples.length / 2)] : 0;
-  return line.map(([lon, lat]) =>
+  return section.map(([lon, lat]) =>
     Cesium.Cartesian3.fromDegrees(lon, lat, height),
   );
 }
@@ -136,6 +345,7 @@ export function createTransitRouteLines({
   getRouteHeight = () => 0,
   onSelectRoute = () => {},
   onRoutesUpdated = () => {},
+  onStationsUpdated = () => {},
 }) {
   if (typeof routeSource?.requestRoutes !== 'function')
     throw new TypeError('A transit-route source is required');
@@ -165,11 +375,15 @@ export function createTransitRouteLines({
   let primitives = [];
   let entities = [];
   let spacePrimitives = [];
+  let stationOverlayCollections = [];
+  let stationListItems = [];
   let pendingReplacement = null;
   let postRenderRemove = null;
+  let cameraChangedRemove = null;
+  let densityChangedRemove = null;
+  let stationDensityPct = 50;
   const routeHeightCache = new Map();
   const routeSectionCache = new Map();
-  let lastSpaceRefreshAt = -Infinity;
   let selectedRouteId = null;
   const routePickTargets = new Map();
 
@@ -179,9 +393,46 @@ export function createTransitRouteLines({
     for (const entity of entities) viewer?.entities?.remove(entity);
     for (const primitive of spacePrimitives)
       viewer?.scene?.primitives?.remove(primitive);
+    for (const collection of stationOverlayCollections)
+      viewer?.scene?.primitives?.remove(collection);
     primitives = [];
     entities = [];
     spacePrimitives = [];
+    stationOverlayCollections = [];
+    stationListItems = [];
+  }
+
+  function syncStationListVisibility() {
+    const camera = viewer?.camera;
+    const worldPosition = camera?.positionWC;
+    const cartographic = worldPosition
+      ? Cesium.Cartographic.fromCartesian(
+          worldPosition,
+          Cesium.Ellipsoid.WGS84,
+          new Cesium.Cartographic(),
+        )
+      : camera?.positionCartographic;
+    const height = Number(cartographic?.height);
+    const altitudeVisible =
+      !Number.isFinite(height) || height <= STATION_LIST_MAX_ALTITUDE_M;
+    const showNames = visible && stationDensityPct >= 25;
+    const showList = visible && altitudeVisible && stationDensityPct >= 50;
+    for (const item of stationListItems) {
+      if (item.isStationName) {
+        const stationNameLabel = item.stationNameLabel || item.entity?.label;
+        if (stationNameLabel) stationNameLabel.show = showNames;
+        if (stationNameLabel && item.expandedOffset !== undefined)
+          stationNameLabel.pixelOffset = new Cesium.Cartesian2(
+            0,
+            showList ? item.expandedOffset : -16,
+          );
+        continue;
+      }
+      if (item.billboard) item.billboard.show = showList;
+      if (item.label) item.label.show = showList;
+      if (item.entity?.billboard) item.entity.billboard.show = showList;
+      if (item.entity?.label) item.entity.label.show = showList;
+    }
   }
 
   function stableRouteHeight(lat, lon) {
@@ -198,7 +449,7 @@ export function createTransitRouteLines({
     const key = `${route.routeId}:${route.id}:${index}:${line.length}:${first[0]}:${first[1]}:${last[0]}:${last[1]}`;
     let section = routeSectionCache.get(key);
     if (!section) {
-      section = simplifyRouteSection(line);
+      section = smoothTransitRouteLine(simplifyRouteSection(line));
       routeSectionCache.set(key, section);
     }
     return section;
@@ -307,9 +558,9 @@ export function createTransitRouteLines({
 
   // With the globe hidden (Google 3D) the globe pass never runs, so a
   // GroundPolylinePrimitive draws nothing at all. Real-space primitives
-  // depth-test against the tileset (buildings occlude them), and a
-  // depthFailAppearance lets the occluded parts still read through the
-  // buildings as a soft underglow instead of disappearing behind them.
+  // depth-test against the tileset; keeping the depth-fail pass disabled is
+  // important because its translucent under-building glow can paint over the
+  // station labels and line badges.
   async function addSpacePrimitive(
     items,
     width,
@@ -318,8 +569,11 @@ export function createTransitRouteLines({
     isCurrent,
   ) {
     const color = Cesium.Color.fromCssColorString(cssColor);
-    const glowColor = color.withAlpha(0.12);
-    const created = [];
+    const glowColor = color.withAlpha(0.06);
+    const instances = [];
+    const useDepthFailGlow =
+      width === OUTLINE_WIDTH &&
+      items.every((route) => (route.stops || []).length === 0);
     for (const route of items) {
       for (let index = 0; index < route.lines.length; index++) {
         if (!isCurrent())
@@ -333,96 +587,236 @@ export function createTransitRouteLines({
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
         pickTargets.set(id, route.routeId);
-        created.push(
-          new Cesium.Primitive({
-            geometryInstances: new Cesium.GeometryInstance({
-              id,
-              geometry: new Cesium.PolylineGeometry({
-                positions,
-                width,
-                arcType: Cesium.ArcType.NONE,
-                vertexFormat: Cesium.PolylineMaterialAppearance.VERTEX_FORMAT,
-              }),
+        instances.push(
+          new Cesium.GeometryInstance({
+            id,
+            geometry: new Cesium.PolylineGeometry({
+              positions,
+              width,
+              arcType: Cesium.ArcType.NONE,
+              vertexFormat: Cesium.PolylineMaterialAppearance.VERTEX_FORMAT,
             }),
-            appearance: new Cesium.PolylineMaterialAppearance({
-              material: Cesium.Material.fromType('Color', { color }),
-            }),
+          }),
+        );
+      }
+      if (instances.length % 64 === 0) await yieldRouteBuild();
+    }
+    if (!instances.length) return [];
+    const primitive = new Cesium.Primitive({
+      geometryInstances: instances,
+      appearance: new Cesium.PolylineMaterialAppearance({
+        material: Cesium.Material.fromType('Color', { color }),
+      }),
+      ...(useDepthFailGlow
+        ? {
             depthFailAppearance: new Cesium.PolylineMaterialAppearance({
               material: Cesium.Material.fromType('PolylineGlow', {
                 color: glowColor,
-                glowPower: 0.55,
+                glowPower: 0.8,
               }),
             }),
-            asynchronous: true,
-            allowPicking: true,
-            show: false,
-          }),
-        );
-      }
-      if (created.length % 64 === 0) await yieldRouteBuild();
-    }
-    for (const primitive of created) viewer.scene.primitives.add(primitive);
-    return created;
+          }
+        : {}),
+      asynchronous: true,
+      allowPicking: true,
+      show: false,
+    });
+    return [viewer.scene.primitives.add(primitive)];
   }
 
-  function refreshSpacePositions() {
-    const now = performance.now();
-    if (now - lastSpaceRefreshAt < 250) return;
-    lastSpaceRefreshAt = now;
-    for (const collection of spacePrimitives) {
-      for (const { polyline, section } of collection._gevSections || []) {
-        polyline.positions = cachedRoutePositions(section, getRouteHeight);
-      }
+  function addStationEntities(
+    items,
+    nextEntities,
+    nextStationCollections,
+    nextStationListItems,
+    pickTargets,
+    isCurrent,
+  ) {
+    const overlay =
+      viewer?.scene?.primitives?.add &&
+      typeof Cesium.BillboardCollection === 'function' &&
+      typeof Cesium.LabelCollection === 'function'
+        ? {
+            billboards: new Cesium.BillboardCollection(),
+            labels: new Cesium.LabelCollection(),
+          }
+        : null;
+    if (overlay) {
+      viewer.scene.primitives.add(overlay.billboards);
+      viewer.scene.primitives.add(overlay.labels);
+      overlay.billboards.show = false;
+      overlay.labels.show = false;
+      nextStationCollections.push(overlay.billboards, overlay.labels);
     }
-  }
-
-  function addStationEntities(items, nextEntities, pickTargets, isCurrent) {
-    const seen = new Set();
-    for (const route of items) {
-      for (const stop of route.stops || []) {
-        if (!isCurrent())
-          throw Object.assign(new Error('Route build superseded'), {
-            name: 'AbortError',
-          });
-        if (
-          !stop?.id ||
-          !Number.isFinite(stop.lat) ||
-          !Number.isFinite(stop.lon) ||
-          seen.has(stop.id)
-        )
-          continue;
-        seen.add(stop.id);
-        const id = `transit-station:${stop.id}`;
-        pickTargets.set(id, route.routeId);
-        const color = Cesium.Color.fromCssColorString(route.color);
-        nextEntities.push(
-          viewer.entities.add({
+    for (const station of groupTransitStations(items)) {
+      if (!isCurrent())
+        throw Object.assign(new Error('Route build superseded'), {
+          name: 'AbortError',
+        });
+      const id = `transit-station:${station.id}`;
+      // A station is one selectable object even when several routes share it.
+      // The first route keeps the existing route-selection contract; the label
+      // and properties expose the complete group to the UI and diagnostics.
+      pickTargets.set(id, station.routeIds[0]);
+      const colors = station.colors.map((color) =>
+        Cesium.Color.fromCssColorString(color),
+      );
+      const outlineColor = colors.length
+        ? Cesium.Color.fromBytes(
+            Math.round(
+              (colors.reduce((sum, color) => sum + color.red, 0) /
+                colors.length) *
+                255,
+            ),
+            Math.round(
+              (colors.reduce((sum, color) => sum + color.green, 0) /
+                colors.length) *
+                255,
+            ),
+            Math.round(
+              (colors.reduce((sum, color) => sum + color.blue, 0) /
+                colors.length) *
+                255,
+            ),
+          )
+        : Cesium.Color.WHITE;
+      const stationPosition = Cesium.Cartesian3.fromDegrees(
+        station.lon,
+        station.lat,
+      );
+      const stationLabelOffset = station.lineEntries.length
+        ? -44 - station.lineEntries.length * 18
+        : -30;
+      const compactBadgeY = station.lineEntries.length ? -20 : -14;
+      const stationLabel = station.name
+        ? {
             id,
-            position: Cesium.Cartesian3.fromDegrees(stop.lon, stop.lat),
-            point: {
-              pixelSize: STATION_PIXEL_SIZE,
-              color: Cesium.Color.WHITE,
-              outlineColor: color,
-              outlineWidth: 2,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-            label: stop.name
-              ? {
-                  text: stop.name,
-                  font: '11px sans-serif',
-                  fillColor: Cesium.Color.WHITE,
-                  showBackground: true,
-                  backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
-                  pixelOffset: new Cesium.Cartesian2(0, -14),
-                  distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
-                    0,
-                    STATION_LABEL_MAX_DISTANCE_M,
-                  ),
-                }
-              : undefined,
-          }),
-        );
+            position: stationPosition,
+            text: station.name,
+            font: '11px sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            showBackground: true,
+            backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
+            // Keep the station name above the line rows and marker.
+            pixelOffset: new Cesium.Cartesian2(0, stationLabelOffset),
+            eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
+              0,
+              STATION_LABEL_MAX_DISTANCE_M,
+            ),
+          }
+        : null;
+      const stationEntity = viewer.entities.add({
+        id,
+        position: stationPosition,
+        properties: {
+          routeIds: station.routeIds,
+          routeRefs: station.routeRefs,
+        },
+        point: {
+          pixelSize: Math.min(
+            16,
+            STATION_PIXEL_SIZE + Math.max(0, station.routeIds.length - 1) * 3,
+          ),
+          color: Cesium.Color.WHITE,
+          outlineColor,
+          outlineWidth: station.routeIds.length > 1 ? 3 : 2,
+          eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        label: overlay ? undefined : stationLabel,
+      });
+      nextEntities.push(stationEntity);
+      if (overlay && stationLabel) {
+        const stationNameLabel = overlay.labels.add(stationLabel);
+        nextStationListItems.push({
+          isStationName: true,
+          stationNameLabel,
+          expandedOffset: stationLabelOffset,
+        });
+      } else if (stationLabel) {
+        nextStationListItems.push({
+          isStationName: true,
+          entity: stationEntity,
+          expandedOffset: stationLabelOffset,
+        });
       }
+      const badgeCount = station.badges.length;
+      station.badges.forEach((badge, index) => {
+        const badgeId = `${id}:badge:${index}`;
+        pickTargets.set(badgeId, station.routeIds[0]);
+        const billboard = {
+          id: badgeId,
+          position: stationPosition,
+          image: stationBadgeImage(badge.text, badge.color),
+          width: 24,
+          height: 24,
+          pixelOffset: new Cesium.Cartesian2(
+            (index - (badgeCount - 1) / 2) * 24,
+            compactBadgeY,
+          ),
+          eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        };
+        if (overlay) {
+          const billboardInstance = overlay.billboards.add(billboard);
+          nextStationListItems.push({ billboard: billboardInstance });
+        } else {
+          const entity = viewer.entities.add({
+            id: badgeId,
+            position: stationPosition,
+            billboard,
+          });
+          nextEntities.push(entity);
+          nextStationListItems.push({ entity });
+        }
+      });
+      station.lineEntries.forEach((entry, index) => {
+        const rowY = -44 - index * 18;
+        const badgeId = `${id}:line:${index}`;
+        pickTargets.set(badgeId, station.routeIds[0]);
+        const billboard = {
+          id: badgeId,
+          position: stationPosition,
+          image: stationBadgeImage('', entry.color),
+          width: 16,
+          height: 16,
+          pixelOffset: new Cesium.Cartesian2(-48, rowY),
+          eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        };
+        const label = {
+          id: `${badgeId}:label`,
+          position: stationPosition,
+          text: entry.label,
+          font: '10px sans-serif',
+          fillColor: Cesium.Color.WHITE,
+          showBackground: true,
+          backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
+          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+          pixelOffset: new Cesium.Cartesian2(-36, rowY),
+          eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        };
+        if (overlay) {
+          const billboardInstance = overlay.billboards.add(billboard);
+          const labelInstance = overlay.labels.add(label);
+          nextStationListItems.push({
+            billboard: billboardInstance,
+            label: labelInstance,
+          });
+        } else {
+          const entity = viewer.entities.add({
+            id: badgeId,
+            position: stationPosition,
+            billboard,
+            label,
+          });
+          nextEntities.push(entity);
+          nextStationListItems.push({ entity });
+        }
+      });
     }
   }
 
@@ -433,15 +827,21 @@ export function createTransitRouteLines({
       viewer?.entities?.remove(entity);
     for (const primitive of replacement?.spacePrimitives || [])
       viewer?.scene?.primitives?.remove(primitive);
+    for (const collection of replacement?.stationCollections || [])
+      viewer?.scene?.primitives?.remove(collection);
   }
 
   function commitRoutes(replacement) {
     const previousPrimitives = primitives;
     const previousEntities = entities;
     const previousSpace = spacePrimitives;
+    const previousStationCollections = stationOverlayCollections;
     primitives = replacement.primitives;
     entities = replacement.entities;
     spacePrimitives = replacement.spacePrimitives || [];
+    stationOverlayCollections = replacement.stationCollections || [];
+    stationListItems = replacement.stationListItems || [];
+    syncStationListVisibility();
     routes = replacement.routes;
     routePickTargets.clear();
     for (const [id, routeId] of replacement.pickTargets)
@@ -450,14 +850,19 @@ export function createTransitRouteLines({
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
     for (const primitive of spacePrimitives) primitive.show = visible;
+    for (const collection of stationOverlayCollections)
+      collection.show = visible;
     setTimeout(() => {
       for (const primitive of previousPrimitives)
         viewer?.scene?.groundPrimitives?.remove(primitive);
       for (const entity of previousEntities) viewer?.entities?.remove(entity);
       for (const primitive of previousSpace)
         viewer?.scene?.primitives?.remove(primitive);
+      for (const collection of previousStationCollections)
+        viewer?.scene?.primitives?.remove(collection);
     }, ROUTE_HANDOFF_HOLD_MS);
     raiseRouteLinesToTop();
+    onStationsUpdated(groupTransitStations(routes));
     onRoutesUpdated();
     viewer?.scene?.requestRender?.();
   }
@@ -490,12 +895,15 @@ export function createTransitRouteLines({
     const nextPrimitives = [];
     const nextEntities = [];
     const nextSpacePrimitives = [];
+    const nextStationCollections = [];
+    const nextStationListItems = [];
     const nextPickTargets = new Map();
     // With the globe hidden (Google 3D) the globe pass never runs, so a
     // GroundPolylinePrimitive draws nothing at all. Real-space primitives
-    // depth-test against the tileset (buildings occlude them), and a
-    // depthFailAppearance lets the occluded parts still read through the
-    // buildings as a soft underglow instead of disappearing behind them.
+    // depth-test against the tileset. A restrained depth-fail glow is kept only
+    // on the thin outline and only for routes without station overlays; the
+    // route core remains depth-tested so the glow cannot wash over transit
+    // markers, station labels, or line lists.
     const globeHidden = viewer?.scene?.globe?.show === false;
     let canUseGround = false;
     try {
@@ -577,21 +985,36 @@ export function createTransitRouteLines({
             )),
           );
       }
-      addStationEntities(nextRoutes, nextEntities, nextPickTargets, isCurrent);
+      addStationEntities(
+        nextRoutes,
+        nextEntities,
+        nextStationCollections,
+        nextStationListItems,
+        nextPickTargets,
+        isCurrent,
+      );
     } catch (caught) {
       for (const primitive of nextPrimitives)
         viewer?.scene?.groundPrimitives?.remove(primitive);
       for (const entity of nextEntities) viewer?.entities?.remove(entity);
       for (const primitive of nextSpacePrimitives)
         viewer?.scene?.primitives?.remove(primitive);
+      for (const collection of nextStationCollections)
+        viewer?.scene?.primitives?.remove(collection);
       throw caught;
     }
 
-    if (!isCurrent()) return false;
+    if (!isCurrent()) {
+      for (const collection of nextStationCollections)
+        viewer?.scene?.primitives?.remove(collection);
+      return false;
+    }
     const replacement = {
       primitives: nextPrimitives,
       entities: nextEntities,
       spacePrimitives: nextSpacePrimitives,
+      stationCollections: nextStationCollections,
+      stationListItems: nextStationListItems,
       routes: nextRoutes,
       pickTargets: nextPickTargets,
     };
@@ -615,6 +1038,10 @@ export function createTransitRouteLines({
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
     for (const primitive of spacePrimitives) primitive.show = visible;
+    for (const collection of stationOverlayCollections)
+      collection.show = visible;
+    onStationsUpdated(visible ? groupTransitStations(routes) : []);
+    syncStationListVisibility();
     for (const primitive of pendingReplacement?.primitives || [])
       primitive.show = false;
     for (const primitive of pendingReplacement?.spacePrimitives || [])
@@ -650,7 +1077,10 @@ export function createTransitRouteLines({
     removeGeometry();
     routes = [];
     routePickTargets.clear();
+    routeHeightCache.clear();
+    routeSectionCache.clear();
     coverageBounds = null;
+    onStationsUpdated([]);
     onRoutesUpdated();
     viewer?.scene?.requestRender?.();
   }
@@ -811,13 +1241,20 @@ export function createTransitRouteLines({
     removeReplacement(pendingReplacement);
     pendingReplacement = null;
     removeGeometry();
+    routeHeightCache.clear();
+    routeSectionCache.clear();
     routes = [];
+    onStationsUpdated([]);
   }
 
   function destroy() {
     disable();
     postRenderRemove?.();
+    cameraChangedRemove?.();
+    densityChangedRemove?.();
     postRenderRemove = null;
+    cameraChangedRemove = null;
+    densityChangedRemove = null;
     viewer = null;
   }
 
@@ -826,8 +1263,29 @@ export function createTransitRouteLines({
       viewer = nextViewer;
       postRenderRemove = viewer.scene.postRender?.addEventListener?.(() => {
         promoteReadyReplacement();
-        refreshSpacePositions();
+        syncStationListVisibility();
       });
+      cameraChangedRemove = viewer.camera?.changed?.addEventListener?.(
+        syncStationListVisibility,
+      );
+      if (typeof document !== 'undefined') {
+        const onDensityChanged = (event) => {
+          const value = Number(event?.detail?.densityPct);
+          if (Number.isFinite(value)) {
+            stationDensityPct = Math.max(0, Math.min(100, value));
+            syncStationListVisibility();
+          }
+        };
+        document.addEventListener(
+          'gev:detection-tuning-changed',
+          onDensityChanged,
+        );
+        densityChangedRemove = () =>
+          document.removeEventListener(
+            'gev:detection-tuning-changed',
+            onDensityChanged,
+          );
+      }
     },
     enable(nextViewer) {
       if (nextViewer) viewer = nextViewer;

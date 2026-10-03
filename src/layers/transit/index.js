@@ -63,6 +63,10 @@ export function createTransitLayer({
     getRouteHeight,
     onSelectRoute: (route) => parts.selection?.selectRoute(route),
     onRoutesUpdated: () => parts.selection?.refreshSelectedRouteCard(),
+    onStationsUpdated: (stations) => {
+      state._stationPositions = stations;
+      state._detectRevision += 1;
+    },
   });
   parts.height = createHeight(context);
   parts.selection = createSelection(context);

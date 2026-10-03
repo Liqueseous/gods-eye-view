@@ -27,9 +27,7 @@ import {
   DETECTION_THEME_MAP,
   SKY_PLATE_SCALE,
 } from '../overlays/worldOverlayTokens.js';
-import {
-  rotation,
-} from './iconOrientation.js';
+import { rotation } from './iconOrientation.js';
 import { paintDetectionCallout } from '../overlays/worldOverlayDraw.js';
 import { allocateLayerQuotas, LabelArbiter } from './labelArbiter.js';
 import {
@@ -1476,7 +1474,7 @@ function _drawOverlay(frame) {
       cyberMapActive,
     );
     const bracketAlpha = admissionAlpha * sonarFactor;
-    if (bracketAlpha > 0) {
+    if (!obj.skipBracket && bracketAlpha > 0) {
       const transit = obj.tier?.startsWith('transit_');
       (transit ? appendTransitBracket : appendCornerBracket)(
         pathFor(
@@ -1499,7 +1497,7 @@ function _drawOverlay(frame) {
     }
 
     if (obj.skipLabel) {
-      if (bracketAlpha > 0) protectedVisibleCount++;
+      if (!obj.skipBracket && bracketAlpha > 0) protectedVisibleCount++;
       continue;
     }
 

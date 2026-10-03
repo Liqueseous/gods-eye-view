@@ -99,6 +99,8 @@ export function createState({ services }) {
   state._inFlight = new Map();
   /** @type {Map<string, object>} vehicle key → runtime entry */
   state._vehicles = new Map();
+  /** Route stations currently rendered, used to keep detection brackets behind their overlays. */
+  state._stationPositions = [];
 
   /** Timer for the floor re-read cycle, and how many it has spent. */
   state._floorTimer = null;

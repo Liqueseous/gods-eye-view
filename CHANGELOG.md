@@ -1,5 +1,25 @@
 # Changelog
 
+> This checkout is an independent fork of the original [Bilawal Sidhu `gods-eye-view`](https://github.com/bilawalsidhu/gods-eye-view) repository, not the original project or an official upstream release. AI-assisted tools were used during production of this fork for implementation, debugging, testing, and documentation.
+
+## Unreleased — Transit Stations and Route Presentation
+
+### Added
+
+- Added official NYC MTA subway GTFS-Realtime TripUpdate feeds with bounded,
+  stop-based station placement using the official MTA Subway Stations dataset.
+- Added viewport-bounded OpenStreetMap rail route geometry with grouped station
+  markers, colored letter/number icons, named commuter-rail line lists, and
+  route-aware station overlays.
+- Added route smoothing, station-overlay z-order protection, altitude/density
+  decluttering, and station-safe transit detection labels/brackets.
+
+### Performance
+
+- Reused smoothed route geometry and Cartesian positions.
+- Batched Google 3D route segments into fewer Cesium primitives and removed an
+  ineffective per-frame route-position refresh.
+
 ## Unreleased — OSM Tunnel Layer
 
 ### Added
