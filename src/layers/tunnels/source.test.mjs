@@ -30,7 +30,11 @@ test('tunnel query is bounded, accepted by the proxy, and selects road and rail 
   const body = new URLSearchParams(calls[0][1].body);
   const query = body.get('data');
   assert.equal(sanitizeOverpassBody(calls[0][1].body).ok, true);
-  assert.match(query, /way\["highway"\]\["tunnel"\]/);
+  assert.match(
+    query,
+    /way\["highway"~"\^\(motorway\|trunk\|primary\|secondary\|tertiary\|unclassified\|residential\|living_street\)\$"\]\["tunnel"\]/,
+  );
+  assert.doesNotMatch(query, /footway|pedestrian|service|parking/);
   assert.match(query, /way\["railway"~"\^\(rail\|light_rail/);
   assert.match(query, /out geom qt/);
   assert.match(query, /42\.3,-71\.1,42\.4,-71/);
@@ -105,6 +109,22 @@ test('tunnel normalization retains road and rail names and ignores non-tunnel wa
             id: 404,
             geometry,
             tags: { railway: 'platform', tunnel: 'yes' },
+          },
+          {
+            type: 'way',
+            id: 505,
+            geometry,
+            tags: { highway: 'service', tunnel: 'yes', name: 'Parking Garage' },
+          },
+          {
+            type: 'way',
+            id: 606,
+            geometry,
+            tags: {
+              highway: 'footway',
+              tunnel: 'yes',
+              name: 'Pedestrian Walkway',
+            },
           },
         ],
       }),

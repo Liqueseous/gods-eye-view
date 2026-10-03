@@ -17,13 +17,15 @@ const OUTLINE_COLOR = '#101820';
 const OUTLINE_WIDTH = 5;
 const ROAD_WIDTH = 2.4;
 const RAIL_WIDTH = 2.8;
+const OUTLINE_ALPHA = 0.08;
+const LINE_ALPHA = 0.28;
 const GHOST_MAX_CAMERA_ALTITUDE_M = 18_000;
 const GHOST_CENTER_HEIGHT_M = 4;
-const GHOST_ALPHA = 0.12;
+const GHOST_ALPHA = 0.05;
 // No globe means no terrain surface to classify against — the depth-tested
 // ghost tube becomes the only correctly-occluded (behind-buildings) stand-in,
 // so it needs to read as a real tunnel line rather than a faint hint.
-const GHOST_ALPHA_NO_GLOBE = 0.78;
+const GHOST_ALPHA_NO_GLOBE = 0.2;
 
 function tunnelLabelLimit(densityPct = getDetectionTuning().densityPct) {
   const density = Math.max(0, Math.min(100, Number(densityPct) || 0));
@@ -270,8 +272,10 @@ export function createTunnelsLayer({ source, services }) {
         // Glow (not solid Color) reads as light shining through geometry rather
         // than a line painted on it — tunnels under Google 3D buildings.
         material: Cesium.Material.fromType('PolylineGlow', {
-          color: Cesium.Color.fromCssColorString(cssColor).withAlpha(0.9),
-          glowPower: 0.22,
+          color: Cesium.Color.fromCssColorString(cssColor).withAlpha(
+            cssColor === OUTLINE_COLOR ? OUTLINE_ALPHA : LINE_ALPHA,
+          ),
+          glowPower: 0.1,
         }),
       }),
       // Tunnels are underground; classifying onto 3D tile buildings paints
