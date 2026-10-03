@@ -1,5 +1,9 @@
 import * as Cesium from 'cesium';
-import { FLOW_BUCKET_COLORS, TRAFFIC_TIMING_ENABLED } from './policy.js';
+import {
+  FLOW_BUCKET_COLORS,
+  MAX_DOTS,
+  TRAFFIC_TIMING_ENABLED,
+} from './policy.js';
 
 export function createState({ services }) {
   const layerState = {};
@@ -20,6 +24,14 @@ export function createState({ services }) {
   /** @type {Array<{coords:number[][], type:string, waypoints:Cesium.Cartesian3[], segmentDist:number[]}>} Parsed roads with pre-computed Cartesian3 waypoints */
 
   layerState._roads = [];
+
+  /** @type {Map<string, number>} scene.sampleHeight() results keyed by ~111m
+   * cell, persisted across parseRoads() passes for the layer's lifetime.
+   * scene.sampleHeight is a synchronous GPU readback (readPixels) \u2014 without a
+   * session-lasting cache, every fresh pan re-pays that stall for cells it had
+   * already sampled minutes earlier. */
+
+  layerState._heightCellCache = new Map();
 
   /** @type {boolean} Whether the layer is currently enabled */
 
@@ -65,6 +77,7 @@ export function createState({ services }) {
   /** @type {number} User-adjustable density multiplier (clamped 0.2–2.5) */
 
   layerState._densityScale = 1.0;
+  layerState._adaptiveDotCap = MAX_DOTS;
 
   /** @type {number} User-adjustable speed multiplier (clamped 0.3–3.0) */
 

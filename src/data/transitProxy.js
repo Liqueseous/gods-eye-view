@@ -17,6 +17,7 @@ export {
 import {
   GTFS_INCREMENTALITY_FULL_DATASET,
   decodeVehiclePositions,
+  decodeTripUpdates,
 } from './gtfsRealtime.js';
 import { getTransitFeed } from './transitFeeds.js';
 
@@ -254,8 +255,20 @@ export function repairVehicleTimestamps(vehicles, headerTimestamp, fetchedAtS) {
  * @returns {{ feedId: string, name: string, fetchedAt: number, feedTimestamp: number|null,
  *   version: string|null, entityCount: number, truncated: boolean, count: number, vehicles: object[] }}
  */
-export function buildTransitSnapshot(feed, bytes, now = Date.now()) {
-  const decoded = decodeVehiclePositions(bytes);
+export function buildTransitSnapshot(
+  feed,
+  bytes,
+  now = Date.now(),
+  options = {},
+) {
+  const decoded =
+    feed?.realtimeType === 'trip-updates'
+      ? decodeTripUpdates(
+          bytes,
+          options.stationCoordinates || new Map(),
+          Math.floor(now / 1000),
+        )
+      : decodeVehiclePositions(bytes);
   if (decoded.incrementality !== GTFS_INCREMENTALITY_FULL_DATASET) {
     throw new TransitFeedShapeError(
       `feed is differential (incrementality ${decoded.incrementality})`,

@@ -27,7 +27,7 @@ import {
   DETECTION_THEME_MAP,
   SKY_PLATE_SCALE,
 } from '../overlays/worldOverlayTokens.js';
-import { skyBackdropFactor } from './iconOrientation.js';
+import { rotation } from './iconOrientation.js';
 import { paintDetectionCallout } from '../overlays/worldOverlayDraw.js';
 import { allocateLayerQuotas, LabelArbiter } from './labelArbiter.js';
 import {
@@ -565,6 +565,13 @@ export function setDetectionTuning(options = {}) {
       _allocationStrategy = nextStrategy;
       _labelSolveDirty = true;
     }
+  }
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent?.(
+      new CustomEvent('gev:detection-tuning-changed', {
+        detail: getDetectionTuning(),
+      }),
+    );
   }
   if (modeChanged && _onModeChange) _onModeChange(MODE_LABELS[_mode]);
   _hostLane?.requestPaint();
@@ -1242,7 +1249,7 @@ function _materializeCandidate(
     // observation in view, while this runs only for callouts that actually
     // placed — a budgeted handful per frame.
     plateScale: _plateScaleForBackdrop(
-      skyBackdropFactor(cameraPosition, obj.position),
+      rotation.skyBackdropFactor(cameraPosition, obj.position),
     ),
     primary,
     micro,
@@ -1467,7 +1474,7 @@ function _drawOverlay(frame) {
       cyberMapActive,
     );
     const bracketAlpha = admissionAlpha * sonarFactor;
-    if (bracketAlpha > 0) {
+    if (!obj.skipBracket && bracketAlpha > 0) {
       const transit = obj.tier?.startsWith('transit_');
       (transit ? appendTransitBracket : appendCornerBracket)(
         pathFor(
@@ -1490,7 +1497,7 @@ function _drawOverlay(frame) {
     }
 
     if (obj.skipLabel) {
-      if (bracketAlpha > 0) protectedVisibleCount++;
+      if (!obj.skipBracket && bracketAlpha > 0) protectedVisibleCount++;
       continue;
     }
 

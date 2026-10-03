@@ -1,6 +1,11 @@
 import * as Cesium from 'cesium';
 import { TRANSIT_ENABLED_FEEDS, haversineKm } from '../data/transitFeeds.js';
 import { getOsmTileCacheDiagnostics } from '../data/osmCacheBounds.js';
+import { getSharedFrameBudgetDiagnostics } from '../frameBudget.js';
+
+let performanceProbe = null;
+let assetDiagnosticsCache = null;
+const ASSET_DIAGNOSTICS_CACHE_MS = 3000;
 
 /** Persisted opt-in switch for tools intended for development and QA. */
 export const DEVELOPER_MODE_STORAGE_KEY = 'godsEyeView.developerMode.enabled';
@@ -117,6 +122,155 @@ function readDiagnosticView(app) {
   };
 }
 
+function ensurePerformanceProbe(app) {
+  if (performanceProbe) {
+    performanceProbe.attach?.(app);
+    return performanceProbe;
+  }
+  const startedAt = globalThis.performance?.now?.() || 0;
+  const frameTimes = [];
+  let removeFrameListener = null;
+  let longTaskCount = 0;
+  let longTaskTotalMs = 0;
+  let longTaskMaxMs = 0;
+  const onFrame = () => {
+    const now = globalThis.performance?.now?.() || 0;
+    frameTimes.push(now);
+    while (frameTimes.length && now - frameTimes[0] > 2_000) frameTimes.shift();
+  };
+  const attach = (nextApp) => {
+    if (removeFrameListener) return;
+    removeFrameListener =
+      nextApp?.viewer?.scene?.postRender?.addEventListener?.(onFrame) || null;
+  };
+  attach(app);
+  let longTaskObserver = null;
+  try {
+    if (typeof globalThis.PerformanceObserver === 'function') {
+      longTaskObserver = new globalThis.PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          longTaskCount += 1;
+          longTaskTotalMs += entry.duration || 0;
+          longTaskMaxMs = Math.max(longTaskMaxMs, entry.duration || 0);
+        }
+      });
+      longTaskObserver.observe({ type: 'longtask', buffered: true });
+    }
+  } catch {
+    longTaskObserver = null;
+  }
+  performanceProbe = {
+    attach,
+    read() {
+      const now = globalThis.performance?.now?.() || startedAt;
+      const elapsed = Math.max(0, now - startedAt);
+      while (frameTimes.length && now - frameTimes[0] > 2_000)
+        frameTimes.shift();
+      const recent = frameTimes.filter((time) => now - time <= 1_000);
+      const recentIntervals = [];
+      for (let index = 1; index < recent.length; index += 1)
+        recentIntervals.push(recent[index] - recent[index - 1]);
+      const sorted = [...recentIntervals].sort((a, b) => a - b);
+      const p95 = sorted.length
+        ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+        : null;
+      const memory = globalThis.performance?.memory;
+      return {
+        elapsedMs: elapsed,
+        fps:
+          recent.length > 1 && recent.at(-1) > recent[0]
+            ? ((recent.length - 1) * 1000) / (recent.at(-1) - recent[0])
+            : null,
+        frameIntervalMs: recentIntervals.length
+          ? recentIntervals.reduce((sum, value) => sum + value, 0) /
+            recentIntervals.length
+          : null,
+        frameIntervalP95Ms: p95,
+        frameCount: frameTimes.length,
+        longTaskCount,
+        longTaskTotalMs,
+        longTaskMaxMs,
+        jsHeapUsedBytes: Number.isFinite(memory?.usedJSHeapSize)
+          ? memory.usedJSHeapSize
+          : null,
+        jsHeapLimitBytes: Number.isFinite(memory?.jsHeapSizeLimit)
+          ? memory.jsHeapSizeLimit
+          : null,
+        hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || null,
+        deviceMemoryGB: globalThis.navigator?.deviceMemory || null,
+        devicePixelRatio: globalThis.devicePixelRatio || 1,
+        frameBudget: getSharedFrameBudgetDiagnostics(),
+      };
+    },
+    destroy() {
+      removeFrameListener?.();
+      longTaskObserver?.disconnect?.();
+      performanceProbe = null;
+    },
+  };
+  return performanceProbe;
+}
+
+function readStaticPerformanceDiagnostics() {
+  const memory = globalThis.performance?.memory;
+  return {
+    elapsedMs: 0,
+    fps: null,
+    frameIntervalMs: null,
+    frameIntervalP95Ms: null,
+    frameCount: 0,
+    longTaskCount: 0,
+    longTaskTotalMs: 0,
+    longTaskMaxMs: 0,
+    jsHeapUsedBytes: Number.isFinite(memory?.usedJSHeapSize)
+      ? memory.usedJSHeapSize
+      : null,
+    jsHeapLimitBytes: Number.isFinite(memory?.jsHeapSizeLimit)
+      ? memory.jsHeapSizeLimit
+      : null,
+    hardwareConcurrency: globalThis.navigator?.hardwareConcurrency || null,
+    deviceMemoryGB: globalThis.navigator?.deviceMemory || null,
+    devicePixelRatio: globalThis.devicePixelRatio || 1,
+    frameBudget: getSharedFrameBudgetDiagnostics(),
+  };
+}
+
+function readPerformanceDiagnostics(app, startProbe = true) {
+  performanceProbe?.attach?.(app);
+  const values =
+    performanceProbe?.read?.() ||
+    (startProbe
+      ? ensurePerformanceProbe(app).read()
+      : readStaticPerformanceDiagnostics());
+  const fps = Number.isFinite(values.fps)
+    ? `${Math.round(values.fps)} FPS`
+    : 'FPS —';
+  const longTasks = `${values.longTaskCount} LONG TASKS`;
+  const heap = Number.isFinite(values.jsHeapUsedBytes)
+    ? ` · ${(values.jsHeapUsedBytes / 1048576).toFixed(0)} MB HEAP`
+    : '';
+  return {
+    ...values,
+    text: `${fps} · ${longTasks}${heap}`,
+    title: [
+      Number.isFinite(values.frameIntervalMs) &&
+        `FRAME ${values.frameIntervalMs.toFixed(1)}ms · P95 ${values.frameIntervalP95Ms?.toFixed(1) || '—'}ms`,
+      `LONG TASKS ${values.longTaskTotalMs.toFixed(1)}ms TOTAL · ${values.longTaskMaxMs.toFixed(1)}ms MAX`,
+      values.frameBudget &&
+        `FRAME BUDGET ${values.frameBudget.elapsedMs.toFixed(1)}/${values.frameBudget.budgetMs}ms`,
+      ...Object.entries(values.frameBudget?.owners || {}).map(
+        ([owner, value]) =>
+          `${owner} ${value.calls} calls/${value.elapsedMs.toFixed(1)}ms`,
+      ),
+      values.hardwareConcurrency && `CPU ${values.hardwareConcurrency} THREADS`,
+      values.deviceMemoryGB && `DEVICE ${values.deviceMemoryGB}GB`,
+      `DPR ${values.devicePixelRatio}`,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  };
+}
+
 const EXPORTED_LAYER_STATS = [
   'count',
   'lastUpdate',
@@ -138,6 +292,7 @@ const EXPORTED_LAYER_STATS = [
   'flowBuckets',
   'closedRoads',
   'heatLines',
+  'floorReread',
 ];
 
 function exportLayerStats(stats = {}) {
@@ -189,7 +344,7 @@ export function createDeveloperDiagnosticsSnapshot(
   const layers = app?.dataManager?.getAll?.() || [];
   const transitLayer = app?.dataManager?.layers?.get?.('transit')?.module;
   const transitRouteData =
-    transitLayer?.getTransitRouteDiagnostics?.({ includeGeometry: true }) ||
+    transitLayer?.getTransitRouteDiagnostics?.({ includeGeometry: false }) ||
     null;
   const view = readDiagnosticView(app || {});
   const nearestTransitFeeds = view.center
@@ -225,6 +380,7 @@ export function createDeveloperDiagnosticsSnapshot(
       routeData: transitRouteData,
     },
     render: app?.getRenderGovernorDiagnostics?.() || null,
+    performance: readPerformanceDiagnostics(app, false),
     voiceState: app?.voiceCommands?.session?.state || 'idle',
     layers: layers.map((layer) => {
       const availability = layerAvailability(layer);
@@ -418,7 +574,21 @@ function sourceDiagnostics(layer) {
 
 function readAssetDiagnostics(app) {
   const layers = app.dataManager?.getAll?.() || [];
-  return layers
+  const signature = layers
+    .filter((layer) => layer.enabled)
+    .map(
+      (layer) =>
+        `${layer.id}:${layer.stats?.count || 0}:${layer.stats?.lastUpdate || 0}`,
+    )
+    .join('|');
+  const now = Date.now();
+  if (
+    assetDiagnosticsCache &&
+    assetDiagnosticsCache.signature === signature &&
+    now - assetDiagnosticsCache.capturedAt < ASSET_DIAGNOSTICS_CACHE_MS
+  )
+    return assetDiagnosticsCache.assets;
+  const assets = layers
     .filter((layer) => layer.enabled)
     .map((layer) => {
       const loaded = Number(layer.stats?.count) || 0;
@@ -431,6 +601,8 @@ function readAssetDiagnostics(app) {
         source: sourceDiagnostics(layer),
       };
     });
+  assetDiagnosticsCache = { capturedAt: now, assets, signature };
+  return assets;
 }
 
 function osmTileCacheReadout(cache) {
@@ -467,6 +639,7 @@ function readLiveDiagnostics() {
   const camera = viewer?.camera;
   const carto = camera?.positionCartographic;
   const render = app.getRenderGovernorDiagnostics?.() || {};
+  const performance = readPerformanceDiagnostics(app);
   const totalLayers = app.dataManager?.getAll?.().length ?? 0;
   const enabledLayers =
     app.dataManager?.getAll?.().filter((layer) => layer.enabled).length ?? 0;
@@ -523,6 +696,7 @@ function readLiveDiagnostics() {
     render: render.installed
       ? `${String(render.mode || 'idle').toUpperCase()} · ${render.holds?.length || 0} HOLDS`
       : 'RENDER OFFLINE',
+    performance,
     layers: `${enabledLayers}/${totalLayers || 0} ACTIVE`,
     voice: formattedVoiceState || 'OFF',
     osmCache: osmTileCacheReadout(osmTileCache),
@@ -539,6 +713,7 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
   const entries = {
     camera: panel.querySelector('#developer-camera-readout'),
     render: panel.querySelector('#developer-render-readout'),
+    performance: panel.querySelector('#developer-performance-readout'),
     layers: panel.querySelector('#developer-layers-readout'),
     voice: panel.querySelector('#developer-voice-readout'),
     osmCache: panel.querySelector('#developer-osm-cache-readout'),
@@ -550,7 +725,7 @@ function syncDeveloperDiagnostics(documentRef = globalThis.document) {
       typeof diagnostics[key] === 'string'
         ? diagnostics[key] || '—'
         : diagnostics[key]?.text || '—';
-    if (key === 'routes' || key === 'osmCache')
+    if (key === 'routes' || key === 'osmCache' || key === 'performance')
       node.title = diagnostics[key]?.title || '';
   }
   const assetsList = panel.querySelector('#developer-assets-list');
@@ -591,6 +766,7 @@ export function initDeveloperMode({
   storage,
   documentRef = globalThis.document,
 } = {}) {
+  assetDiagnosticsCache = null;
   const toggle = documentRef?.querySelector('#developer-mode-toggle');
   const analyst = documentRef?.querySelector('#analyst-console');
   const panel = documentRef?.querySelector('#developer-tools-panel');
@@ -627,9 +803,10 @@ export function initDeveloperMode({
       refreshTimer = null;
     }
     if (active) {
+      ensurePerformanceProbe(globalThis.__godsEyeView);
       refresh();
       refreshTimer = globalThis.setInterval(refresh, 1000);
-    }
+    } else performanceProbe?.destroy?.();
   };
   const onChange = () => {
     writeDeveloperMode(toggle.checked, storage);
@@ -649,6 +826,7 @@ export function initDeveloperMode({
         clearInterval(refreshTimer);
         refreshTimer = null;
       }
+      performanceProbe?.destroy?.();
       toggle.removeEventListener('change', onChange);
       exportButton?.removeEventListener('click', onExport);
     },

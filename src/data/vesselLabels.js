@@ -4,6 +4,7 @@
  * after the vessel cards moved out of their dedicated canvas renderer.
  */
 
+export const AIS_FIRST_CONNECT_GRACE_MS = 300000;
 export const VESSEL_OVERLAY_SOURCE_ID = 'ais-live-vessels';
 /** Existing selector grid size; one ambient winner is retained per cell. */
 export const VESSEL_LABEL_GRID_PX = 118;

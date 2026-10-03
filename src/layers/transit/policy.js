@@ -80,6 +80,8 @@ export const FLOOR_WARM_PER_POLL = 300;
 export const FLOOR_REREAD_MS = 900;
 /** Re-reads before a poll's cycle gives up and waits for the next poll. */
 export const FLOOR_REREAD_ATTEMPTS = 6;
+/** Maximum synchronous work for one floor-reread slice. */
+export const FLOOR_REREAD_BUDGET_MS = 6;
 
 // --- Rendering ---
 /** On-screen glyph size in CSS px at the near end of the distance ramp. */
@@ -98,6 +100,8 @@ export const ROTATION_REFRESH_MS = 200;
  * fleet once a frame — which is the cost it exists to avoid.
  */
 export const VISIBILITY_REFRESH_MS = 250;
+/** Maximum synchronous work for one visibility-sweep slice. */
+export const VISIBILITY_REFRESH_BUDGET_MS = 6;
 /** Consecutive missed sweeps tolerated before hiding an already-rendered marker. */
 export const VISIBILITY_EXIT_GRACE_SWEEPS = 1;
 /**

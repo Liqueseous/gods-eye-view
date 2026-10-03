@@ -1,5 +1,11 @@
 # God's Eye View Current State
 
+## Transit station placards — October 3, 2026
+
+Transit routes use viewport-loaded OpenStreetMap rail geometry with station placards. Expanded list placards render as a deterministic foreground layer; compact station placards, route icons, and markers render behind them. Placards are opaque, content is kept inside the frame, and compact station content is lifted above its own background. Station panels can be collapsed by selecting the station.
+
+Route badges follow agency conventions: subway routes use circles, express subway services use diamonds, and PATH identifiers normalize internal variants such as `HOB3` and `JSQ3` to `HOB` and `JSQ`. Endpoint text is removed from line names before display.
+
 ## Cyber HUD — September 23, 2026
 
 Display > HUD > Layout includes Cyber, also available through the HUD voice
@@ -2724,9 +2730,16 @@ Historical planning documents may not match runtime behavior.
 
 ## Current Baseline
 
-- Repository metadata and public URLs use the `bilawalsidhu/gods-eye-view`
-  project identity. Runtime behavior is defined by this document and the current
-  source tree rather than historical branch notes.
+- This checkout is the independent `Liqueseous/gods-eye-view` fork of the
+  original `bilawalsidhu/gods-eye-view` project; it is not the original or an
+  official upstream release. AI-assisted tools were used during production for
+  implementation, debugging, testing, and documentation. The Vite build injects
+  the package version plus `GEV_BUILD_NUMBER`/`BUILD_NUMBER`/`GITHUB_RUN_NUMBER`
+  into the browser and displays them in the command dock. The displayed `SRC`
+field records the last parent-repository baseline merged into this fork
+(`0.1.1@b210ab0` by default). Runtime behavior is
+  defined by this document and the current source tree rather than historical
+  branch notes.
 
 ## Runtime Stack
 
@@ -2741,6 +2754,8 @@ Historical planning documents may not match runtime behavior.
 - Proxy middleware and API wiring in `vite.config.js`
 
 ### Active Data Layers in Runtime
+
+This checkout is an independent fork of the original [Bilawal Sidhu `gods-eye-view`](https://github.com/bilawalsidhu/gods-eye-view) repository, not the original or an official upstream release. AI-assisted tools were used during production for implementation, debugging, testing, and documentation; maintainers remain responsible for review and validation.
 
 Qualified Radio playback requests—category, station, country, coordinates, or
 nearby place—always use station selection. Unqualified “turn on/start the radio”
@@ -2760,7 +2775,7 @@ its criteria cannot be silently ignored.
 | Tunnels 🚇             | OSM highway and railway ways tagged as tunnels; mapped names/ref labels                                                                                                                        | `src/layers/tunnels/` via `src/app/layers/tunnels.js`  | `/api/overpass`                                          | viewport-driven, 6 h client cache                                                 |
 | CCTV                   | Austin + Caltrans (CA) + TfL London + Ontario 511 + Fintraffic (FI) + DriveBC (BC) + TxDOT (TX) + Estonia (Tallinn, Tarktee) + Live Traffic NSW + Open Calgary Open Data + Street View fallback | `src/data/cctv.js`                                    | `/api/cctv`                                              | 10s (active)                                                                      |
 | Radio                  | Radio Browser (public-domain station directory)                                                                                                                                                 | `src/data/radio.js`                                   | `/api/radio/stations`, `/api/radio/click/:uuid`          | 45 min directory refresh                                                          |
-| Transit 🚌             | Operator GTFS-Realtime VehiclePositions (7 keyless regions + optional NYC MTA Bus Time feed) plus viewport-bounded OpenStreetMap heavy/light-rail route relations                                | `src/layers/transit/` via `src/app/layers/transit.js` | `/api/transit`, `/api/overpass`                         | 15s (vehicles) + camera-settled route fetches                                     |
+| Transit 🚌             | Operator GTFS-Realtime vehicles plus NYC MTA subway TripUpdates, viewport-bounded OpenStreetMap rail routes, grouped stations, colored line icons/lists, and route-aware station overlays | `src/layers/transit/` via `src/app/layers/transit.js` | `/api/transit`, `/api/overpass` | 15s (vehicles) + camera-settled route fetches |
 | Bikeshare 🚲           | GBFS (Lyft + BCycle)                                                                                                                                                                            | `src/data/bikeshare.js`                               | `/api/gbfs`                                              | 60s                                                                               |
 | Directions 🧭          | OSRM on FOSSGIS servers (OpenStreetMap)                                                                                                                                                         | `src/data/directions.js`                              | `/api/route` (`steps=1`)                                 | on placement / mode change                                                        |
 | Datacenters ▣          | OSM extract (bundled)                                                                                                                                                                           | `src/data/localLayers.js`                             | —                                                        | static                                                                            |

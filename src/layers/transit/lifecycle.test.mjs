@@ -562,7 +562,11 @@ test('selecting a mapped route opens route details and replaces vehicle selectio
   await new Promise((resolve) => setImmediate(resolve));
   app.layer._loadTransitFleetForTest(1, BOSTON, 70, ['Red']);
   const parts = app.layer._transitPartsForTest();
-  assert.equal(app.entities.length, 2, 'route has an outline and color stroke');
+  assert.equal(
+    app.entities.length,
+    5,
+    'route has outline, color stroke, station placard, marker, and line icon',
+  );
   app.viewer.scene.pick = () => ({ id: app.entities[0] });
   app
     .state()
@@ -1145,6 +1149,22 @@ test('a finer claim wins while it stands, and the coarser one survives it', asyn
   );
   app.layer.disable(app.viewer);
   assert.equal(app.viewer.camera.percentageChanged, 0.5);
+});
+
+test('the ROUTES row chip toggles route-line visibility independent of the altitude gate', async (t) => {
+  const app = harness(t);
+  assert.deepEqual(app.layer.getParams(), { routes: true });
+  assert.equal(app.layer.getRowControls().chips[0].active, true);
+
+  app.layer.enable(app.viewer);
+  app.layer.setParams({ routes: false });
+  assert.deepEqual(app.layer.getParams(), { routes: false });
+  const chip = app.layer.getRowControls().chips[0];
+  assert.equal(chip.active, false);
+  assert.deepEqual(chip.params, { routes: true });
+
+  app.layer.setParams({ routes: true });
+  assert.deepEqual(app.layer.getParams(), { routes: true });
 });
 
 test('destroy releases every shared registration this layer took', async (t) => {

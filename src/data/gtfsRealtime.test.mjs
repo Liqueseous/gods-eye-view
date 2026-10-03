@@ -6,6 +6,7 @@ import {
   GTFS_MAX_STRING_CHARS,
   decodeFeedMessage,
   decodeVehiclePositions,
+  decodeTripUpdates,
   isPlausibleVehiclePosition,
   normalizeVehicleEntity,
 } from './gtfsRealtime.js';
@@ -78,6 +79,38 @@ function writeVehicleEntity(
   });
 }
 
+function writeTripEntity(
+  writer,
+  { entityId, tripId, routeId, stopId, stopSequence, stopTime, timestamp },
+) {
+  embed(writer, 2, (entity) => {
+    entity.writeStringField(1, entityId);
+    embed(entity, 3, (update) => {
+      embed(update, 1, (trip) => {
+        trip.writeStringField(1, tripId);
+        trip.writeStringField(5, routeId);
+      });
+      embed(update, 3, (stop) => {
+        stop.writeVarintField(1, stopSequence);
+        stop.writeStringField(4, stopId);
+        embed(stop, 2, (arrival) => arrival.writeVarintField(2, stopTime));
+      });
+      update.writeVarintField(4, timestamp);
+    });
+  });
+}
+
+function encodeTripFeed(trips, { timestamp = 1_788_936_000 } = {}) {
+  const writer = new PbfWriter();
+  embed(writer, 1, (header) => {
+    header.writeStringField(1, '2.0');
+    header.writeVarintField(2, 0);
+    header.writeVarintField(3, timestamp);
+  });
+  for (const trip of trips) writeTripEntity(writer, trip);
+  return writer.finish();
+}
+
 function encodeFeed(
   entities,
   { version = '2.0', timestamp = 1_788_936_000 } = {},
@@ -130,6 +163,43 @@ test('decodes header and every VehiclePosition field the layer renders', () => {
   assert.equal(v.stopId, '57458');
   assert.equal(v.status, 'STOPPED_AT');
   assert.equal(v.occupancy, 'FEW_SEATS_AVAILABLE');
+});
+
+test('decodes TripUpdates and places a trip at its next station coordinate', () => {
+  const snapshot = decodeTripUpdates(
+    encodeTripFeed([
+      {
+        entityId: 'entity-1',
+        tripId: 'trip-1',
+        routeId: 'A',
+        stopId: 'A12N',
+        stopSequence: 7,
+        stopTime: 1_788_936_100,
+        timestamp: 1_788_936_050,
+      },
+    ]),
+    new Map([['A12', { lat: 40.75, lon: -73.99 }]]),
+    1_788_936_000,
+  );
+  assert.equal(snapshot.vehicles.length, 1);
+  assert.deepEqual(snapshot.vehicles[0], {
+    id: 'trip-1',
+    lat: 40.75,
+    lon: -73.99,
+    bearing: null,
+    speedMps: null,
+    timestamp: 1_788_936_050,
+    routeId: 'A',
+    tripId: 'trip-1',
+    directionId: null,
+    label: 'A',
+    stopId: 'A12N',
+    stopSequence: 7,
+    stopTime: 1_788_936_100,
+    delaySeconds: null,
+    status: 'STOPPED_AT',
+    occupancy: null,
+  });
 });
 
 test('unknown and extension fields are skipped, not misread', () => {

@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import {
   FLOOR_REREAD_ATTEMPTS,
   FLOOR_REREAD_MS,
+  FLOOR_REREAD_BUDGET_MS,
   FLOOR_WARM_PER_POLL,
   TRANSIT_POLL_MS,
   HEIGHT_SAMPLE_MAX_ALTITUDE_M,
@@ -104,23 +105,42 @@ export function createHeight({ state, services, parts }) {
   let budgetAt = -Infinity;
   let demUsed = new Set(),
     meshUsed = 0;
+  let rereadJob = null;
+  let rereadRunning = false;
   function rereadFloors() {
     state._floorTimer = null;
     if (!state._enabled) return;
-    const onGround = nearGround(),
-      candidates = [];
-    const entries = [...state._vehicles.values()].filter(
-      (entry) =>
-        entry.key === state._selectedKey ||
-        state._visible.has(entry) ||
-        withinViewBounds(state._viewBounds, entry.segment?.from || entry.to),
-    );
-    entries.sort(
-      (a, b) =>
-        Number(b.key === state._selectedKey) -
-        Number(a.key === state._selectedKey),
-    );
-    for (const entry of entries) {
+    if (rereadRunning) return;
+    rereadRunning = true;
+    const startedAt = performance.now();
+    const onGround = nearGround();
+    if (!rereadJob) {
+      const entries = [...state._vehicles.values()].filter(
+        (entry) =>
+          entry.key === state._selectedKey ||
+          state._visible.has(entry) ||
+          withinViewBounds(state._viewBounds, entry.segment?.from || entry.to),
+      );
+      entries.sort(
+        (a, b) =>
+          Number(b.key === state._selectedKey) -
+          Number(a.key === state._selectedKey),
+      );
+      rereadJob = {
+        entries,
+        index: 0,
+        candidates: [],
+        startedAt: performance.now(),
+        yields: 0,
+      };
+    }
+    const entries = rereadJob.entries;
+    while (
+      rereadJob.index < entries.length &&
+      (rereadJob.index === 0 ||
+        performance.now() - startedAt < FLOOR_REREAD_BUDGET_MS)
+    ) {
+      const entry = entries[rereadJob.index++];
       const cells = new Map();
       const collect = (point, answer) => {
         if (!onGround) return;
@@ -144,27 +164,44 @@ export function createHeight({ state, services, parts }) {
           state._visibilityDirty = true;
         }
       }
-      candidates.push({
+      rereadJob.candidates.push({
         entry,
         cells: [...cells.values()],
         cursor: 0,
         start: cellCursors.get(entry) || 0,
       });
     }
+    if (rereadJob.index < entries.length) {
+      rereadJob.yields += 1;
+      state._floorRereadDiagnostics = {
+        ...state._floorRereadDiagnostics,
+        candidates: rereadJob.index,
+        yields: rereadJob.yields,
+        running: true,
+      };
+      rereadRunning = false;
+      state._floorTimer = setTimeout(rereadFloors, 0);
+      return;
+    }
+    const completedJob = rereadJob;
+    const completedCandidates = rereadJob.candidates;
+    rereadJob = null;
     const selectedCells =
-      candidates[0]?.entry.key === state._selectedKey
-        ? candidates[0].cells.slice(0, 12)
+      completedCandidates[0]?.entry.key === state._selectedKey
+        ? completedCandidates[0].cells.slice(0, 12)
         : [];
     const ordered = [...selectedCells],
       seen = new Set(selectedCells.map((cell) => cell.cell));
-    const start = candidates.length
-      ? state._floorCursor % candidates.length
+    const start = completedCandidates.length
+      ? state._floorCursor % completedCandidates.length
       : 0;
     let remaining = true;
     while (remaining) {
       remaining = false;
-      for (let i = 0; i < candidates.length; i++) {
-        const candidate = candidates[(start + i) % candidates.length];
+      for (let i = 0; i < completedCandidates.length; i++) {
+        if (ordered.length >= FLOOR_WARM_PER_POLL) break;
+        const candidate =
+          completedCandidates[(start + i) % completedCandidates.length];
         if (candidate.cursor >= candidate.cells.length) continue;
         const index =
           (candidate.start + candidate.cursor++) % candidate.cells.length;
@@ -179,6 +216,7 @@ export function createHeight({ state, services, parts }) {
           });
         }
       }
+      if (ordered.length >= FLOOR_WARM_PER_POLL) break;
     }
     state._floorCursor += FLOOR_WARM_PER_POLL;
     const dem = [],
@@ -200,6 +238,15 @@ export function createHeight({ state, services, parts }) {
       if (admitted && cell.entry) cellCursors.set(cell.entry, cell.next);
     }
     meshUsed += mesh.length;
+    state._floorRereadDiagnostics = {
+      durationMs: performance.now() - completedJob.startedAt,
+      candidates: entries.length,
+      cells: ordered.length,
+      demAdmissions: dem.length,
+      meshAdmissions: mesh.length,
+      yields: completedJob.yields,
+      running: false,
+    };
     const markers = entries.map((entry) => entry.marker).filter(Boolean);
     for (let i = 0; i < dem.length; i += 8)
       warmGroundFloor(dem.slice(i, i + 8));
@@ -208,13 +255,11 @@ export function createHeight({ state, services, parts }) {
         excludeObjects: markers,
         ...viewerSubpoint(),
       });
-    // Cached completions can be adopted now; asynchronous completions are
-    // adopted by the next bounded reread.
-    for (const entry of entries) parts.trails.prepareEntry(entry);
     parts.rendering.requestVisibility();
     governorRequestRender('transit-floor');
     if (state._floorAttempts++ < FLOOR_REREAD_ATTEMPTS)
       state._floorTimer = setTimeout(rereadFloors, FLOOR_REREAD_MS);
+    rereadRunning = false;
   }
 
   /** Start a fresh re-read cycle. Called once per poll, never per frame. */
@@ -224,6 +269,7 @@ export function createHeight({ state, services, parts }) {
       state._floorTimer = null;
     }
     state._floorAttempts = 0;
+    rereadJob = null;
     const now = performance.now();
     if (now - budgetAt >= TRANSIT_POLL_MS) {
       demUsed = new Set();
@@ -238,6 +284,8 @@ export function createHeight({ state, services, parts }) {
     cellCursors = new WeakMap();
     demUsed.clear();
     meshUsed = 0;
+    rereadJob = null;
+    rereadRunning = false;
     if (state._floorTimer) {
       clearTimeout(state._floorTimer);
       state._floorTimer = null;

@@ -137,6 +137,22 @@
   display: none !important;
 }
 
+#command-dock .app-build-info {
+  margin-top: 4px;
+  color: rgba(190, 221, 230, 0.36);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.7px;
+  line-height: 1.2;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+#command-dock .app-source-info {
+  padding: 0 14px;
+  text-align: left;
+}
+
 #command-dock #control-panel.collapsed .button-grid,
 #command-dock #location-bar.collapsed .location-city-row {
   display: flex !important;

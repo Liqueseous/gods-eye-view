@@ -114,8 +114,18 @@ test('feeds in range are nearest-first and honor slack as hysteresis', () => {
   );
   assert.deepEqual(
     transitFeedsInRange(40.7128, -74.006).map((f) => f.id),
-    ['mta-nyc'],
-    'New York polls MTA Bus Time only',
+    [
+      'mta-nyc',
+      'mta-subway',
+      'mta-subway-ace',
+      'mta-subway-bdfm',
+      'mta-subway-g',
+      'mta-subway-jz',
+      'mta-subway-nqrw',
+      'mta-subway-l',
+      'mta-subway-si',
+    ],
+    'New York polls MTA bus and subway feeds',
   );
 });
 

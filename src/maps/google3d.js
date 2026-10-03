@@ -1,4 +1,49 @@
 const clean = (value) => String(value || '').trim();
+export const GOOGLE_3D_QUALITY_STORAGE_KEY = 'gev-google-3d-quality';
+export const GOOGLE_3D_QUALITY_LEVELS = Object.freeze({
+  performance: 64,
+  balanced: 16,
+  high: 1,
+});
+
+function resolveStorage(storage) {
+  if (storage !== undefined) return storage;
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function getGoogle3dQuality(storage) {
+  let value = 'balanced';
+  try {
+    value =
+      resolveStorage(storage)?.getItem(GOOGLE_3D_QUALITY_STORAGE_KEY) || value;
+  } catch {
+    // Private or restricted storage keeps the default.
+  }
+  return Object.hasOwn(GOOGLE_3D_QUALITY_LEVELS, value) ? value : 'balanced';
+}
+
+export function setGoogle3dQuality(value, storage) {
+  const quality = Object.hasOwn(GOOGLE_3D_QUALITY_LEVELS, value)
+    ? value
+    : 'balanced';
+  try {
+    resolveStorage(storage)?.setItem(GOOGLE_3D_QUALITY_STORAGE_KEY, quality);
+  } catch {
+    // Keep the in-memory choice for this load when storage is unavailable.
+  }
+  return quality;
+}
+
+export function google3dQualityError(value) {
+  const quality = Object.hasOwn(GOOGLE_3D_QUALITY_LEVELS, value)
+    ? value
+    : getGoogle3dQuality();
+  return GOOGLE_3D_QUALITY_LEVELS[quality];
+}
 
 /**
  * Decide which map provider can deliver the best startup experience.
@@ -54,9 +99,27 @@ export function createGoogleDirectTileset(Cesium, key) {
   key = clean(key);
   if (!key) throw new Error('Google 3D requires an explicit browser key');
   // Tiles keep drawing their own texture while draped weather loads.
+  // progressiveResolutionHeightFraction: 0.1 — the default (0.3) coarse-previews
+  // any tile filling over 30% of screen height, catching most of the center/nadir
+  // view and reading as a blurry center; 0.1 only coarse-previews the handful of
+  // tiles large enough to matter for a quick first paint (very close/near-camera).
   return Cesium.createGooglePhotorealistic3DTileset(
     { key, onlyUsingWithGoogleGeocoder: true },
-    { asynchronouslyLoadImagery: true },
+    {
+      asynchronouslyLoadImagery: true,
+      progressiveResolutionHeightFraction: 0.1,
+      // Default (16) lets zoomed-out views settle for a coarser tile than
+      // zoomed-in ones; lower keeps fine detail visible at a farther distance.
+      maximumScreenSpaceError: GOOGLE_3D_QUALITY_LEVELS[getGoogle3dQuality()],
+      // This optimization deliberately lowers resolution far from the camera
+      // at low altitude/horizon views — reads as blur when zoomed out close
+      // to the ground, which is exactly this app's low-altitude camera use.
+      dynamicScreenSpaceError: false,
+      // Lets a tile keep rendering alongside its already-loaded children
+      // instead of being replaced outright, softening LOD pop-in on refine.
+      skipLevelOfDetail: true,
+      baseScreenSpaceError: 1024,
+    },
   );
 }
 
@@ -80,5 +143,14 @@ export async function createGoogleIonTileset(
     enableCollision: true,
     // Tiles keep drawing their own texture while draped weather loads.
     asynchronouslyLoadImagery: true,
+    // See createGoogleDirectTileset — coarse-preview only the largest tiles.
+    progressiveResolutionHeightFraction: 0.1,
+    // See createGoogleDirectTileset — fine detail visible at a farther distance.
+    maximumScreenSpaceError: GOOGLE_3D_QUALITY_LEVELS[getGoogle3dQuality()],
+    // See createGoogleDirectTileset — no horizon-distance detail falloff.
+    dynamicScreenSpaceError: false,
+    // See createGoogleDirectTileset — softens LOD pop-in on refine.
+    skipLevelOfDetail: true,
+    baseScreenSpaceError: 1024,
   });
 }

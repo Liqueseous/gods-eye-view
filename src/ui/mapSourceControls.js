@@ -1,4 +1,9 @@
 import { renderMapStackChips, syncMapStackChips } from '../mapStackChips.js';
+import {
+  getGoogle3dQuality,
+  google3dQualityError,
+  setGoogle3dQuality,
+} from '../maps/google3d.js';
 
 /**
  * Own Map Source presentation and selection without constructing map providers.
@@ -7,6 +12,7 @@ import { renderMapStackChips, syncMapStackChips } from '../mapStackChips.js';
 export function createMapSourceControls({
   container,
   statusElement,
+  qualityElement,
   controller,
   subscribe,
   claimSelection = () => {},
@@ -16,6 +22,22 @@ export function createMapSourceControls({
   let destroyed = false;
   let generation = 0;
   const removers = [];
+  if (qualityElement) {
+    qualityElement.value = getGoogle3dQuality();
+    const onQualityChange = () => {
+      qualityElement.value = setGoogle3dQuality(qualityElement.value);
+      window.dispatchEvent(
+        new CustomEvent('gev-google-3d-quality-changed', {
+          detail: { error: google3dQualityError(qualityElement.value) },
+        }),
+      );
+      onStateChanged();
+    };
+    qualityElement.addEventListener('change', onQualityChange);
+    removers.push(() =>
+      qualityElement.removeEventListener('change', onQualityChange),
+    );
+  }
   const bind = (element, type, listener) => {
     element.addEventListener(type, listener);
     removers.push(() => element.removeEventListener(type, listener));

@@ -121,8 +121,12 @@ async function resolveOverpassPreflight({
   cacheMs = OVERPASS_CACHE_MS,
 }) {
   const cached = memoryCache.get(cacheKey);
-  if (overpassPayloadIsData(cached) && now - cached.cachedAt <= cacheMs)
+  if (overpassPayloadIsData(cached) && now - cached.cachedAt <= cacheMs) {
+    // Refresh insertion order so the bounded memory cache is true LRU.
+    memoryCache.delete(cacheKey);
+    memoryCache.set(cacheKey, cached);
     return { source: 'HIT', payload: cached };
+  }
 
   const pending = inFlight.get(cacheKey);
   if (pending) return { source: 'INFLIGHT', payload: await pending };

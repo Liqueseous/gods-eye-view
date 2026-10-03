@@ -48,10 +48,25 @@ export function createTransitLayer({
   const parts = {};
   const context = { state, services, parts, source, routeSource };
   parts.trails = createTrails(context);
+  const getRouteHeight = (lat, lon) => {
+    const floor = services.ground.cachedGroundFloor(lat, lon);
+    if (Number.isFinite(floor))
+      return floor + services.ground.GROUND_FLOOR_LIFT_M;
+    const coarse = services.ground.coarseFloorCoord(lat, lon);
+    const neighbor = services.ground.neighborFloorM(coarse);
+    return Number.isFinite(neighbor)
+      ? neighbor + services.ground.GROUND_FLOOR_LIFT_M
+      : 0;
+  };
   parts.routes = createTransitRouteLines({
     ...context,
+    getRouteHeight,
     onSelectRoute: (route) => parts.selection?.selectRoute(route),
     onRoutesUpdated: () => parts.selection?.refreshSelectedRouteCard(),
+    onStationsUpdated: (stations) => {
+      state._stationPositions = stations;
+      state._detectRevision += 1;
+    },
   });
   parts.height = createHeight(context);
   parts.selection = createSelection(context);

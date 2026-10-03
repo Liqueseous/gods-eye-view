@@ -18,6 +18,7 @@ import { transitFeedsInRange } from '../../data/transitFeeds.js';
 export function createViewport({ state, services, parts }) {
   const { governorRequestRender } = services.render;
   let cameraBounds = null;
+  let routesAltitudeVisible = false;
 
   function getCameraAltitude(viewer = state._viewer) {
     const carto = viewer?.camera?.positionCartographic;
@@ -100,10 +101,6 @@ export function createViewport({ state, services, parts }) {
     refreshViewBounds();
     const altitude = getCameraAltitude();
     state._altitudeGateOpen = altitudeGateOpen(altitude);
-    const routesVisible = altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M;
-    parts.routes.setVisible(routesVisible);
-    if (routesVisible)
-      void parts.routes.update(cameraBounds || state._viewBounds);
     const center = state._altitudeGateOpen ? getCameraCenterLatLon() : null;
     const desired = new Map();
     if (center) {
@@ -151,6 +148,30 @@ export function createViewport({ state, services, parts }) {
     }, CAMERA_DEBOUNCE_MS);
   }
 
+  function onCameraMoveEnd() {
+    if (!state._enabled || state._params.routes === false) return;
+    syncRouteVisibility();
+    const altitude = getCameraAltitude();
+    if (
+      Number.isFinite(altitude) &&
+      altitude > TRANSIT_ROUTE_MAX_ALTITUDE_M * 1.5
+    )
+      return;
+    void parts.routes.update(cameraBounds || state._viewBounds);
+  }
+
+  function syncRouteVisibility() {
+    const altitude = getCameraAltitude();
+    if (Number.isFinite(altitude)) {
+      routesAltitudeVisible = routesAltitudeVisible
+        ? altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M * 1.5
+        : altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M;
+    }
+    parts.routes.setVisible(
+      routesAltitudeVisible && state._params.routes !== false,
+    );
+  }
+
   return {
     refreshViewBounds,
     getCameraAltitude,
@@ -159,5 +180,7 @@ export function createViewport({ state, services, parts }) {
     altitudeGateOpen,
     runProximityCheck,
     onCameraChanged,
+    onCameraMoveEnd,
+    syncRouteVisibility,
   };
 }

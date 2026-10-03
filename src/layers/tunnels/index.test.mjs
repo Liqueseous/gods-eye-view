@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as Cesium from 'cesium';
-import { createTunnelsLayer, midpointOfLine } from './index.js';
+import {
+  createTunnelsLayer,
+  midpointOfLine,
+  tunnelLabelLimit,
+} from './index.js';
 
 const road = {
   id: 'road-1',
@@ -36,13 +40,19 @@ function harness(
   t,
   raiseRoutesAboveTunnels = () => {},
   tunnelData = [road, rail, unnamed],
+  useGroundPrimitives = false,
 ) {
-  t.mock.method(Cesium.GroundPolylinePrimitive, 'isSupported', () => false);
+  t.mock.method(
+    Cesium.GroundPolylinePrimitive,
+    'isSupported',
+    () => useGroundPrimitives,
+  );
   const overlays = new Map();
   const primitives = [];
   const ghostPrimitives = [];
   const entities = [];
   const moveEnd = new Cesium.Event();
+  const postRender = new Cesium.Event();
   let rectangle = Cesium.Rectangle.fromDegrees(-71.2, 42.2, -70.9, 42.5);
   let pickedCenter = { lon: -71.08, lat: 42.35 };
   const viewer = {
@@ -60,6 +70,8 @@ function harness(
     scene: {
       canvas: { clientWidth: 100, clientHeight: 100 },
       globe: { getHeight: () => 12 },
+      context: useGroundPrimitives ? {} : null,
+      postRender,
       primitives: {
         add(primitive) {
           ghostPrimitives.push(primitive);
@@ -137,6 +149,7 @@ function harness(
       viewer.camera.positionCartographic.height = height;
     },
     moveEnd,
+    postRender,
   };
 }
 
@@ -149,6 +162,13 @@ test('tunnel labels anchor at the distance midpoint of their line', () => {
     ]),
     [1, 2],
   );
+});
+
+test('tunnel label capacity follows detection density', () => {
+  assert.equal(tunnelLabelLimit(0), 0);
+  assert.equal(tunnelLabelLimit(25), 24);
+  assert.equal(tunnelLabelLimit(50), 48);
+  assert.equal(tunnelLabelLimit(100), 96);
 });
 
 test('tunnel layer fetches bounded geometry, styles road and rail separately, and publishes named labels', async (t) => {
@@ -194,6 +214,7 @@ test('tunnel layer fetches bounded geometry, styles road and rail separately, an
     ['Downtown Tunnel', 'Orange Line'],
   );
   assert.equal(published.options.moving, false);
+  assert.equal(published.options.cohortLimit, 48);
   assert.deepEqual(app.layer.getStats(), {
     count: 3,
     roadCount: 2,
@@ -265,4 +286,50 @@ test('tunnel layer reloads after camera move and releases its geometry and label
   assert.equal(app.overlays.has('tunnels'), false);
   assert.equal(app.overlays.get('tunnels:visible'), false);
   assert.equal(app.layer.getStats().count, 0);
+});
+
+test('camera pan keeps old tunnel primitives until replacements are ready', async (t) => {
+  const app = harness(t, undefined, [road]);
+  await app.layer.enable(app.viewer);
+  const previousEntities = [...app.entities];
+  const previousGhosts = [...app.ghostPrimitives];
+
+  app.setRectangle(Cesium.Rectangle.fromDegrees(-70.8, 42.2, -70.5, 42.5));
+  app.setCameraCenter(-70.65, 42.35);
+  app.moveEnd.raiseEvent();
+  for (
+    let attempt = 0;
+    attempt < 10 && app.entities.length === previousEntities.length;
+    attempt++
+  )
+    await new Promise((resolve) => setImmediate(resolve));
+
+  const nextEntities = app.entities.filter(
+    (entity) => !previousEntities.includes(entity),
+  );
+  const nextGhosts = app.ghostPrimitives.filter(
+    (primitive) => !previousGhosts.includes(primitive),
+  );
+  assert.ok(nextEntities.length > 0);
+  assert.ok(nextGhosts.length > 0);
+  assert.ok(previousEntities.every((entity) => app.entities.includes(entity)));
+  assert.ok(
+    previousGhosts.every((primitive) => app.ghostPrimitives.includes(primitive)),
+  );
+  assert.ok(nextEntities.every((entity) => entity.show === false));
+  assert.ok(nextGhosts.every((primitive) => primitive.show === false));
+
+  for (const primitive of nextGhosts)
+    Object.defineProperty(primitive, 'ready', { value: true });
+  app.postRender.raiseEvent();
+
+  assert.ok(previousEntities.every((entity) => !app.entities.includes(entity)));
+  assert.ok(
+    previousGhosts.every(
+      (primitive) => !app.ghostPrimitives.includes(primitive),
+    ),
+  );
+  assert.ok(nextEntities.every((entity) => app.entities.includes(entity)));
+  assert.ok(nextGhosts.every((primitive) => app.ghostPrimitives.includes(primitive)));
+  assert.ok(nextEntities.every((entity) => entity.show === true));
 });

@@ -109,7 +109,7 @@ export function tileToBBox(z, x, y) {
  * @param {number} [zoom=12] - Tile zoom level.
  * @param {Object} [opts]
  * @param {number} [opts.maxTiles=64] - Safety cap on returned tiles.
- * @returns {Array<{z:number, x:number, y:number}>} Covering tiles.
+ * @returns {Array<{z:number, x:number, y:number}>} Covering tiles, nearest first.
  */
 export function tilesForBounds(bounds, zoom = 12, { maxTiles = 64 } = {}) {
   if (!bounds) return [];
@@ -121,11 +121,23 @@ export function tilesForBounds(bounds, zoom = 12, { maxTiles = 64 } = {}) {
   const tiles = [];
   for (let y = nw.y; y <= se.y; y++) {
     for (let x = nw.x; x <= se.x; x++) {
-      if (tiles.length >= maxTiles) return tiles;
       tiles.push({ z: zoom, x, y });
     }
   }
-  return tiles;
+  const centerLat = (south + north) / 2;
+  const centerLon = (west + east) / 2;
+  tiles.sort((a, b) => {
+    const aBox = tileToBBox(a.z, a.x, a.y);
+    const bBox = tileToBBox(b.z, b.x, b.y);
+    const aDistance =
+      Math.abs((aBox.south + aBox.north) / 2 - centerLat) +
+      Math.abs((aBox.west + aBox.east) / 2 - centerLon);
+    const bDistance =
+      Math.abs((bBox.south + bBox.north) / 2 - centerLat) +
+      Math.abs((bBox.west + bBox.east) / 2 - centerLon);
+    return aDistance - bDistance;
+  });
+  return tiles.slice(0, maxTiles);
 }
 
 // ─── Daily budget accounting ───────────────────────────────

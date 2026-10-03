@@ -6,40 +6,56 @@ import standaloneConfig, * as compatibility from '../../vite.config.js';
 import * as providers from '../../server/providers/local.js';
 
 test('explicit build inputs preserve browser-only defines, plugin order and loopback protections', () => {
-  const plugin = { name: 'fixture-provider' };
-  const config = createBrowserViteConfig({
-    plugins: [plugin],
-    googleApiKey: 'browser-fixture',
-    cesiumToken: 'ion-fixture',
-  });
-  assert.equal(config.plugins[2], plugin);
-  assert.equal(config.server.host, 'localhost');
-  assert.equal(config.server.port, 4173);
-  assert.deepEqual(config.server.allowedHosts, [
-    'localhost',
-    '127.0.0.1',
-    '.local',
-  ]);
-  assert.ok(config.server.fs.deny.includes('**/ENVIRONMENT'));
-  assert.ok(config.server.fs.deny.includes('.env.*'));
-  assert.equal(config.server.headers['X-Frame-Options'], 'DENY');
-  assert.equal(
-    config.server.headers['Content-Security-Policy'],
-    "frame-ancestors 'none'",
+  const buildEnv = ['GEV_BUILD_NUMBER', 'BUILD_NUMBER', 'GITHUB_RUN_NUMBER'];
+  const savedBuildEnv = Object.fromEntries(
+    buildEnv.map((key) => [key, process.env[key]]),
   );
-  assert.deepEqual(config.define, {
-    'import.meta.env.GOOGLE_MAPS_API_KEY': '"browser-fixture"',
-    'import.meta.env.CESIUM_ION_TOKEN': '"ion-fixture"',
-  });
-  assert.equal(
-    createBrowserViteConfig({ host: '0.0.0.0', port: '4800' }).server
-      .allowedHosts,
-    true,
-  );
-  assert.equal(
-    createBrowserViteConfig({ host: '::', port: '4800' }).server.port,
-    4800,
-  );
+  for (const key of buildEnv) delete process.env[key];
+  try {
+    const plugin = { name: 'fixture-provider' };
+    const config = createBrowserViteConfig({
+      plugins: [plugin],
+      googleApiKey: 'browser-fixture',
+      cesiumToken: 'ion-fixture',
+    });
+    assert.equal(config.plugins[2], plugin);
+    assert.equal(config.server.host, 'localhost');
+    assert.equal(config.server.port, 4173);
+    assert.deepEqual(config.server.allowedHosts, [
+      'localhost',
+      '127.0.0.1',
+      '.local',
+    ]);
+    assert.ok(config.server.fs.deny.includes('**/ENVIRONMENT'));
+    assert.ok(config.server.fs.deny.includes('.env.*'));
+    assert.equal(config.server.headers['X-Frame-Options'], 'DENY');
+    assert.equal(
+      config.server.headers['Content-Security-Policy'],
+      "frame-ancestors 'none'",
+    );
+    assert.deepEqual(config.define, {
+      'import.meta.env.GOOGLE_MAPS_API_KEY': '"browser-fixture"',
+      'import.meta.env.CESIUM_ION_TOKEN': '"ion-fixture"',
+      'import.meta.env.GEV_VERSION': '"0.1.1"',
+      'import.meta.env.GEV_BUILD_NUMBER': '"dev"',
+      'import.meta.env.GEV_SOURCE_VERSION': '"0.1.1"',
+      'import.meta.env.GEV_SOURCE_COMMIT': '"b210ab0"',
+    });
+    assert.equal(
+      createBrowserViteConfig({ host: '0.0.0.0', port: '4800' }).server
+        .allowedHosts,
+      true,
+    );
+    assert.equal(
+      createBrowserViteConfig({ host: '::', port: '4800' }).server.port,
+      4800,
+    );
+  } finally {
+    for (const [key, value] of Object.entries(savedBuildEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test('build helper does not discover environment values or construct local providers', () => {

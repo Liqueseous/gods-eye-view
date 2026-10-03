@@ -197,8 +197,12 @@ export function createLifecycle({ state, services, parts }) {
       registerPickOwner('transit', (pickedId) => state._vehicles.has(pickedId));
       if (!state._cameraChangedAttached) {
         viewer.camera.changed.addEventListener(parts.viewport.onCameraChanged);
+        viewer.camera.moveEnd?.addEventListener?.(
+          parts.viewport.onCameraMoveEnd,
+        );
         borrowCameraSensitivity(viewer);
         state._cameraChangedAttached = true;
+        state._cameraMoveEndAttached = true;
       }
       if (!state._preRenderRemove) {
         state._preRenderRemove = viewer.scene.preRender.addEventListener(
@@ -206,6 +210,11 @@ export function createLifecycle({ state, services, parts }) {
         );
       }
       parts.viewport.runProximityCheck();
+      parts.viewport.syncRouteVisibility();
+      if (state._params.routes !== false)
+        void parts.routes.update(
+          parts.viewport.getCameraBounds() || state._viewBounds,
+        );
       restoreSpriteOrder(viewer);
     },
 
@@ -224,6 +233,7 @@ export function createLifecycle({ state, services, parts }) {
       state._maintenanceTimer = null;
       clearTimeout(state._visibilityTimer);
       state._visibilityTimer = null;
+      state._visibilityJob = null;
       state._detectCache = null;
       state._detectBuiltAt = -Infinity;
       state._visible.clear();
@@ -241,8 +251,12 @@ export function createLifecycle({ state, services, parts }) {
         viewer.camera.changed.removeEventListener(
           parts.viewport.onCameraChanged,
         );
+        viewer.camera.moveEnd?.removeEventListener?.(
+          parts.viewport.onCameraMoveEnd,
+        );
         returnCameraSensitivity(viewer);
         state._cameraChangedAttached = false;
+        state._cameraMoveEndAttached = false;
       }
       if (state._preRenderRemove) {
         state._preRenderRemove();

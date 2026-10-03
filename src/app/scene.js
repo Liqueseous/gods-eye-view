@@ -76,6 +76,22 @@ export async function createApplicationScene({
   signal.throwIfAborted();
   if (tileset) {
     viewer.scene.primitives.add(tileset);
+    const onGoogle3dQualityChanged = (event) => {
+      const error = Number(event?.detail?.error);
+      if (!Number.isFinite(error)) return;
+      tileset.maximumScreenSpaceError = error;
+      viewer.scene.requestRender();
+    };
+    window.addEventListener(
+      'gev-google-3d-quality-changed',
+      onGoogle3dQualityChanged,
+    );
+    defer(() =>
+      window.removeEventListener(
+        'gev-google-3d-quality-changed',
+        onGoogle3dQualityChanged,
+      ),
+    );
     // NOTE: Cesium World Terrain intentionally disabled — conflicts with Google 3D Tiles at high zoom.
     // Google Photorealistic 3D Tiles provide their own terrain/elevation.
     viewer.scene.globe.show = false;

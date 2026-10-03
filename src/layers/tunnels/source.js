@@ -3,6 +3,16 @@ import { simplifyLine } from '../../data/lineGeometry.js';
 
 const MAX_QUERY_SPAN_DEG = 5;
 const MAX_QUERY_TIMEOUT_SEC = 20;
+const ROAD_TUNNEL_TYPES = new Set([
+  'motorway',
+  'trunk',
+  'primary',
+  'secondary',
+  'tertiary',
+  'unclassified',
+  'residential',
+  'living_street',
+]);
 const RAILWAY_TUNNEL_TYPES = new Set([
   'rail',
   'light_rail',
@@ -38,7 +48,7 @@ export function normalizeTunnelWays(payload) {
     const highway = cleanTag(tags.highway);
     const kind = RAILWAY_TUNNEL_TYPES.has(railway)
       ? 'rail'
-      : highway
+      : ROAD_TUNNEL_TYPES.has(highway)
         ? 'road'
         : null;
     const id = String(element.id ?? '');
@@ -97,7 +107,7 @@ function tunnelQuery(bounds) {
   const bbox = `(${south},${west},${north},${east})`;
   return (
     `[out:json][timeout:${MAX_QUERY_TIMEOUT_SEC}];` +
-    '(way["highway"]["tunnel"]' +
+    '(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"]["tunnel"]' +
     `${bbox};` +
     'way["railway"~"^(rail|light_rail|subway|tram|narrow_gauge|monorail|funicular)$"]["tunnel"]' +
     `${bbox};);out geom qt;`
@@ -117,6 +127,7 @@ export function createTunnelsSource({
         sourceId: 'tunnels',
         buildQuery: tunnelQuery,
         fetchImpl,
+        useLocalCache: true,
         signal,
       });
       signal?.throwIfAborted();

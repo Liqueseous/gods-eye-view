@@ -1,7 +1,7 @@
 /**
  * @module transitFeeds
  * @description Registry of openly accessible or server-keyed GTFS-Realtime
- * VehiclePositions feeds the Transit layer can show.
+ * feeds the Transit layer can show.
  *
  * Every entry here is a URL the SERVER fetches — the browser only ever asks
  * `/api/transit/vehicles/<id>` for a registered id (see SECURITY.md: proxies
@@ -12,8 +12,8 @@
  *  - Feeds that require credentials use server-only configuration and never
  *    expose the secret to clients.
  *  - An open license that permits display with attribution.
- *  - Real coordinates in VehiclePosition.position — NYCT subway, for example,
- *    publishes stop-relative positions only and is deliberately absent.
+ *  - Feeds may provide real coordinates in VehiclePosition.position or
+ *    stop-relative TripUpdates enriched from the official station dataset.
  *
  * `defaultEnabled` is separate from being registered. A feed ships switched ON
  * only when its operator's own published terms were READ and plainly cover this
@@ -142,10 +142,35 @@ function metroTransitRouteColor(routeId) {
  *   center: {lat: number, lon: number}, loadRadiusKm: number,
  *   url: string, headers?: Record<string, string>,
  *   license: string, licenseUrl: string, attribution: string,
- *   defaultMode: string, routeMode?: (routeId: string|null) => string,
+ *   defaultMode: string, realtimeType?: string,
+ *   routeMode?: (routeId: string|null) => string,
  *   routeColor?: (routeId: string|null) => string|null,
  * }>>}
  */
+function createMtaSubwayFeed(id, name, endpoint, color) {
+  return Object.freeze({
+    id,
+    name,
+    operator: 'Metropolitan Transportation Authority',
+    region: 'New York City, NY',
+    center: Object.freeze({ lat: 40.7128, lon: -74.006 }),
+    loadRadiusKm: 70,
+    url: `https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/${endpoint}`,
+    license: 'MTA Data Feeds Terms and Conditions',
+    licenseUrl: 'https://www.mta.info/developers/terms-and-conditions',
+    attribution: `MTA Subway — ${name} — Metropolitan Transportation Authority`,
+    defaultEnabled: true,
+    realtimeType: 'trip-updates',
+    terms: Object.freeze({
+      quote:
+        'The MTA authorizes downloading and hosting its data on a non-MTA server, subject to its Data Feeds Terms and Conditions.',
+      note: 'GTFS-Realtime TripUpdates are rendered at the coordinates of the next/current station; they are not GPS vehicle positions. Do not imply MTA endorsement.',
+    }),
+    defaultMode: 'subway',
+    routeColor: () => color,
+  });
+}
+
 export const TRANSIT_FEED_REGISTRY = Object.freeze([
   Object.freeze({
     id: 'mbta',
@@ -250,6 +275,29 @@ export const TRANSIT_FEED_REGISTRY = Object.freeze([
     }),
     defaultMode: 'bus',
   }),
+  createMtaSubwayFeed('mta-subway', 'NYC Subway', 'nyct%2Fgtfs', '#0039A6'),
+  createMtaSubwayFeed('mta-subway-ace', 'A C E', 'nyct%2Fgtfs-ace', '#0039A6'),
+  createMtaSubwayFeed(
+    'mta-subway-bdfm',
+    'B D F M',
+    'nyct%2Fgtfs-bdfm',
+    '#FF6319',
+  ),
+  createMtaSubwayFeed('mta-subway-g', 'G', 'nyct%2Fgtfs-g', '#6CBE45'),
+  createMtaSubwayFeed('mta-subway-jz', 'J Z', 'nyct%2Fgtfs-jz', '#996633'),
+  createMtaSubwayFeed(
+    'mta-subway-nqrw',
+    'N Q R W',
+    'nyct%2Fgtfs-nqrw',
+    '#FCCC0A',
+  ),
+  createMtaSubwayFeed('mta-subway-l', 'L', 'nyct%2Fgtfs-l', '#A7A9AC'),
+  createMtaSubwayFeed(
+    'mta-subway-si',
+    'Staten Island Railway',
+    'nyct%2Fgtfs-si',
+    '#808183',
+  ),
   Object.freeze({
     id: 'ovapi-nl',
     name: 'OVapi',

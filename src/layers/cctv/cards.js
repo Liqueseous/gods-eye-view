@@ -9,7 +9,7 @@ import {
   applyFrameResult,
 } from '../../data/cctvCards.js';
 import * as Cesium from 'cesium';
-import { horizonOccluder } from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { selectCctvLod, applyEvictionGrace } from '../../data/cctvLod.js';
 import {
   CCTV_OVERLAY_SOURCE_OPTIONS,
@@ -91,7 +91,6 @@ export function createCards({ state: layerState, services, parts, source }) {
     // after its async activation settles). It is published separately in the
     // protected lane below, and grace never applies to it.
     const activeId = layerState._activeCameraId;
-    const occluder = horizonOccluder(layerState._viewer.camera);
     const width = scene.canvas.clientWidth || scene.canvas.width || 0;
     const height = scene.canvas.clientHeight || scene.canvas.height || 0;
     const marginX = width * CARD_VIEW_MARGIN;
@@ -105,7 +104,13 @@ export function createCards({ state: layerState, services, parts, source }) {
       let inView = false;
       let sx = NaN;
       let sy = NaN;
-      if (occluder.isPointVisible(record.position)) {
+      if (
+        rotation.isPointVisible(
+          scene,
+          layerState._viewer.camera,
+          record.position,
+        )
+      ) {
         const screen = scene.cartesianToCanvasCoordinates(record.position);
         if (
           screen &&

@@ -378,7 +378,9 @@ export function transitFeedCredit(feed) {
       `<a href="${escape(feed.licenseUrl)}" target="_blank" rel="noopener">${escape(feed.license)}</a>` +
       (feed.id === 'mta-nyc'
         ? ' · MTA Bus Time positions may be delayed and are not guaranteed to be real-time.'
-        : ''),
+        : feed.realtimeType === 'trip-updates'
+          ? ' · Subway markers use the next/current station from GTFS-Realtime TripUpdates; they are not GPS positions.'
+          : ''),
   };
 }
 

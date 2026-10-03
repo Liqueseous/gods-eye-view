@@ -23,6 +23,63 @@ import { VectorTile } from '@mapbox/vector-tile';
  */
 
 const FLOW_LAYER_NAME = 'Traffic flow';
+
+const FLOW_GEOMETRY_TOLERANCE_DEG = 0.00005;
+
+function squaredDistance(point, start, end) {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  if (dx === 0 && dy === 0) {
+    const px = point[0] - start[0];
+    const py = point[1] - start[1];
+    return px * px + py * py;
+  }
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) /
+        (dx * dx + dy * dy),
+    ),
+  );
+  const px = start[0] + t * dx - point[0];
+  const py = start[1] + t * dy - point[1];
+  return px * px + py * py;
+}
+
+function simplifyRange(points, first, last, toleranceSquared, keep) {
+  let furthest = toleranceSquared;
+  let furthestIndex = -1;
+  for (let index = first + 1; index < last; index++) {
+    const distance = squaredDistance(
+      points[index],
+      points[first],
+      points[last],
+    );
+    if (distance > furthest) {
+      furthest = distance;
+      furthestIndex = index;
+    }
+  }
+  if (furthestIndex < 0) return;
+  keep[furthestIndex] = true;
+  simplifyRange(points, first, furthestIndex, toleranceSquared, keep);
+  simplifyRange(points, furthestIndex, last, toleranceSquared, keep);
+}
+
+export function simplifyFlowLine(
+  points,
+  tolerance = FLOW_GEOMETRY_TOLERANCE_DEG,
+) {
+  if (!Array.isArray(points) || points.length < 3 || tolerance <= 0)
+    return points;
+  const keep = new Array(points.length).fill(false);
+  keep[0] = true;
+  keep[points.length - 1] = true;
+  simplifyRange(points, 0, points.length - 1, tolerance * tolerance, keep);
+  return points.filter((_point, index) => keep[index]);
+}
+
 export function decodeFlowTile(data, z, x, y) {
   let layer;
   try {
@@ -63,7 +120,12 @@ export function decodeFlowTile(data, z, x, y) {
           : [];
     for (const coords of lines) {
       if (!Array.isArray(coords) || coords.length < 2) continue;
-      segments.push({ coords, trafficLevel, roadType, closure });
+      segments.push({
+        coords: simplifyFlowLine(coords),
+        trafficLevel,
+        roadType,
+        closure,
+      });
     }
   }
   return segments;

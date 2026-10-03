@@ -207,7 +207,7 @@ export function createModel({ state: layerState, services, parts, source }) {
         lat: safeNumber(camera.lat, 0),
         lon: safeNumber(camera.lon, 0),
         headingDeg: normalizeHeading(safeNumber(camera.headingDeg, 0)),
-        pitchDeg: clamp(safeNumber(camera.pitchDeg, -17), -70, 10),
+        pitchDeg: clamp(safeNumber(camera.pitchDeg, -17), -89, 89),
         fovDeg: clamp(safeNumber(camera.fovDeg, 74), 20, 130),
         rangeM: clamp(safeNumber(camera.rangeM, 700), 120, 5000),
         mountHeightM: clamp(safeNumber(camera.mountHeightM, 24), 2, 240),
@@ -230,7 +230,7 @@ export function createModel({ state: layerState, services, parts, source }) {
     camera.headingDeg = normalizeHeading(
       base.headingDeg + nextCalibration.headingDeg,
     );
-    camera.pitchDeg = clamp(base.pitchDeg + nextCalibration.pitchDeg, -70, 10);
+    camera.pitchDeg = clamp(base.pitchDeg + nextCalibration.pitchDeg, -89, 89);
     camera.fovDeg = clamp(base.fovDeg + nextCalibration.fovDeg, 20, 130);
     camera.rangeM = clamp(base.rangeM * nextCalibration.rangeScale, 120, 5000);
     camera.mountHeightM = clamp(

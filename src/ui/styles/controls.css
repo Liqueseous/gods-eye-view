@@ -1080,6 +1080,73 @@ body.command-mode #hud {
   letter-spacing: 1.35px;
 }
 
+.map-quality-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+  padding: 4px 6px 4px 8px;
+  color: rgba(190, 221, 230, 0.62);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(123, 189, 211, 0.14);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.map-quality-control:hover,
+.map-quality-control:focus-within {
+  color: var(--text-primary);
+  border-color: var(--glass-border-hover);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.08);
+}
+
+#google-3d-quality {
+  min-width: 112px;
+  height: 24px;
+  padding: 2px 22px 2px 8px;
+  color: var(--text-primary);
+  background-color: rgba(7, 24, 34, 0.82);
+  border: 1px solid rgba(123, 189, 211, 0.22);
+  border-radius: 5px;
+  outline: none;
+  color-scheme: dark;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+#google-3d-quality:hover,
+#google-3d-quality:focus-visible {
+  border-color: var(--accent);
+  background-color: rgba(8, 31, 42, 0.96);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.16);
+}
+
+#google-3d-quality:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 80%, transparent);
+  outline-offset: 2px;
+}
+
+#google-3d-quality option {
+  color: var(--text-primary);
+  background: #081f2a;
+}
+
 .map-stack-chip-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

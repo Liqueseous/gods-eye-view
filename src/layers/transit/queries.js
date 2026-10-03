@@ -12,6 +12,17 @@ import {
 } from '../../data/transitFeeds.js';
 import { transitModeTier } from '../../data/transitPresetStyle.js';
 
+function vehicleAtStationOverlay(entry, stations) {
+  const lat = Number(entry?.record?.lat);
+  const lon = Number(entry?.record?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return (stations || []).some(
+    (station) =>
+      Math.abs(lat - station.lat) <= 0.0015 &&
+      Math.abs(lon - station.lon) <= 0.002,
+  );
+}
+
 /**
  * The layer row's answer to "what is on screen and is it honest?".
  * @param {object} context
@@ -151,7 +162,10 @@ export function createQueries({ state, parts }) {
         // canvas sits above the post-FX chain, where the sprites' own colour
         // is lost under NVG and FLIR. Keyless too — the feeds are keyless.
         tier: transitModeTier(entry.mode),
-        skipLabel: entry.key === state._selectedKey,
+        skipLabel:
+          entry.key === state._selectedKey ||
+          vehicleAtStationOverlay(entry, state._stationPositions),
+        skipBracket: vehicleAtStationOverlay(entry, state._stationPositions),
         _entry: entry,
       };
       entry.detectContact = contact;
@@ -229,6 +243,7 @@ export function createQueries({ state, parts }) {
         source: 'GTFS-RT',
         coverage,
         feeds: active.map((feed) => feed.id),
+        floorReread: state._floorRereadDiagnostics,
       };
     },
   };

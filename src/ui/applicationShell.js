@@ -35,6 +35,7 @@ import { aircraftTrackingTarget } from '../cockpitTracking.js';
 import { ShellFeedback } from './shellFeedback.js';
 
 import { runCctvLayerEnableTransition } from '../cctvFocusPolicy.js';
+import { APP_BUILD_LABEL, APP_SOURCE_LABEL } from '../buildInfo.js';
 
 /**
  * Central UI orchestrator for the God's Eye View application.
@@ -91,6 +92,14 @@ export class StyleManager extends ShellFacade {
       syncShareState: () => this._syncShareState(),
     });
     Object.assign(this, readShellElements());
+    if (this._appBuildInfo) {
+      this._appBuildInfo.textContent = APP_BUILD_LABEL;
+      this._appBuildInfo.title = `God's Eye View ${APP_BUILD_LABEL}`;
+    }
+    if (this._appSourceInfo) {
+      this._appSourceInfo.textContent = APP_SOURCE_LABEL;
+      this._appSourceInfo.title = `Parent source baseline ${APP_SOURCE_LABEL}`;
+    }
     this._panelChrome = new PanelChrome({
       elements: {
         _contextRadioDetailsBtn: this._contextRadioDetailsBtn,
@@ -709,6 +718,7 @@ export class StyleManager extends ShellFacade {
     this._mapSourceControls = createMapSourceControls({
       container: this._mapStackChips,
       statusElement: this._mapStackStatus,
+      qualityElement: this._google3dQuality,
       controller: this.mapStackController,
       subscribe: (onChange) => {
         window.addEventListener('gev:map-stack-changed', onChange);
