@@ -1,5 +1,11 @@
 # God's Eye View Current State
 
+## Transit station placards — October 3, 2026
+
+Transit routes use viewport-loaded OpenStreetMap rail geometry with station placards. Expanded list placards render as a deterministic foreground layer; compact station placards, route icons, and markers render behind them. Placards are opaque, content is kept inside the frame, and compact station content is lifted above its own background. Station panels can be collapsed by selecting the station.
+
+Route badges follow agency conventions: subway routes use circles, express subway services use diamonds, and PATH identifiers normalize internal variants such as `HOB3` and `JSQ3` to `HOB` and `JSQ`. Endpoint text is removed from line names before display.
+
 ## Cyber HUD — September 23, 2026
 
 Display > HUD > Layout includes Cyber, also available through the HUD voice
