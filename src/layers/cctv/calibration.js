@@ -59,7 +59,10 @@ export function createCalibration({
         0.1,
       ),
       pitchDeg: parts.model.quantize(
-        parts.model.clamp(parts.model.safeNumber(raw.pitchDeg, 0), -45, 45),
+        // Keep pitch editing continuous through the horizon. The geometry
+        // accepts the full visible range; snapping at ±45° made a shallow
+        // camera jump back toward its starting/downward pose.
+        parts.model.clamp(parts.model.safeNumber(raw.pitchDeg, 0), -89, 89),
         0.1,
       ),
       fovDeg: parts.model.quantize(
