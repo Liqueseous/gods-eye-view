@@ -173,3 +173,28 @@ test('both Google 3D routes keep tiles drawing while draped imagery loads', asyn
   assert.equal(calls[1][1].skipLevelOfDetail, true);
   assert.equal(calls[1][1].baseScreenSpaceError, 1024);
 });
+
+test('Google 3D quality storage fails open when the browser blocks localStorage', async () => {
+  const { getGoogle3dQuality, setGoogle3dQuality } =
+    await import('./google3d.js');
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'localStorage',
+  );
+  try {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Storage is unavailable', 'SecurityError');
+      },
+    });
+    assert.equal(getGoogle3dQuality(), 'balanced');
+    assert.equal(setGoogle3dQuality('high'), 'high');
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(globalThis, 'localStorage', originalDescriptor);
+    } else {
+      delete globalThis.localStorage;
+    }
+  }
+});
