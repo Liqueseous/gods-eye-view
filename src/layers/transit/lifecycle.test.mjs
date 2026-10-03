@@ -562,7 +562,11 @@ test('selecting a mapped route opens route details and replaces vehicle selectio
   await new Promise((resolve) => setImmediate(resolve));
   app.layer._loadTransitFleetForTest(1, BOSTON, 70, ['Red']);
   const parts = app.layer._transitPartsForTest();
-  assert.equal(app.entities.length, 2, 'route has an outline and color stroke');
+  assert.equal(
+    app.entities.length,
+    5,
+    'route has outline, color stroke, station placard, marker, and line icon',
+  );
   app.viewer.scene.pick = () => ({ id: app.entities[0] });
   app
     .state()

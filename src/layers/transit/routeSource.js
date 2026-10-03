@@ -423,6 +423,10 @@ export function normalizeTransitRoutes(payload, bounds) {
       parseRouteColor(tags.colour) ||
       parseRouteColor(tags.color) ||
       parseRouteColor(tags['route:colour']);
+    const service =
+      cleanText(tags.service) ||
+      cleanText(tags['route:service']) ||
+      cleanText(tags['subway:service']);
     const color = routeColor(tags, type, name, ref);
     const memberWays = new Set();
     const memberStops = [];
@@ -453,6 +457,7 @@ export function normalizeTransitRoutes(payload, bounds) {
       color,
       network: cleanText(tags.network),
       operator: cleanText(tags.operator),
+      service,
       from: cleanText(tags.from),
       to: cleanText(tags.to),
       description: cleanText(tags.description),
@@ -473,6 +478,7 @@ export function normalizeTransitRoutes(payload, bounds) {
       color,
       network,
       operator,
+      service,
       from,
       to,
       description,
@@ -525,6 +531,7 @@ export function normalizeTransitRoutes(payload, bounds) {
           color,
         network,
         operator,
+        service,
         from,
         to,
         description,

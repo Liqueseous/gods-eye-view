@@ -5,6 +5,8 @@ import {
   createTransitRouteLines,
   groupTransitStations,
   smoothTransitRouteLine,
+  transitRouteBadgeShape,
+  transitRouteBadgeText,
 } from './routeLines.js';
 
 test('sharp route vertices are replaced by a bounded smooth curve', () => {
@@ -54,6 +56,10 @@ test('matching station names merge nearby stops and retain both route identities
     groups[0].badges.map(({ text }) => text),
     ['A', 'B'],
   );
+  assert.deepEqual(
+    groups[0].badges.map(({ shape }) => shape),
+    ['circle', 'circle'],
+  );
   const colorOnly = groupTransitStations([
     {
       routeId: 'orange-line',
@@ -72,6 +78,22 @@ test('matching station names merge nearby stops and retain both route identities
     colorOnly[0].badges.map(({ text }) => text),
     ['', 'D'],
   );
+  const express = groupTransitStations([
+    {
+      routeId: '6x',
+      ref: '6X',
+      name: 'Lexington Avenue Express',
+      type: 'subway',
+      color: '#00933C',
+      stops: [{ id: '6x-1', name: '33 St', lat: 40.746, lon: -73.98 }],
+    },
+  ]);
+  assert.deepEqual(express[0].badges[0], {
+    key: '6:#00933C:diamond',
+    text: '6',
+    color: '#00933C',
+    shape: 'diamond',
+  });
   const namedLines = groupTransitStations([
     {
       routeId: 'lowell',
@@ -101,7 +123,67 @@ test('matching station names merge nearby stops and retain both route identities
     namedLines[0].lineEntries.map(({ label }) => label),
     ['Lowell Line', 'Haverhill Line'],
   );
+  assert.deepEqual(
+    namedLines[0].lineEntries.map(({ text, shape }) => ({ text, shape })),
+    [
+      { text: '', shape: 'rail' },
+      { text: '', shape: 'rail' },
+    ],
+  );
   assert.deepEqual(namedLines[0].badges, []);
+  const cleanedLine = groupTransitStations([
+    {
+      routeId: 'njcl',
+      name: 'NJ Transit North Jersey Coast Line: New York <=> Bay Head Line',
+      type: 'train',
+      color: '#00AEEF',
+      stops: [{ id: 'njcl-1', name: 'Penn Station', lat: 40.75, lon: -73.99 }],
+    },
+  ]);
+  assert.equal(
+    cleanedLine[0].lineEntries[0].label,
+    'NJ Transit North Jersey Coast Line',
+  );
+  assert.equal(
+    transitRouteBadgeShape({
+      type: 'subway',
+      ref: '6X',
+      name: 'Lexington Express',
+    }),
+    'diamond',
+  );
+  assert.equal(transitRouteBadgeText({ type: 'subway', ref: '6X' }), '6');
+  assert.equal(
+    transitRouteBadgeText({ type: 'subway', ref: '6 Express' }),
+    '6',
+  );
+  assert.equal(
+    transitRouteBadgeShape({
+      type: 'subway',
+      ref: 'HOB',
+      operator: 'Port Authority Trans-Hudson',
+    }),
+    'circle',
+  );
+  assert.equal(transitRouteBadgeText({ type: 'train', ref: 'HOB3' }), 'HOB');
+  const pathVariant = groupTransitStations([
+    {
+      routeId: 'path-hob',
+      ref: 'HOB3 via',
+      type: 'subway',
+      operator: 'Port Authority Trans-Hudson',
+      color: '#009BDE',
+      stops: [{ id: 'path-hob-1', name: '33 St', lat: 40.75, lon: -73.99 }],
+    },
+  ]);
+  assert.deepEqual(
+    pathVariant[0].badges.map(({ text }) => text),
+    ['HOB'],
+  );
+  assert.equal(
+    transitRouteBadgeShape({ type: 'train', name: 'MTA Subway 7 Express' }),
+    'diamond',
+  );
 });
 
 test('same station name stays separate when locations are far apart', () => {
@@ -222,22 +304,34 @@ test('route lines render with a contrast outline and route color, then release o
   assert.ok(sourceCalls[0].east - sourceCalls[0].west <= 0.22);
   assert.equal(
     sceneEntities.length,
-    4,
-    'outline, colored route, station, and line badge are drawn',
+    5,
+    'outline, colored route, station, placard, and line badge are drawn',
   );
   assert.equal(sceneEntities.filter((entity) => entity.point).length, 1);
-  assert.equal(sceneEntities.filter((entity) => entity.billboard).length, 1);
+  assert.equal(sceneEntities.filter((entity) => entity.billboard).length, 2);
   const station = sceneEntities.find((entity) => entity.point);
+  assert.equal(station.label.disableDepthTestDistance, 0);
+  assert.equal(station.label.pixelOffset.y, -42);
   assert.equal(
-    station.label.disableDepthTestDistance,
-    Number.POSITIVE_INFINITY,
+    station.label.eyeOffset.z,
+    -100,
+    'station depth is fixed; collection order handles overlay priority',
   );
-  assert.equal(station.label.pixelOffset.y, -30);
-  assert.equal(station.label.eyeOffset.z, -100);
-  const badge = sceneEntities.find((entity) => entity.billboard).billboard;
-  assert.equal(badge.pixelOffset.y, -14);
-  assert.equal(badge.disableDepthTestDistance, Number.POSITIVE_INFINITY);
+  const badge = sceneEntities.find(
+    (entity) => entity.billboard?.pixelOffset?.y === -30,
+  ).billboard;
+  assert.equal(badge.pixelOffset.y, -30);
+  assert.equal(badge.disableDepthTestDistance, 0);
   assert.equal(badge.eyeOffset.z, -100);
+  const stationId = 'transit-station:name:central:0';
+  assert.equal(layer.selectFromPick(stationId), true);
+  assert.equal(station.label.pixelOffset.y, -16);
+  assert.equal(station.label.showBackground, true);
+  assert.equal(badge.show, false);
+  assert.equal(layer.selectFromPick(stationId), true);
+  assert.equal(station.label.pixelOffset.y, -42);
+  assert.equal(station.label.showBackground, false);
+  assert.equal(badge.show, true);
   assert.equal(
     layer.diagnostics().count,
     1,

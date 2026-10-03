@@ -104,19 +104,37 @@ function compactRouteRef(ref) {
   );
 }
 
+function cleanStationLineName(value) {
+  return String(value || '')
+    .replace(/\s+from\s+.+$/i, '')
+    .replace(/\s+to\s+.+$/i, '')
+    .replace(/\s*:\s*.+\s*(?:<=>|=>|->|↔|⇄)\s*.+$/i, '')
+    .replace(/\s+[–—]\s+.+$/, '')
+    .replace(/\s*\([^)]*\b(?:from|to)\b[^)]*\)$/i, '')
+    .trim();
+}
+
 function namedStationLine(route) {
   const name = String(route?.name || '').trim();
   const ref = String(route?.ref || '').trim();
   if (ROUTE_COLOR_LINE_NAME.test(name)) return null;
   if (ref && compactRouteRef(ref)) return null;
-  if (/\b(line|railway|rail)\b/i.test(name)) return name;
+  if (/\b(line|railway|rail)\b/i.test(name)) return cleanStationLineName(name);
   const refName = ref
     .replace(/^cr[-_:]?/i, '')
     .replace(/[-_]+/g, ' ')
     .trim();
   if (route?.type === 'train' && (name || refName))
-    return `${name || refName} Line`;
+    return cleanStationLineName(`${name || refName} Line`);
   return null;
+}
+
+function normalizeTransitBadgeToken(value) {
+  const token = String(value || '')
+    .trim()
+    .toUpperCase();
+  if (!token || token === 'VIA') return '';
+  return token.replace(/^(HOB|JSQ|WTC)\d+$/, '$1');
 }
 
 function stationBadgeText(route) {
@@ -139,10 +157,48 @@ function stationBadgeText(route) {
     })
     .filter((value) => value !== '')
     .slice(0, 4);
-  return values.length || !route?.color ? values : [''];
+  const express = /express|\b(?:6|7)\s*X\b/i.test(
+    `${raw} ${route?.service || ''}`,
+  );
+  const normalized = values
+    .filter((value) => !/^expr/i.test(value))
+    .map((value) =>
+      express && /^(?:6|7)X$/i.test(value) ? value.slice(0, -1) : value,
+    )
+    .map(normalizeTransitBadgeToken)
+    .filter(Boolean);
+  return normalized.length || !route?.color ? normalized : [''];
 }
 
-function stationBadgeImage(text, color) {
+export function transitRouteBadgeShape(route) {
+  const type = String(route?.type || '').toLowerCase();
+  const identity = `${route?.ref || ''} ${route?.name || ''} ${route?.service || ''} ${route?.network || ''} ${route?.operator || ''}`;
+  const pathRail = /\bpath\b|port authority trans-hudson/i.test(identity);
+  const mtaSubway = /\b(?:mta|nyc|ind|irt|bmt)\b|subway/i.test(identity);
+  if (pathRail) return 'circle';
+  if (type === 'subway' || mtaSubway)
+    return /express|\b(?:6|7)\s*X\b/i.test(identity) ? 'diamond' : 'circle';
+  if (type === 'train') return 'rail';
+  if (type === 'light_rail' || type === 'monorail') return 'square';
+  if (type === 'tram' || type === 'funicular') return 'capsule';
+  return 'circle';
+}
+
+export function transitRouteBadgeText(route) {
+  const ref = String(route?.ref || '').trim();
+  const identity = `${ref} ${route?.name || ''} ${route?.service || ''}`;
+  const expressCode = identity.match(/\b([0-9]{1,2}|[A-Z])\s*(?:X|express)\b/i);
+  if (expressCode) return expressCode[1].toUpperCase();
+  const firstRef = ref.split(/[\s,;/]+/)[0];
+  if (/^(?:HOB|JSQ|WTC)\d+$/i.test(firstRef))
+    return normalizeTransitBadgeToken(firstRef);
+  if (ref && compactRouteRef(ref)) return normalizeTransitBadgeToken(firstRef);
+  const name = String(route?.name || '').trim();
+  const namedRef = name.match(/^(?:the\s+)?([a-z0-9]{1,3})(?:\s|$)/i);
+  return namedRef ? normalizeTransitBadgeToken(namedRef[1]) : '';
+}
+
+function stationBadgeImage(text, color, shape = 'circle') {
   const safeText = String(text).replace(/[&<>"']/g, (character) => {
     const entities = {
       '&': '&amp;',
@@ -154,9 +210,116 @@ function stationBadgeImage(text, color) {
     return entities[character];
   });
   const safeColor = /^#[\da-f]{6}$/i.test(color || '') ? color : '#00D4FF';
+  const mark =
+    shape === 'diamond'
+      ? `<path d="M14 1 27 14 14 27 1 14Z" fill="${safeColor}" stroke="#fff" stroke-width="2"/>`
+      : shape === 'rail'
+        ? `<rect x="1" y="5" width="26" height="18" rx="6" fill="${safeColor}" stroke="#fff" stroke-width="2"/>`
+        : shape === 'square'
+          ? `<rect x="3" y="3" width="22" height="22" rx="4" fill="${safeColor}" stroke="#fff" stroke-width="2"/>`
+          : shape === 'capsule'
+            ? `<rect x="1" y="6" width="26" height="16" rx="8" fill="${safeColor}" stroke="#fff" stroke-width="2"/>`
+            : `<circle cx="14" cy="14" r="12" fill="${safeColor}" stroke="#fff" stroke-width="2"/>`;
+  const fontSize = safeText.length > 2 ? 8 : safeText.length > 1 ? 10 : 13;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="${safeColor}" stroke="#fff" stroke-width="2"/><text x="14" y="14" dy=".35em" fill="#fff" font-family="Arial,sans-serif" font-size="13" font-weight="700" text-anchor="middle">${safeText}</text></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">${mark}<text x="14" y="14" dy=".35em" fill="#fff" font-family="Arial,sans-serif" font-size="${fontSize}" font-weight="700" text-anchor="middle">${safeText}</text></svg>`,
   )}`;
+}
+
+function stationPlacardImage(width, height) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="4" fill="#05090d" fill-opacity="1" stroke="#b8eaff" stroke-opacity=".58" stroke-width="1"/></svg>`,
+  )}`;
+}
+
+function stationListEntries(station) {
+  return station.lineEntries;
+}
+
+function stationIsListStyle(station) {
+  return stationListEntries(station).length > 0;
+}
+
+function stationPanelImage(
+  station,
+  width,
+  height,
+  entries = stationListEntries(station),
+  compact = false,
+) {
+  const escape = (value) =>
+    String(value || '').replace(
+      /[&<>"']/g,
+      (character) =>
+        ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&apos;',
+        })[character],
+    );
+  const marks = {
+    diamond: (x, y, color) =>
+      `<path d="M${x} ${y - 8} ${x + 8} ${y} ${x} ${y + 8} ${x - 8} ${y}Z" fill="${color}" stroke="#fff" stroke-width="1"/>`,
+    circle: (x, y, color) =>
+      `<circle cx="${x}" cy="${y}" r="8" fill="${color}" stroke="#fff" stroke-width="1"/>`,
+    rail: (x, y, color) =>
+      `<rect x="${x - 11}" y="${y - 7}" width="22" height="14" rx="3" fill="${color}" stroke="#fff" stroke-width="1"/>`,
+    square: (x, y, color) =>
+      `<rect x="${x - 7}" y="${y - 7}" width="14" height="14" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>`,
+    capsule: (x, y, color) =>
+      `<rect x="${x - 9}" y="${y - 5}" width="18" height="10" rx="5" fill="${color}" stroke="#fff" stroke-width="1"/>`,
+  };
+  const { lineListWidth } = stationPlacardSize(station);
+  const rowLeft = (width - lineListWidth) / 2;
+  const rows = compact
+    ? entries
+        .map((entry, index) => {
+          const x = width / 2 + (index - (entries.length - 1) / 2) * 24;
+          const y = 32;
+          const mark = (marks[entry.shape] || marks.circle)(
+            x,
+            y,
+            entry.color || '#00D4FF',
+          );
+          const text = String(entry.text || '');
+          const fontSize = text.length > 2 ? 7 : text.length > 1 ? 8 : 10;
+          return `${mark}<text x="${x}" y="${y + 3}" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="${fontSize}" font-weight="700">${escape(text)}</text>`;
+        })
+        .join('')
+    : entries
+        .map((entry, index) => {
+          const y = 30 + index * 18;
+          const x = rowLeft + 10;
+          const mark = (marks[entry.shape] || marks.circle)(
+            x,
+            y,
+            entry.color || '#00D4FF',
+          );
+          return `${mark}<text x="${rowLeft + 30}" y="${y + 4}" fill="#fff" font-family="Arial,sans-serif" font-size="10">${escape(entry.label)}</text>`;
+        })
+        .join('');
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="4" fill="#05090d" fill-opacity="1" stroke="#b8eaff" stroke-opacity=".7"/><text x="${width / 2}" y="16" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="11">${escape(station.name)}</text>${rows}</svg>`,
+  )}`;
+}
+
+function stationPlacardSize(station) {
+  const entries = stationListEntries(station);
+  const lineListWidth = Math.max(
+    64,
+    ...entries.map((entry) => entry.label.length * 5.3 + 34),
+  );
+  const badgeRowWidth = station.badges.length * 24 + 8;
+  const width = Math.max(
+    100,
+    (station.name || '').length * 6.2 + 24,
+    lineListWidth + 12,
+    badgeRowWidth,
+  );
+  const height = Math.max(48, 42 + entries.length * 18);
+  return { lineListWidth, width, height };
 }
 
 /** Merge route stops that describe one physical station. */
@@ -222,11 +385,21 @@ export function groupTransitStations(routes) {
           (entry) => entry.label === lineName && entry.color === route.color,
         )
       )
-        group.lineEntries.push({ label: lineName, color: route.color });
+        group.lineEntries.push({
+          label: lineName,
+          color: route.color,
+          text: transitRouteBadgeText(route),
+          shape: transitRouteBadgeShape(route),
+        });
       for (const text of stationBadgeText(route)) {
-        const badgeKey = `${text}:${route.color || ''}`;
+        const badgeKey = `${text}:${route.color || ''}:${transitRouteBadgeShape(route)}`;
         if (!group.badges.some((badge) => badge.key === badgeKey))
-          group.badges.push({ key: badgeKey, text, color: route.color });
+          group.badges.push({
+            key: badgeKey,
+            text,
+            color: route.color,
+            shape: transitRouteBadgeShape(route),
+          });
       }
       if (route.color && !group.colors.includes(route.color))
         group.colors.push(route.color);
@@ -382,6 +555,7 @@ export function createTransitRouteLines({
   let cameraChangedRemove = null;
   let densityChangedRemove = null;
   let stationDensityPct = 50;
+  const collapsedStations = new Set();
   const routeHeightCache = new Map();
   const routeSectionCache = new Map();
   let selectedRouteId = null;
@@ -418,20 +592,31 @@ export function createTransitRouteLines({
     const showNames = visible && stationDensityPct >= 25;
     const showList = visible && altitudeVisible && stationDensityPct >= 50;
     for (const item of stationListItems) {
+      const expanded = !collapsedStations.has(item.stationId);
+      const showExpandedList = showList && expanded;
       if (item.isStationName) {
         const stationNameLabel = item.stationNameLabel || item.entity?.label;
-        if (stationNameLabel) stationNameLabel.show = showNames;
+        if (stationNameLabel) {
+          stationNameLabel.show = showNames && !expanded;
+          stationNameLabel.showBackground = !showExpandedList;
+        }
         if (stationNameLabel && item.expandedOffset !== undefined)
           stationNameLabel.pixelOffset = new Cesium.Cartesian2(
             0,
-            showList ? item.expandedOffset : -16,
+            showExpandedList ? item.expandedOffset : -16,
           );
         continue;
       }
-      if (item.billboard) item.billboard.show = showList;
-      if (item.label) item.label.show = showList;
-      if (item.entity?.billboard) item.entity.billboard.show = showList;
-      if (item.entity?.label) item.entity.label.show = showList;
+      if (item.isStationMarker) {
+        if (item.point) item.point.show = showNames;
+        if (item.entity?.point) item.entity.point.show = showNames;
+        continue;
+      }
+      const show = showExpandedList;
+      if (item.billboard) item.billboard.show = show;
+      if (item.label) item.label.show = show;
+      if (item.entity?.billboard) item.entity.billboard.show = show;
+      if (item.entity?.label) item.entity.label.show = show;
     }
   }
 
@@ -633,27 +818,42 @@ export function createTransitRouteLines({
     isCurrent,
   ) {
     const overlay =
+      viewer?.scene?.context &&
       viewer?.scene?.primitives?.add &&
       typeof Cesium.BillboardCollection === 'function' &&
-      typeof Cesium.LabelCollection === 'function'
+      typeof Cesium.LabelCollection === 'function' &&
+      typeof Cesium.PointPrimitiveCollection === 'function'
         ? {
-            billboards: new Cesium.BillboardCollection(),
-            labels: new Cesium.LabelCollection(),
+            // Cesium composites these collections in insertion order. Keep
+            // list content in the foreground collections and compact content
+            // behind it; the compact placard is last so its own icons render
+            // above its opaque background.
+            compactPlacards: new Cesium.BillboardCollection(),
+            compactBillboards: new Cesium.BillboardCollection(),
+            compactLabels: new Cesium.LabelCollection(),
+            compactPoints: new Cesium.PointPrimitiveCollection(),
+            listBillboards: new Cesium.BillboardCollection(),
+            listLabels: new Cesium.LabelCollection(),
+            listPoints: new Cesium.PointPrimitiveCollection(),
           }
         : null;
-    if (overlay) {
-      viewer.scene.primitives.add(overlay.billboards);
-      viewer.scene.primitives.add(overlay.labels);
-      overlay.billboards.show = false;
-      overlay.labels.show = false;
-      nextStationCollections.push(overlay.billboards, overlay.labels);
-    }
-    for (const station of groupTransitStations(items)) {
+    const stations = groupTransitStations(items).sort((a, b) => {
+      const aIsList = stationIsListStyle(a);
+      const bIsList = stationIsListStyle(b);
+      if (aIsList !== bIsList) return aIsList ? 1 : -1;
+      const first = stationPlacardSize(a);
+      const second = stationPlacardSize(b);
+      return first.width * first.height - second.width * second.height;
+    });
+    for (const station of stations) {
       if (!isCurrent())
         throw Object.assign(new Error('Route build superseded'), {
           name: 'AbortError',
         });
       const id = `transit-station:${station.id}`;
+      const listEntries = stationListEntries(station);
+      const isList = listEntries.length > 0;
+      const stationDepthTestDistance = isList ? Number.POSITIVE_INFINITY : 0;
       // A station is one selectable object even when several routes share it.
       // The first route keeps the existing route-selection contract; the label
       // and properties expose the complete group to the UI and diagnostics.
@@ -684,10 +884,42 @@ export function createTransitRouteLines({
         station.lon,
         station.lat,
       );
-      const stationLabelOffset = station.lineEntries.length
-        ? -44 - station.lineEntries.length * 18
-        : -30;
-      const compactBadgeY = station.lineEntries.length ? -20 : -14;
+      const stationOverlay = overlay
+        ? {
+            billboards: isList
+              ? overlay.listBillboards
+              : overlay.compactBillboards,
+            placards: isList ? overlay.listBillboards : overlay.compactPlacards,
+            labels: isList ? overlay.listLabels : overlay.compactLabels,
+            points: isList ? overlay.listPoints : overlay.compactPoints,
+          }
+        : null;
+      if (stationOverlay && nextStationCollections.length === 0) {
+        const collections = [
+          overlay.listPoints,
+          overlay.listLabels,
+          overlay.listBillboards,
+          overlay.compactPoints,
+          overlay.compactLabels,
+          overlay.compactBillboards,
+          overlay.compactPlacards,
+        ];
+        for (const collection of collections) {
+          viewer.scene.primitives.add(collection);
+          collection.show = false;
+          nextStationCollections.push(collection);
+        }
+      }
+      const stationLabelOffset = isList ? -44 - listEntries.length * 18 : -30;
+      const compactLift = isList ? 0 : -12;
+      const compactBadgeY = isList ? -20 : -30;
+      const {
+        lineListWidth,
+        width: placardWidth,
+        height: placardHeight,
+      } = stationPlacardSize(station);
+      // Collection order, not placard area or per-station depth offsets,
+      // determines which station content is in front.
       const stationLabel = station.name
         ? {
             id,
@@ -695,18 +927,78 @@ export function createTransitRouteLines({
             text: station.name,
             font: '11px sans-serif',
             fillColor: Cesium.Color.WHITE,
-            showBackground: true,
+            showBackground: false,
             backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
             // Keep the station name above the line rows and marker.
-            pixelOffset: new Cesium.Cartesian2(0, stationLabelOffset),
+            pixelOffset: new Cesium.Cartesian2(
+              0,
+              stationLabelOffset + compactLift,
+            ),
             eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            disableDepthTestDistance: stationDepthTestDistance,
             distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
               0,
               STATION_LABEL_MAX_DISTANCE_M,
             ),
           }
         : null;
+      const placard = {
+        id: `${id}:placard`,
+        position: stationPosition,
+        image: stationPanelImage(
+          station,
+          placardWidth,
+          placardHeight,
+          isList ? listEntries : station.badges,
+          !isList,
+        ),
+        width: placardWidth,
+        height: placardHeight,
+        pixelOffset: new Cesium.Cartesian2(
+          0,
+          stationLabelOffset / 2 - 10 + compactLift,
+        ),
+        eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
+        disableDepthTestDistance: stationDepthTestDistance,
+        show: false,
+      };
+      if (station.name || isList) {
+        if (overlay) {
+          const placardInstance = stationOverlay.placards.add(placard);
+          nextStationListItems.push({
+            stationId: id,
+            isPlacard: true,
+            billboard: placardInstance,
+          });
+        } else {
+          const placardEntity = viewer.entities.add({
+            id: placard.id,
+            position: stationPosition,
+            billboard: placard,
+          });
+          nextEntities.push(placardEntity);
+          nextStationListItems.push({
+            stationId: id,
+            isPlacard: true,
+            entity: placardEntity,
+          });
+        }
+      }
+      const marker = stationOverlay?.points.add({
+        id,
+        position: stationPosition,
+        pixelSize: Math.min(
+          16,
+          STATION_PIXEL_SIZE + Math.max(0, station.routeIds.length - 1) * 3,
+        ),
+        color: Cesium.Color.WHITE,
+        outlineColor,
+        outlineWidth: station.routeIds.length > 1 ? 3 : 2,
+        disableDepthTestDistance: stationDepthTestDistance,
+        show: false,
+      });
       const stationEntity = viewer.entities.add({
         id,
         position: stationPosition,
@@ -714,42 +1006,59 @@ export function createTransitRouteLines({
           routeIds: station.routeIds,
           routeRefs: station.routeRefs,
         },
-        point: {
-          pixelSize: Math.min(
-            16,
-            STATION_PIXEL_SIZE + Math.max(0, station.routeIds.length - 1) * 3,
-          ),
-          color: Cesium.Color.WHITE,
-          outlineColor,
-          outlineWidth: station.routeIds.length > 1 ? 3 : 2,
-          eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
+        ...(overlay
+          ? {}
+          : {
+              point: {
+                pixelSize: Math.min(
+                  16,
+                  STATION_PIXEL_SIZE +
+                    Math.max(0, station.routeIds.length - 1) * 3,
+                ),
+                color: Cesium.Color.WHITE,
+                outlineColor,
+                outlineWidth: station.routeIds.length > 1 ? 3 : 2,
+                eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
+                disableDepthTestDistance: stationDepthTestDistance,
+              },
+            }),
         label: overlay ? undefined : stationLabel,
       });
       nextEntities.push(stationEntity);
+      nextStationListItems.push({
+        stationId: id,
+        isStationMarker: true,
+        isList,
+        entity: stationEntity,
+        point: marker,
+      });
       if (overlay && stationLabel) {
-        const stationNameLabel = overlay.labels.add(stationLabel);
+        const stationNameLabel = stationOverlay.labels.add(stationLabel);
         nextStationListItems.push({
+          stationId: id,
           isStationName: true,
+          isList,
           stationNameLabel,
-          expandedOffset: stationLabelOffset,
+          expandedOffset: stationLabelOffset + compactLift,
         });
       } else if (stationLabel) {
         nextStationListItems.push({
+          stationId: id,
           isStationName: true,
+          isList,
           entity: stationEntity,
-          expandedOffset: stationLabelOffset,
+          expandedOffset: stationLabelOffset + compactLift,
         });
       }
-      const badgeCount = station.badges.length;
-      station.badges.forEach((badge, index) => {
+      const renderedBadges = overlay || isList ? [] : station.badges;
+      const badgeCount = renderedBadges.length;
+      renderedBadges.forEach((badge, index) => {
         const badgeId = `${id}:badge:${index}`;
         pickTargets.set(badgeId, station.routeIds[0]);
         const billboard = {
           id: badgeId,
           position: stationPosition,
-          image: stationBadgeImage(badge.text, badge.color),
+          image: stationBadgeImage(badge.text, badge.color, badge.shape),
           width: 24,
           height: 24,
           pixelOffset: new Cesium.Cartesian2(
@@ -757,11 +1066,16 @@ export function createTransitRouteLines({
             compactBadgeY,
           ),
           eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: stationDepthTestDistance,
         };
         if (overlay) {
-          const billboardInstance = overlay.billboards.add(billboard);
-          nextStationListItems.push({ billboard: billboardInstance });
+          const billboardInstance = stationOverlay.billboards.add(billboard);
+          nextStationListItems.push({
+            stationId: id,
+            isPanelIcon: true,
+            isList,
+            billboard: billboardInstance,
+          });
         } else {
           const entity = viewer.entities.add({
             id: badgeId,
@@ -769,22 +1083,29 @@ export function createTransitRouteLines({
             billboard,
           });
           nextEntities.push(entity);
-          nextStationListItems.push({ entity });
+          nextStationListItems.push({
+            stationId: id,
+            isPanelIcon: true,
+            isList,
+            entity,
+          });
         }
       });
-      station.lineEntries.forEach((entry, index) => {
+      const renderedLineEntries = isList ? [] : station.lineEntries;
+      renderedLineEntries.forEach((entry, index) => {
         const rowY = -44 - index * 18;
+        const rowLeft = -lineListWidth / 2;
         const badgeId = `${id}:line:${index}`;
         pickTargets.set(badgeId, station.routeIds[0]);
         const billboard = {
           id: badgeId,
           position: stationPosition,
-          image: stationBadgeImage('', entry.color),
-          width: 16,
-          height: 16,
-          pixelOffset: new Cesium.Cartesian2(-48, rowY),
+          image: stationBadgeImage(entry.text, entry.color, entry.shape),
+          width: 20,
+          height: 20,
+          pixelOffset: new Cesium.Cartesian2(rowLeft + 10, rowY),
           eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: stationDepthTestDistance,
         };
         const label = {
           id: `${badgeId}:label`,
@@ -792,17 +1113,21 @@ export function createTransitRouteLines({
           text: entry.label,
           font: '10px sans-serif',
           fillColor: Cesium.Color.WHITE,
-          showBackground: true,
+          showBackground: false,
           backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
           horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          pixelOffset: new Cesium.Cartesian2(-36, rowY),
+          verticalOrigin: Cesium.VerticalOrigin.CENTER,
+          pixelOffset: new Cesium.Cartesian2(rowLeft + 30, rowY),
           eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: stationDepthTestDistance,
         };
         if (overlay) {
-          const billboardInstance = overlay.billboards.add(billboard);
-          const labelInstance = overlay.labels.add(label);
+          const billboardInstance = stationOverlay.billboards.add(billboard);
+          const labelInstance = stationOverlay.labels.add(label);
           nextStationListItems.push({
+            stationId: id,
+            isPanelIcon: true,
+            isList,
             billboard: billboardInstance,
             label: labelInstance,
           });
@@ -814,7 +1139,7 @@ export function createTransitRouteLines({
             label,
           });
           nextEntities.push(entity);
-          nextStationListItems.push({ entity });
+          nextStationListItems.push({ stationId: id, entity });
         }
       });
     }
@@ -1208,6 +1533,24 @@ export function createTransitRouteLines({
     if (!routeId) return false;
     const route = routeForId(routeId);
     if (!route) return false;
+    const stationPick = candidateIds.find((id) =>
+      id.startsWith('transit-station:'),
+    );
+    if (stationPick) {
+      const stationId = stationListItems.find(
+        (item) =>
+          item.stationId &&
+          (stationPick === item.stationId ||
+            stationPick.startsWith(`${item.stationId}:`)),
+      )?.stationId;
+      if (stationId) {
+        if (collapsedStations.has(stationId))
+          collapsedStations.delete(stationId);
+        else collapsedStations.add(stationId);
+        syncStationListVisibility();
+        viewer?.scene?.requestRender?.();
+      }
+    }
     selectedRouteId = routeId;
     onSelectRoute(route);
     return true;
