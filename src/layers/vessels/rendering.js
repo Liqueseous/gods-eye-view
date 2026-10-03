@@ -6,9 +6,7 @@ import {
   applyVesselOverlayPolicy,
   VESSEL_CARD_FADE_DISTANCE_M,
 } from '../../data/vesselLabels.js';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import {
   VESSEL_LIFT_M,
   DEFAULT_RENDER_ROWS,
@@ -41,7 +39,10 @@ export function createRendering({
       ? presentation.getScaledRepresentation(record)
       : { scale: 0, visual: { billboard: record.billboard || {} } };
 
-    if (visualData.scale > 1 && record.distanceToCamera < VESSEL_CARD_FADE_DISTANCE_M) {
+    if (
+      visualData.scale > 1 &&
+      record.distanceToCamera < VESSEL_CARD_FADE_DISTANCE_M
+    ) {
       // Use Cesium.Model for close-up viewing
       visualData.visual = {
         model: new Cesium.Model({

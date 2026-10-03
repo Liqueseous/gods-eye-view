@@ -1,7 +1,5 @@
 import * as Cesium from 'cesium';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { isHeadingEstimated } from './headingConfidence.js';
 import {
   ACTIVE_CAMERA_COLOR,

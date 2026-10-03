@@ -197,7 +197,9 @@ export function createLifecycle({ state, services, parts }) {
       registerPickOwner('transit', (pickedId) => state._vehicles.has(pickedId));
       if (!state._cameraChangedAttached) {
         viewer.camera.changed.addEventListener(parts.viewport.onCameraChanged);
-        viewer.camera.moveEnd?.addEventListener?.(parts.viewport.onCameraMoveEnd);
+        viewer.camera.moveEnd?.addEventListener?.(
+          parts.viewport.onCameraMoveEnd,
+        );
         borrowCameraSensitivity(viewer);
         state._cameraChangedAttached = true;
         state._cameraMoveEndAttached = true;

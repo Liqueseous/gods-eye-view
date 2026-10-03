@@ -2077,9 +2077,7 @@ test('tiled prefetch covers only visible product bounds at levels 0/1, caps eigh
   assert.equal(bodies, 2);
   assert.deepEqual(
     calls
-      .map(({ url }) =>
-        ['z', 'x', 'y'].map((key) => url.searchParams.get(key)),
-      )
+      .map(({ url }) => ['z', 'x', 'y'].map((key) => url.searchParams.get(key)))
       .sort((a, b) => a.join('/').localeCompare(b.join('/'))),
     [
       ['0', '0', '0'],

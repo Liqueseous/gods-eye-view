@@ -1,4 +1,7 @@
-import { markScale, badgeScale } from '../annotations/screenAnnotationRenderer.js';
+import {
+  markScale,
+  badgeScale,
+} from '../annotations/screenAnnotationRenderer.js';
 // Placeholder for vessel presentation logic
 // This service should ultimately contain the logic to determine if a vessel model should be rendered
 // and how its visual properties (size/scale) should change based on zoom level 'h'.
@@ -15,7 +18,7 @@ export const vesselPresentation = {
     // distance-based visibility and scaling pattern from screenAnnotationRenderer.js.
     const altitude = vessel.altitude;
     const scale = markScale(altitude);
-    
+
     // Return data structure matching aircraftPresentation structure
     return {
       scale: scale,

@@ -12,9 +12,7 @@ import { selectModelEligible } from '../../data/modelEligibility.js';
 import { cyberSonarBaseAlpha } from '../../cyberSonar.js';
 import { cockpitContactDotImage } from '../../data/cockpitContactDot.js';
 import { aircraftIcon, TRACKED_ICON_PX } from '../../data/aircraftIcons.js';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { limitCourseStep, courseSlewCapDps } from '../../data/motionModel.js';
 import {
   PLANE_MODEL_SCALE,

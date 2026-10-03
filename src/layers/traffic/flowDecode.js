@@ -51,7 +51,11 @@ function simplifyRange(points, first, last, toleranceSquared, keep) {
   let furthest = toleranceSquared;
   let furthestIndex = -1;
   for (let index = first + 1; index < last; index++) {
-    const distance = squaredDistance(points[index], points[first], points[last]);
+    const distance = squaredDistance(
+      points[index],
+      points[first],
+      points[last],
+    );
     if (distance > furthest) {
       furthest = distance;
       furthestIndex = index;
@@ -63,7 +67,10 @@ function simplifyRange(points, first, last, toleranceSquared, keep) {
   simplifyRange(points, furthestIndex, last, toleranceSquared, keep);
 }
 
-export function simplifyFlowLine(points, tolerance = FLOW_GEOMETRY_TOLERANCE_DEG) {
+export function simplifyFlowLine(
+  points,
+  tolerance = FLOW_GEOMETRY_TOLERANCE_DEG,
+) {
   if (!Array.isArray(points) || points.length < 3 || tolerance <= 0)
     return points;
   const keep = new Array(points.length).fill(false);

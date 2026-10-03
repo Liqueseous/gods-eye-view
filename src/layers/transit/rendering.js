@@ -1,7 +1,5 @@
 import * as Cesium from 'cesium';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import {
   updatePlayback,
   applyDisplayCourse,
@@ -561,10 +559,17 @@ export function createRendering({ state, services, parts }) {
       // Bypass visibility culling for ground primitives (GLOBE classification)
       // when in Google 3D visual preset. This prevents them from being
       // occluded by 3D tileset geometry.
-      if (state._stylePreset === 'google3d' &&
-          entry.marker.classificationType === Cesium.ClassificationType.GLOBE) {
+      if (
+        state._stylePreset === 'google3d' &&
+        entry.marker.classificationType === Cesium.ClassificationType.GLOBE
+      ) {
         // Manually set visible to true to bypass frustum/horizon checks
-        entry.visibility = { ...entry.visibility, frustum: true, occluder: true, boundsApplied: true };
+        entry.visibility = {
+          ...entry.visibility,
+          frustum: true,
+          occluder: true,
+          boundsApplied: true,
+        };
         entry.marker.show = true;
         entry.visibilityMisses = 0;
         schedulePlayback(entry);

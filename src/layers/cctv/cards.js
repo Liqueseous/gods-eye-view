@@ -9,9 +9,7 @@ import {
   applyFrameResult,
 } from '../../data/cctvCards.js';
 import * as Cesium from 'cesium';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { selectCctvLod, applyEvictionGrace } from '../../data/cctvLod.js';
 import {
   CCTV_OVERLAY_SOURCE_OPTIONS,
@@ -107,7 +105,11 @@ export function createCards({ state: layerState, services, parts, source }) {
       let sx = NaN;
       let sy = NaN;
       if (
-        rotation.isPointVisible(scene, layerState._viewer.camera, record.position)
+        rotation.isPointVisible(
+          scene,
+          layerState._viewer.camera,
+          record.position,
+        )
       ) {
         const screen = scene.cartesianToCanvasCoordinates(record.position);
         if (

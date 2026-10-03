@@ -1,9 +1,7 @@
 import * as Cesium from 'cesium';
 import { nextCockpitNearContacts } from '../../data/cockpitAirLod.js';
 import { trackedModelZoomActive } from '../../data/trackedModelRegime.js';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { trailHeadStart } from '../../data/modelVisualAnchor.js';
 import { aircraftIcon, TRACKED_ICON_PX } from '../../data/aircraftIcons.js';
 import { routePlausible } from '../../data/routePlausible.js';

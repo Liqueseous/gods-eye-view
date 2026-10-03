@@ -1,7 +1,5 @@
 import * as Cesium from 'cesium';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import {
   MARKER_LIFT_M,
   RADIO_PREFIX,

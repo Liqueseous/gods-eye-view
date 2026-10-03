@@ -110,10 +110,7 @@ function createGlobeRendering({
             distance:
               Math.abs(tileCenter.latitude - coverageCenter.latitude) +
               Math.abs(tileCenter.longitude - coverageCenter.longitude),
-            url: template
-              .replace('{z}', z)
-              .replace('{x}', x)
-              .replace('{y}', y),
+            url: template.replace('{z}', z).replace('{x}', x).replace('{y}', y),
           });
         }
       }

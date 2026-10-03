@@ -1,7 +1,5 @@
 import * as Cesium from 'cesium';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { selectModelEligible } from '../../data/modelEligibility.js';
 import { civilAircraftModelSpec } from '../flights/modelSpec.js';
 import {
@@ -222,11 +220,7 @@ export function createLocalAdsbModels({
         const position = placement(id, marker);
         if (
           !position ||
-          !rotation.isPointVisible(
-            viewer.scene,
-            viewer.camera,
-            marker.position,
-          )
+          !rotation.isPointVisible(viewer.scene, viewer.camera, marker.position)
         ) {
           model.show = false;
           continue;

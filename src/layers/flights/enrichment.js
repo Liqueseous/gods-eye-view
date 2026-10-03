@@ -1,7 +1,5 @@
 import { classifyAircraft } from '../../data/aircraftClass.js';
-import {
-  rotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import * as Cesium from 'cesium';
 import {
   ENRICH_MAX_INFLIGHT,

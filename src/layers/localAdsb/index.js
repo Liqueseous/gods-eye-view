@@ -178,7 +178,11 @@ export function createLocalAdsbLayer({
 
   function markerVisible(marker) {
     if (!viewer?.camera?.positionWC || !marker.position) return true;
-    return rotation.isPointVisible(viewer.scene, viewer.camera, marker.position);
+    return rotation.isPointVisible(
+      viewer.scene,
+      viewer.camera,
+      marker.position,
+    );
   }
 
   function markerRotation(marker) {
@@ -189,7 +193,10 @@ export function createLocalAdsbLayer({
       marker.courseDeg ?? 0,
       marker.lastRotation,
     );
-    const stable = rotation.stabilizeScreenRotation(marker.lastRotation, projected);
+    const stable = rotation.stabilizeScreenRotation(
+      marker.lastRotation,
+      projected,
+    );
     if (stable !== null) marker.lastRotation = stable;
     return marker.lastRotation;
   }

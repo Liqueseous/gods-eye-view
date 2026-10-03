@@ -1,5 +1,8 @@
 import { VESSEL_OVERLAY_SOURCE_ID } from '../../data/vesselLabels.js';
-import { DEFAULT_VESSEL_MODEL_URL, MODEL_NATIVE_RADIUS_M } from '../../data/vesselModels.js';
+import {
+  DEFAULT_VESSEL_MODEL_URL,
+  MODEL_NATIVE_RADIUS_M,
+} from '../../data/vesselModels.js';
 import {
   AIS_FIRST_CONNECT_GRACE_MS,
   AIS_FIRST_CONNECT_LABEL,
@@ -22,7 +25,8 @@ export function createLifecycle({
       console.log('Preloading vessel models...');
       if (models && models.length > 0) {
         // Use vesselModels.js to initialize the map and trigger any necessary preloading.
-        const { initializeVesselModels } = await import('../../data/vesselModels.js');
+        const { initializeVesselModels } =
+          await import('../../data/vesselModels.js');
         initializeVesselModels(models);
         console.log(`Initialized ${models.length} vessel models.`);
       }
@@ -31,7 +35,7 @@ export function createLifecycle({
     getModel: (aisType) => {
       // Placeholder for fetching model data/reference
       return null;
-    }
+    },
   };
 
   // New: Acceptance of presentation registry
@@ -297,17 +301,21 @@ function initializeModels(initialModels) {
         console.log('Preloading vessel models...');
         if (models && models.length > 0) {
           // Use vesselModels.js to initialize the map and trigger any necessary preloading.
-          import('../../data/vesselModels.js').then(({ initializeVesselModels }) => {
-            initializeVesselModels(models);
-            console.log(`Initialized ${models.length} vessel models.`);
-          }).catch(err => console.error('Error initializing vessel models:', err));
+          import('../../data/vesselModels.js')
+            .then(({ initializeVesselModels }) => {
+              initializeVesselModels(models);
+              console.log(`Initialized ${models.length} vessel models.`);
+            })
+            .catch((err) =>
+              console.error('Error initializing vessel models:', err),
+            );
         }
         return Promise.resolve();
       },
       getModel: (aisType) => {
         // Placeholder for fetching model data/reference
         return null;
-      }
+      },
     };
 
     resolve(modelManager);

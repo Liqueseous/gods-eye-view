@@ -279,7 +279,7 @@ export function osmCacheTiles(
   return tiles.sort(
     (a, b) =>
       Math.abs((a.south + a.north) / 2 - centerLat) +
-        Math.abs((a.west + a.east) / 2 - centerLon) -
+      Math.abs((a.west + a.east) / 2 - centerLon) -
       (Math.abs((b.south + b.north) / 2 - centerLat) +
         Math.abs((b.west + b.east) / 2 - centerLon)),
   );

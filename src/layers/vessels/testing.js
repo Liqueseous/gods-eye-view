@@ -30,7 +30,10 @@ export function createTesting({
    */
 
   function _setVesselStateForTest(options = {}) {
-    if (!components.lifecycle || typeof components.lifecycle.resetState !== 'function') {
+    if (
+      !components.lifecycle ||
+      typeof components.lifecycle.resetState !== 'function'
+    ) {
       components.lifecycle = { resetState: () => {} };
     }
     components.lifecycle.resetState();
@@ -178,8 +181,14 @@ export function createTesting({
 
   async function test_zeroRowInitialConnection(setupOptions = {}, assertFn) {
     // 1. Setup initial state (must be stable enough to run lifecycle)
-    const mockViewer = { scene: { primitives: { add: () => {}, remove: () => {} } } };
-    const mockRuntime = { now: () => Date.now(), setTimeout: () => 1, clearTimeout: () => {} };
+    const mockViewer = {
+      scene: { primitives: { add: () => {}, remove: () => {} } },
+    };
+    const mockRuntime = {
+      now: () => Date.now(),
+      setTimeout: () => 1,
+      clearTimeout: () => {},
+    };
     const testState = {
       // Minimal required structure for the test to run without errors
       records: { byMmsi: new Map(), all: [] },
@@ -227,7 +236,9 @@ export function createTesting({
     // 4. Assert the state stabilization
     const finalState = _getVesselFeedStateForTest();
     // Expect the state to be stable (idle/ready) instead of 'uncertain'
-    const isStable = finalState.firstConnectPhase === 'idle' || finalState.firstConnectPhase === 'ready';
+    const isStable =
+      finalState.firstConnectPhase === 'idle' ||
+      finalState.firstConnectPhase === 'ready';
     const isNotError = finalState.error === null;
 
     if (assertFn) {
@@ -236,10 +247,14 @@ export function createTesting({
       if (!isStable || !isNotError) {
         throw new Error(
           'Test Failed: State did not stabilize after zero-row connection. Phase: ' +
-          finalState.firstConnectPhase + ', Error: ' + finalState.error,
+            finalState.firstConnectPhase +
+            ', Error: ' +
+            finalState.error,
         );
       }
-      console.log('Test Passed: Zero-row initial connection successfully stabilized the vessel layer.');
+      console.log(
+        'Test Passed: Zero-row initial connection successfully stabilized the vessel layer.',
+      );
     }
   }
 
