@@ -199,6 +199,7 @@ export function createHeight({ state, services, parts }) {
     while (remaining) {
       remaining = false;
       for (let i = 0; i < completedCandidates.length; i++) {
+        if (ordered.length >= FLOOR_WARM_PER_POLL) break;
         const candidate =
           completedCandidates[(start + i) % completedCandidates.length];
         if (candidate.cursor >= candidate.cells.length) continue;
@@ -215,6 +216,7 @@ export function createHeight({ state, services, parts }) {
           });
         }
       }
+      if (ordered.length >= FLOOR_WARM_PER_POLL) break;
     }
     state._floorCursor += FLOOR_WARM_PER_POLL;
     const dem = [],

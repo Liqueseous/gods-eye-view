@@ -7,6 +7,7 @@ const MIN_VIEW_SPAN_DEG = 0.1;
 const QUERY_GRID_DEG = 0.01;
 const ROUTE_CACHE_TTL_MS = 6 * 60 * 60_000;
 const FAILURE_RETRY_MS = 30_000;
+const ROUTE_REUSE_MARGIN_DEG = 0.05;
 const ROUTE_UNLOAD_MARGIN_DEG = 0.15;
 const OUTLINE_WIDTH = 5;
 const ROUTE_WIDTH = 3.5;
@@ -14,6 +15,7 @@ const MAX_ROUTE_GRADE = 0.12;
 const ROUTE_OUTLINE_Z_INDEX = 20;
 const ROUTE_LINE_Z_INDEX = 21;
 const ROUTE_HANDOFF_HOLD_MS = 220;
+const MAX_SECTION_VERTICES = 128;
 
 function stableQueryBounds(bounds) {
   const safe = clampTransitRouteBounds(bounds);
@@ -52,6 +54,16 @@ function boundsContain(outer, inner) {
   );
 }
 
+function boundsContainWithMargin(outer, inner, margin) {
+  if (!outer || !inner) return false;
+  return (
+    outer.south - margin <= inner.south &&
+    outer.west - margin <= inner.west &&
+    outer.north + margin >= inner.north &&
+    outer.east + margin >= inner.east
+  );
+}
+
 function boundsOverlapWithMargin(a, b, margin) {
   if (!a || !b) return true;
   return !(
@@ -63,17 +75,20 @@ function boundsOverlapWithMargin(a, b, margin) {
 }
 
 function routePositions(line) {
-  return line.map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
+  return simplifyRouteSection(line).map(([lon, lat]) =>
+    Cesium.Cartesian3.fromDegrees(lon, lat),
+  );
 }
 
 function cachedRoutePositions(line, getHeight) {
-  const heights = line.map(([lon, lat]) => {
+  const section = simplifyRouteSection(line);
+  const heights = section.map(([lon, lat]) => {
     const height = getHeight(lat, lon);
     return Number.isFinite(height) ? height : 0;
   });
-  for (let index = 1; index < line.length; index += 1) {
-    const [previousLon, previousLat] = line[index - 1];
-    const [lon, lat] = line[index];
+  for (let index = 1; index < section.length; index += 1) {
+    const [previousLon, previousLat] = section[index - 1];
+    const [lon, lat] = section[index];
     const horizontalM = Math.hypot(
       (lon - previousLon) * 111320 * Math.cos((lat * Math.PI) / 180),
       (lat - previousLat) * 110540,
@@ -83,9 +98,30 @@ function cachedRoutePositions(line, getHeight) {
     const upper = heights[index - 1] + maxDelta;
     heights[index] = Math.min(upper, Math.max(lower, heights[index]));
   }
-  return line.map(([lon, lat], index) =>
+  return section.map(([lon, lat], index) =>
     Cesium.Cartesian3.fromDegrees(lon, lat, heights[index]),
   );
+}
+
+function sectionRoutePositions(line, getHeight) {
+  const samples = [line[0], line[Math.floor(line.length / 2)], line.at(-1)]
+    .filter(Boolean)
+    .map(([lon, lat]) => getHeight(lat, lon))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  const height = samples.length ? samples[Math.floor(samples.length / 2)] : 0;
+  return line.map(([lon, lat]) =>
+    Cesium.Cartesian3.fromDegrees(lon, lat, height),
+  );
+}
+
+function simplifyRouteSection(line) {
+  if (line.length <= MAX_SECTION_VERTICES) return line;
+  const step = (line.length - 1) / (MAX_SECTION_VERTICES - 1);
+  const section = [];
+  for (let index = 0; index < MAX_SECTION_VERTICES; index += 1)
+    section.push(line[Math.round(index * step)]);
+  return section;
 }
 
 async function yieldRouteBuild() {
@@ -130,6 +166,8 @@ export function createTransitRouteLines({
   let pendingReplacement = null;
   let postRenderRemove = null;
   const routeHeightCache = new Map();
+  const routeSectionCache = new Map();
+  let lastSpaceRefreshAt = -Infinity;
   let selectedRouteId = null;
   const routePickTargets = new Map();
 
@@ -151,6 +189,19 @@ export function createTransitRouteLines({
     return routeHeightCache.get(key);
   }
 
+  function routeSection(route, index) {
+    const line = route.lines[index];
+    const first = line[0] || [];
+    const last = line.at(-1) || [];
+    const key = `${route.routeId}:${route.id}:${index}:${line.length}:${first[0]}:${first[1]}:${last[0]}:${last[1]}`;
+    let section = routeSectionCache.get(key);
+    if (!section) {
+      section = simplifyRouteSection(line);
+      routeSectionCache.set(key, section);
+    }
+    return section;
+  }
+
   function raiseRouteLinesToTop() {
     const collection = viewer?.scene?.groundPrimitives;
     for (const primitive of primitives)
@@ -165,7 +216,7 @@ export function createTransitRouteLines({
           throw Object.assign(new Error('Route build superseded'), {
             name: 'AbortError',
           });
-        const positions = routePositions(route.lines[index]);
+        const positions = routePositions(routeSection(route, index));
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
         pickTargets.set(id, route.routeId);
@@ -225,7 +276,7 @@ export function createTransitRouteLines({
           throw Object.assign(new Error('Route build superseded'), {
             name: 'AbortError',
           });
-        const positions = routePositions(route.lines[index]);
+        const positions = routePositions(routeSection(route, index));
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
         pickTargets.set(id, route.routeId);
@@ -273,8 +324,8 @@ export function createTransitRouteLines({
           throw Object.assign(new Error('Route build superseded'), {
             name: 'AbortError',
           });
-        const positions = cachedRoutePositions(
-          route.lines[index],
+        const positions = sectionRoutePositions(
+          routeSection(route, index),
           stableRouteHeight,
         );
         if (positions.length < 2) continue;
@@ -310,6 +361,17 @@ export function createTransitRouteLines({
     }
     for (const primitive of created) viewer.scene.primitives.add(primitive);
     return created;
+  }
+
+  function refreshSpacePositions() {
+    const now = performance.now();
+    if (now - lastSpaceRefreshAt < 250) return;
+    lastSpaceRefreshAt = now;
+    for (const collection of spacePrimitives) {
+      for (const { polyline, section } of collection._gevSections || []) {
+        polyline.positions = cachedRoutePositions(section, getRouteHeight);
+      }
+    }
   }
 
   function removeReplacement(replacement) {
@@ -603,7 +665,15 @@ export function createTransitRouteLines({
     const coverageFresh =
       coverageBounds && now - lastUpdate < ROUTE_CACHE_TTL_MS;
 
-    if (coverageFresh && boundsContain(coverageBounds, priorityBounds)) return;
+    if (
+      coverageFresh &&
+      boundsContainWithMargin(
+        coverageBounds,
+        priorityBounds,
+        ROUTE_REUSE_MARGIN_DEG,
+      )
+    )
+      return;
 
     if (requestKey) {
       if (
@@ -698,9 +768,10 @@ export function createTransitRouteLines({
   return {
     init(nextViewer) {
       viewer = nextViewer;
-      postRenderRemove = viewer.scene.postRender?.addEventListener?.(
-        promoteReadyReplacement,
-      );
+      postRenderRemove = viewer.scene.postRender?.addEventListener?.(() => {
+        promoteReadyReplacement();
+        refreshSpacePositions();
+      });
     },
     enable(nextViewer) {
       if (nextViewer) viewer = nextViewer;
