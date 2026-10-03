@@ -1,4 +1,5 @@
 import { createTransitHistory } from './transitHistoryStore.js';
+import { fetchMtaStationCoordinates } from './mtaStations.js';
 /**
  * GTFS-Realtime transit proxy for the Transit data layer.
  *
@@ -204,7 +205,26 @@ export function createTransitService({
 } = {}) {
   /** @type {Map<string, {at:number, body:string, host:string}>} feedId → snapshot */
   const cache = new Map();
+  let mtaStationsCache = null;
+  let mtaStationsInFlight = null;
   const history = createTransitHistory();
+
+  async function getMtaStations(signal) {
+    const now = Date.now();
+    if (mtaStationsCache && now - mtaStationsCache.at < 24 * 60 * 60 * 1000)
+      return mtaStationsCache.coordinates;
+    if (!mtaStationsInFlight) {
+      mtaStationsInFlight = fetchMtaStationCoordinates(fetchImpl, signal)
+        .then((coordinates) => {
+          mtaStationsCache = { at: Date.now(), coordinates };
+          return coordinates;
+        })
+        .finally(() => {
+          mtaStationsInFlight = null;
+        });
+    }
+    return mtaStationsInFlight;
+  }
   const admitHistory = makeRateLimiter({
     windowMs: 60000,
     max: 30,
@@ -297,7 +317,13 @@ export function createTransitService({
         response,
         TRANSIT_PROXY_MAX_BODY_BYTES,
       );
-      const snapshot = buildTransitSnapshot(feed, bytes, now);
+      const stationCoordinates =
+        feed.realtimeType === 'trip-updates'
+          ? await getMtaStations(controller.signal)
+          : undefined;
+      const snapshot = buildTransitSnapshot(feed, bytes, now, {
+        stationCoordinates,
+      });
       if (closed) throw new Error('Transit provider closed');
       history.ingest(feed, snapshot.vehicles, Date.now());
       const entry = {

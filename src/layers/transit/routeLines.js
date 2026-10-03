@@ -16,6 +16,8 @@ const ROUTE_OUTLINE_Z_INDEX = 20;
 const ROUTE_LINE_Z_INDEX = 21;
 const ROUTE_HANDOFF_HOLD_MS = 220;
 const MAX_SECTION_VERTICES = 128;
+const STATION_PIXEL_SIZE = 9;
+const STATION_LABEL_MAX_DISTANCE_M = 150_000;
 
 function stableQueryBounds(bounds) {
   const safe = clampTransitRouteBounds(bounds);
@@ -374,6 +376,56 @@ export function createTransitRouteLines({
     }
   }
 
+  function addStationEntities(items, nextEntities, pickTargets, isCurrent) {
+    const seen = new Set();
+    for (const route of items) {
+      for (const stop of route.stops || []) {
+        if (!isCurrent())
+          throw Object.assign(new Error('Route build superseded'), {
+            name: 'AbortError',
+          });
+        if (
+          !stop?.id ||
+          !Number.isFinite(stop.lat) ||
+          !Number.isFinite(stop.lon) ||
+          seen.has(stop.id)
+        )
+          continue;
+        seen.add(stop.id);
+        const id = `transit-station:${stop.id}`;
+        pickTargets.set(id, route.routeId);
+        const color = Cesium.Color.fromCssColorString(route.color);
+        nextEntities.push(
+          viewer.entities.add({
+            id,
+            position: Cesium.Cartesian3.fromDegrees(stop.lon, stop.lat),
+            point: {
+              pixelSize: STATION_PIXEL_SIZE,
+              color: Cesium.Color.WHITE,
+              outlineColor: color,
+              outlineWidth: 2,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            label: stop.name
+              ? {
+                  text: stop.name,
+                  font: '11px sans-serif',
+                  fillColor: Cesium.Color.WHITE,
+                  showBackground: true,
+                  backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
+                  pixelOffset: new Cesium.Cartesian2(0, -14),
+                  distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
+                    0,
+                    STATION_LABEL_MAX_DISTANCE_M,
+                  ),
+                }
+              : undefined,
+          }),
+        );
+      }
+    }
+  }
+
   function removeReplacement(replacement) {
     for (const primitive of replacement?.primitives || [])
       viewer?.scene?.groundPrimitives?.remove(primitive);
@@ -425,7 +477,11 @@ export function createTransitRouteLines({
       commitRoutes(pendingReplacement);
       return;
     }
-    if (pendingReplacement.primitives.some((primitive) => primitive.ready !== true))
+    if (
+      pendingReplacement.primitives.some(
+        (primitive) => primitive.ready !== true,
+      )
+    )
       return;
     commitRoutes(pendingReplacement);
   }
@@ -457,7 +513,6 @@ export function createTransitRouteLines({
       if (!byColor.has(route.color)) byColor.set(route.color, []);
       byColor.get(route.color).push(route);
     }
-
     try {
       if (globeHidden) {
         for (const [color, group] of byColor) {
@@ -522,6 +577,7 @@ export function createTransitRouteLines({
             )),
           );
       }
+      addStationEntities(nextRoutes, nextEntities, nextPickTargets, isCurrent);
     } catch (caught) {
       for (const primitive of nextPrimitives)
         viewer?.scene?.groundPrimitives?.remove(primitive);

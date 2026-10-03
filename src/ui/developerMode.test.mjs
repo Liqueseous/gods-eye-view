@@ -358,7 +358,7 @@ test('developer diagnostics export includes view, matching Transit feeds, and so
   assert.equal(snapshot.camera.centerSource, 'screen-center-ground-hit');
   assert.ok(Math.abs(snapshot.camera.center.latitude - 45) < 1e-6);
   assert.equal(snapshot.transit.matchingFeeds.length, 0);
-  assert.equal(snapshot.transit.nearestFeeds.length, 8);
+  assert.equal(snapshot.transit.nearestFeeds.length, 16);
   assert.deepEqual(snapshot.transit.routeData, transitRouteData);
   assert.equal(snapshot.layers[0].stats.coverage, 'No feed here yet');
   assert.equal(snapshot.layers[1].availability, 'unavailable');

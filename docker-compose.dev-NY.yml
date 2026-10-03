@@ -1,0 +1,26 @@
+# Development-only Overpass override: import New York instead of the
+# continent-scale extract configured by docker-compose.yml.
+services:
+  gods-eye-view:
+    environment:
+      # Keep the proxy from sending out-of-region bboxes to this regional DB.
+      OVERPASS_SELF_HOSTED_BBOX: '40.4,-79.8,45.1,-71.7'
+
+  overpass:
+    environment:
+      # Geofabrik publishes New York as a state extract. The image downloads
+      # PBF input, then converts it to the .osm.bz2 format it expects.
+      OVERPASS_PLANET_URL: https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf
+      OVERPASS_PLANET_PREPROCESS: >-
+        mv /db/planet.osm.bz2 /db/new-york.osm.pbf &&
+        osmium cat -o /db/planet.osm.bz2 /db/new-york.osm.pbf &&
+        rm /db/new-york.osm.pbf
+      OVERPASS_DIFF_URL: ''
+      GEV_RUN_MODE: dev
+    entrypoint: ['/bin/sh', '/app/overpass-dev-entrypoint.sh']
+    volumes:
+      - overpass-db-new-york:/db
+      - ./scripts/overpass-dev-entrypoint.sh:/app/overpass-dev-entrypoint.sh:ro
+
+volumes:
+  overpass-db-new-york:

@@ -82,7 +82,8 @@ test('route lines render with a contrast outline and route color, then release o
   assert.ok(sourceCalls[0].east >= -71, 'query includes the viewport east edge');
   assert.ok(sourceCalls[0].north - sourceCalls[0].south <= 0.12);
   assert.ok(sourceCalls[0].east - sourceCalls[0].west <= 0.22);
-  assert.equal(sceneEntities.length, 2, 'outline and colored route are drawn');
+  assert.equal(sceneEntities.length, 3, 'outline, colored route, and station are drawn');
+  assert.equal(sceneEntities.filter((entity) => entity.point).length, 1);
   assert.equal(layer.diagnostics().count, 1, 'in-view routes draw before prefetch');
   assert.deepEqual(layer.diagnostics().coverageBounds, sourceCalls[0]);
   assert.equal(layer.selectFromPick(sceneEntities[0].id), true);
@@ -92,7 +93,9 @@ test('route lines render with a contrast outline and route color, then release o
   assert.deepEqual(sceneEntities[0].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
   assert.deepEqual(sceneEntities[1].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
   assert.ok(
-    sceneEntities.every((entity) => entity.polyline.zIndex > 11),
+    sceneEntities
+      .filter((entity) => entity.polyline)
+      .every((entity) => entity.polyline.zIndex > 11),
     'transit route lines are ordered above tunnel fallback lines',
   );
   const routeDiagnostics = layer.diagnostics({ includeGeometry: true });
