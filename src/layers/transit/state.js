@@ -42,6 +42,7 @@ export function createState({ services }) {
   state._generation = 0;
 
   state._cameraChangedAttached = false;
+  state._cameraMoveEndAttached = false;
   state._cameraDebounceTimer = null;
   state._altitudeGateOpen = false;
   /** Camera sensitivity as we found it, so disable() can hand it back. */

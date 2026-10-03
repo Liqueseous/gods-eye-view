@@ -23,6 +23,7 @@ export function createControls({ state, parts }) {
     setParams(params = {}) {
       if (params.routes !== undefined) {
         state._params.routes = params.routes !== false;
+        parts.viewport?.syncRouteVisibility?.();
         parts.viewport?.runProximityCheck();
         state._rowControlsListener?.();
       }

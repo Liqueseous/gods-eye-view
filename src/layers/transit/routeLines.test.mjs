@@ -89,7 +89,7 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(selectedRoute.routeId, '12');
   assert.equal(selectedRoute.name, 'Blue Line');
   assert.deepEqual(selectedRoute.stops.map(({ name }) => name), ['Central']);
-  assert.deepEqual(sceneEntities[0].polyline.material, Cesium.Color.fromCssColorString('#07131B'));
+  assert.deepEqual(sceneEntities[0].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
   assert.deepEqual(sceneEntities[1].polyline.material, Cesium.Color.fromCssColorString('#1267B1'));
   assert.ok(
     sceneEntities.every((entity) => entity.polyline.zIndex > 11),
@@ -254,7 +254,7 @@ test('a newly visible area supersedes an in-flight priority request', async () =
   layer.destroy();
 });
 
-test('route geometry unloads after the camera leaves its retention margin', async () => {
+test('route geometry remains through empty intermediate replacements', async () => {
   const secondRequest = Promise.withResolvers();
   let requestCount = 0;
   const entities = [];
@@ -309,8 +309,8 @@ test('route geometry unloads after the camera leaves its retention margin', asyn
     north: 40.1,
     east: -73.9,
   });
-  assert.equal(layer.diagnostics().count, 0);
-  assert.equal(entities.length, 0);
+  assert.equal(layer.diagnostics().count, 1);
+  assert.equal(entities.length, 2);
   secondRequest.resolve({
     ok: true,
     status: 200,
@@ -320,4 +320,6 @@ test('route geometry unloads after the camera leaves its retention margin', asyn
     },
   });
   await moved;
+  assert.equal(layer.diagnostics().count, 1);
+  assert.equal(entities.length, 2);
 });

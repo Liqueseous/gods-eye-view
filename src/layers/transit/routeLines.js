@@ -8,11 +8,12 @@ const QUERY_GRID_DEG = 0.01;
 const ROUTE_CACHE_TTL_MS = 6 * 60 * 60_000;
 const FAILURE_RETRY_MS = 30_000;
 const ROUTE_UNLOAD_MARGIN_DEG = 0.15;
-const OUTLINE_COLOR = '#07131B';
-const OUTLINE_WIDTH = 7;
+const OUTLINE_WIDTH = 5;
 const ROUTE_WIDTH = 3.5;
+const MAX_ROUTE_GRADE = 0.12;
 const ROUTE_OUTLINE_Z_INDEX = 20;
 const ROUTE_LINE_Z_INDEX = 21;
+const ROUTE_HANDOFF_HOLD_MS = 220;
 
 function stableQueryBounds(bounds) {
   const safe = clampTransitRouteBounds(bounds);
@@ -65,6 +66,28 @@ function routePositions(line) {
   return line.map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
 }
 
+function cachedRoutePositions(line, getHeight) {
+  const heights = line.map(([lon, lat]) => {
+    const height = getHeight(lat, lon);
+    return Number.isFinite(height) ? height : 0;
+  });
+  for (let index = 1; index < line.length; index += 1) {
+    const [previousLon, previousLat] = line[index - 1];
+    const [lon, lat] = line[index];
+    const horizontalM = Math.hypot(
+      (lon - previousLon) * 111320 * Math.cos((lat * Math.PI) / 180),
+      (lat - previousLat) * 110540,
+    );
+    const maxDelta = Math.max(2, horizontalM * MAX_ROUTE_GRADE);
+    const lower = heights[index - 1] - maxDelta;
+    const upper = heights[index - 1] + maxDelta;
+    heights[index] = Math.min(upper, Math.max(lower, heights[index]));
+  }
+  return line.map(([lon, lat], index) =>
+    Cesium.Cartesian3.fromDegrees(lon, lat, heights[index]),
+  );
+}
+
 async function yieldRouteBuild() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -72,6 +95,7 @@ async function yieldRouteBuild() {
 /** Own viewport-loaded OSM rail-route geometry for one Transit layer. */
 export function createTransitRouteLines({
   routeSource,
+  getRouteHeight = () => 0,
   onSelectRoute = () => {},
   onRoutesUpdated = () => {},
 }) {
@@ -105,6 +129,7 @@ export function createTransitRouteLines({
   let spacePrimitives = [];
   let pendingReplacement = null;
   let postRenderRemove = null;
+  const routeHeightCache = new Map();
   let selectedRouteId = null;
   const routePickTargets = new Map();
 
@@ -117,6 +142,13 @@ export function createTransitRouteLines({
     primitives = [];
     entities = [];
     spacePrimitives = [];
+  }
+
+  function stableRouteHeight(lat, lon) {
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if (!routeHeightCache.has(key))
+      routeHeightCache.set(key, getRouteHeight(lat, lon));
+    return routeHeightCache.get(key);
   }
 
   function raiseRouteLinesToTop() {
@@ -233,7 +265,7 @@ export function createTransitRouteLines({
     isCurrent,
   ) {
     const color = Cesium.Color.fromCssColorString(cssColor);
-    const glowColor = color.withAlpha(0.25);
+    const glowColor = color.withAlpha(0.12);
     const created = [];
     for (const route of items) {
       for (let index = 0; index < route.lines.length; index++) {
@@ -241,7 +273,10 @@ export function createTransitRouteLines({
           throw Object.assign(new Error('Route build superseded'), {
             name: 'AbortError',
           });
-        const positions = routePositions(route.lines[index]);
+        const positions = cachedRoutePositions(
+          route.lines[index],
+          stableRouteHeight,
+        );
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
         pickTargets.set(id, route.routeId);
@@ -262,7 +297,7 @@ export function createTransitRouteLines({
             depthFailAppearance: new Cesium.PolylineMaterialAppearance({
               material: Cesium.Material.fromType('PolylineGlow', {
                 color: glowColor,
-                glowPower: 0.3,
+                glowPower: 0.55,
               }),
             }),
             asynchronous: true,
@@ -301,11 +336,13 @@ export function createTransitRouteLines({
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
     for (const primitive of spacePrimitives) primitive.show = visible;
-    for (const primitive of previousPrimitives)
-      viewer?.scene?.groundPrimitives?.remove(primitive);
-    for (const entity of previousEntities) viewer?.entities?.remove(entity);
-    for (const primitive of previousSpace)
-      viewer?.scene?.primitives?.remove(primitive);
+    setTimeout(() => {
+      for (const primitive of previousPrimitives)
+        viewer?.scene?.groundPrimitives?.remove(primitive);
+      for (const entity of previousEntities) viewer?.entities?.remove(entity);
+      for (const primitive of previousSpace)
+        viewer?.scene?.primitives?.remove(primitive);
+    }, ROUTE_HANDOFF_HOLD_MS);
     raiseRouteLinesToTop();
     onRoutesUpdated();
     viewer?.scene?.requestRender?.();
@@ -353,18 +390,25 @@ export function createTransitRouteLines({
     } catch {
       canUseGround = false;
     }
+    const byColor = new Map();
+    for (const route of nextRoutes) {
+      if (!byColor.has(route.color)) byColor.set(route.color, []);
+      byColor.get(route.color).push(route);
+    }
 
     try {
       if (globeHidden) {
-        nextSpacePrimitives.push(
-          ...(await addSpacePrimitive(
-            nextRoutes,
-            OUTLINE_WIDTH,
-            OUTLINE_COLOR,
-            nextPickTargets,
-            isCurrent,
-          )),
-        );
+        for (const [color, group] of byColor) {
+          nextSpacePrimitives.push(
+            ...(await addSpacePrimitive(
+              group,
+              OUTLINE_WIDTH,
+              color,
+              nextPickTargets,
+              isCurrent,
+            )),
+          );
+        }
         for (const route of nextRoutes)
           nextSpacePrimitives.push(
             ...(await addSpacePrimitive(
@@ -376,20 +420,15 @@ export function createTransitRouteLines({
             )),
           );
       } else if (canUseGround) {
-        const outline = await addGroundPrimitive(
-          nextRoutes,
-          OUTLINE_WIDTH,
-          OUTLINE_COLOR,
-          nextPickTargets,
-          isCurrent,
-        );
-        if (outline) nextPrimitives.push(outline);
-        const byColor = new Map();
-        for (const route of nextRoutes) {
-          if (!byColor.has(route.color)) byColor.set(route.color, []);
-          byColor.get(route.color).push(route);
-        }
         for (const [color, group] of byColor) {
+          const outline = await addGroundPrimitive(
+            group,
+            OUTLINE_WIDTH,
+            color,
+            nextPickTargets,
+            isCurrent,
+          );
+          if (outline) nextPrimitives.push(outline);
           const primitive = await addGroundPrimitive(
             group,
             ROUTE_WIDTH,
@@ -400,15 +439,16 @@ export function createTransitRouteLines({
           if (primitive) nextPrimitives.push(primitive);
         }
       } else {
-        nextEntities.push(
-          ...(await addFallbackLines(
-            nextRoutes,
-            OUTLINE_WIDTH,
-            OUTLINE_COLOR,
-            nextPickTargets,
-            isCurrent,
-          )),
-        );
+        for (const [color, group] of byColor)
+          nextEntities.push(
+            ...(await addFallbackLines(
+              group,
+              OUTLINE_WIDTH,
+              color,
+              nextPickTargets,
+              isCurrent,
+            )),
+          );
         for (const route of nextRoutes)
           nextEntities.push(
             ...(await addFallbackLines(
@@ -452,7 +492,7 @@ export function createTransitRouteLines({
     return true;
   }
 
-  function setVisible(next) {
+  function applyVisibility(next) {
     visible = enabled && next === true;
     for (const primitive of primitives) primitive.show = visible;
     for (const entity of entities) entity.show = visible;
@@ -465,6 +505,10 @@ export function createTransitRouteLines({
       raiseRouteLinesToTop();
       viewer?.scene?.requestRender?.();
     }
+  }
+
+  function setVisible(next) {
+    applyVisibility(next);
   }
 
   function routeForId(routeId) {
@@ -517,6 +561,11 @@ export function createTransitRouteLines({
       if (!enabled || requestGeneration !== generation || signal.aborted)
         return false;
       const nextRoutes = payload.routes || [];
+      if (!nextRoutes.length && routes.length) {
+        lastBoundsKey = key;
+        lastUpdate = Date.now();
+        return true;
+      }
       const replaced = await replaceRoutes(
         nextRoutes,
         () => enabled && requestGeneration === generation && !signal.aborted,
@@ -550,17 +599,6 @@ export function createTransitRouteLines({
     if (!enabled || !visible || !bounds) return;
     const priorityBounds = stableQueryBounds(bounds);
     const now = Date.now();
-
-    if (
-      coverageBounds &&
-      !boundsOverlapWithMargin(
-        coverageBounds,
-        priorityBounds,
-        ROUTE_UNLOAD_MARGIN_DEG,
-      )
-    ) {
-      unloadRoutes();
-    }
 
     const coverageFresh =
       coverageBounds && now - lastUpdate < ROUTE_CACHE_TTL_MS;
