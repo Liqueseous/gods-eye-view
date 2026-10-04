@@ -20,6 +20,7 @@ const STATION_LABEL_MAX_DISTANCE_M = 150_000;
 const STATION_LIST_MAX_ALTITUDE_M = 5_000;
 const STATION_MATCH_DISTANCE_DEG = 0.003;
 const STATION_EYE_OFFSET_M = -100;
+const GOOGLE_3D_ROUTE_LIFT_M = 8;
 const MAX_VERTEX_TURN_DEG = 24;
 const CORNER_CUT_FRACTION = 0.28;
 
@@ -226,6 +227,13 @@ function stationBadgeImage(text, color, shape = 'circle') {
   )}`;
 }
 
+function stationToggleImage(expanded = true) {
+  const path = expanded ? 'M5 7.5 9 11l4-3.5' : 'M5 10.5 9 7l4 3.5';
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><rect x="1" y="1" width="16" height="16" rx="4" fill="#14212a" stroke="#d8e3e8" stroke-width="1"/><path d="${path}" fill="none" stroke="#f1f6f8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  )}`;
+}
+
 function stationPlacardImage(width, height) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="4" fill="#05090d" fill-opacity="1" stroke="#b8eaff" stroke-opacity=".58" stroke-width="1"/></svg>`,
@@ -301,7 +309,7 @@ function stationPanelImage(
         })
         .join('');
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="4" fill="#05090d" fill-opacity="1" stroke="#b8eaff" stroke-opacity=".7"/><text x="${width / 2}" y="16" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="11">${escape(station.name)}</text>${rows}</svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="4" fill="#05090d" fill-opacity="1" stroke="#b8eaff" stroke-opacity=".7"/><rect x="${width - 22}" y="5" width="16" height="16" rx="4" fill="#14212a" stroke="#d8e3e8" stroke-width="1"/><path d="M${width - 18} 11.5 ${width - 14} 15 ${width - 10} 11.5" fill="none" stroke="#f1f6f8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><text x="${width / 2 - 6}" y="16" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="11">${escape(station.name)}</text>${rows}</svg>`,
   )}`;
 }
 
@@ -594,6 +602,27 @@ export function createTransitRouteLines({
     for (const item of stationListItems) {
       const expanded = !collapsedStations.has(item.stationId);
       const showExpandedList = showList && expanded;
+      if (item.isStationToggle) {
+        const expanded = !collapsedStations.has(item.stationId);
+        const show = !expanded && showNames && altitudeVisible;
+        const y = -16;
+        const offset = new Cesium.Cartesian2(
+          showExpandedList ? item.offsetX || 0 : item.collapsedOffsetX || 0,
+          y,
+        );
+        const image = stationToggleImage(expanded);
+        if (item.billboard) {
+          item.billboard.image = image;
+          item.billboard.pixelOffset = offset;
+          item.billboard.show = show;
+        }
+        if (item.entity?.billboard) {
+          item.entity.billboard.image = image;
+          item.entity.billboard.pixelOffset = offset;
+          item.entity.billboard.show = show;
+        }
+        continue;
+      }
       if (item.isStationName) {
         const stationNameLabel = item.stationNameLabel || item.entity?.label;
         if (stationNameLabel) {
@@ -634,7 +663,9 @@ export function createTransitRouteLines({
     const key = `${route.routeId}:${route.id}:${index}:${line.length}:${first[0]}:${first[1]}:${last[0]}:${last[1]}`;
     let section = routeSectionCache.get(key);
     if (!section) {
-      section = smoothTransitRouteLine(simplifyRouteSection(line));
+      // Preserve the source geometry exactly. Visual merging and aggressive
+      // vertex reduction can create shortcuts across branches and turns.
+      section = line;
       routeSectionCache.set(key, section);
     }
     return section;
@@ -767,7 +798,7 @@ export function createTransitRouteLines({
           });
         const positions = sectionRoutePositions(
           routeSection(route, index),
-          stableRouteHeight,
+          (lat, lon) => stableRouteHeight(lat, lon) + GOOGLE_3D_ROUTE_LIFT_M,
         );
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
@@ -880,9 +911,14 @@ export function createTransitRouteLines({
             ),
           )
         : Cesium.Color.WHITE;
+      const google3d = viewer?.scene?.globe?.show === false;
       const stationPosition = Cesium.Cartesian3.fromDegrees(
         station.lon,
         station.lat,
+        google3d
+          ? stableRouteHeight(station.lat, station.lon) +
+              GOOGLE_3D_ROUTE_LIFT_M
+          : 0,
       );
       const stationOverlay = overlay
         ? {
@@ -944,8 +980,10 @@ export function createTransitRouteLines({
             ),
           }
         : null;
+      const toggleId = `${id}:toggle`;
+      pickTargets.set(toggleId, station.routeIds[0]);
       const placard = {
-        id: `${id}:placard`,
+        id: toggleId,
         position: stationPosition,
         image: stationPanelImage(
           station,
@@ -985,6 +1023,50 @@ export function createTransitRouteLines({
             entity: placardEntity,
           });
         }
+      }
+      const toggle = {
+        id: toggleId,
+        position: stationPosition,
+        image: stationToggleImage(),
+        width: 18,
+        height: 18,
+        pixelOffset: new Cesium.Cartesian2(
+          placardWidth / 2 - 12,
+          stationLabelOffset / 2 - 10 + compactLift,
+        ),
+        eyeOffset: new Cesium.Cartesian3(
+          0,
+          0,
+          STATION_EYE_OFFSET_M - 10,
+        ),
+        disableDepthTestDistance: 0,
+        show: false,
+      };
+      if (overlay) {
+        const toggleInstance = stationOverlay.placards.add(toggle);
+        nextStationListItems.push({
+          stationId: id,
+          isStationToggle: true,
+          billboard: toggleInstance,
+          offsetX: placardWidth / 2 - 12,
+          collapsedOffsetX: ((station.name || '').length * 6.2) / 2 + 10,
+          expandedOffset: stationLabelOffset / 2 - 10 + compactLift,
+        });
+      } else {
+        const toggleEntity = viewer.entities.add({
+          id: toggleId,
+          position: stationPosition,
+          billboard: toggle,
+        });
+        nextEntities.push(toggleEntity);
+        nextStationListItems.push({
+          stationId: id,
+          isStationToggle: true,
+          entity: toggleEntity,
+          offsetX: placardWidth / 2 - 12,
+          collapsedOffsetX: ((station.name || '').length * 6.2) / 2 + 10,
+          expandedOffset: stationLabelOffset / 2 - 10 + compactLift,
+        });
       }
       const marker = stationOverlay?.points.add({
         id,
@@ -1536,7 +1618,8 @@ export function createTransitRouteLines({
     const stationPick = candidateIds.find((id) =>
       id.startsWith('transit-station:'),
     );
-    if (stationPick) {
+    const stationTogglePick = candidateIds.some((id) => id.endsWith(':toggle'));
+    if (stationPick && stationTogglePick) {
       const stationId = stationListItems.find(
         (item) =>
           item.stationId &&
@@ -1552,7 +1635,7 @@ export function createTransitRouteLines({
       }
     }
     selectedRouteId = routeId;
-    onSelectRoute(route);
+    if (!stationTogglePick) onSelectRoute(route);
     return true;
   }
 
@@ -1562,6 +1645,27 @@ export function createTransitRouteLines({
 
   function clearSelectedRoute() {
     selectedRouteId = null;
+  }
+
+  function setAllStationsCollapsed(collapsed) {
+    const stationIds = new Set(
+      stationListItems.map((item) => item.stationId).filter(Boolean),
+    );
+    for (const station of groupTransitStations(routes)) stationIds.add(station.id);
+    for (const stationId of stationIds) {
+      if (collapsed) collapsedStations.add(stationId);
+      else collapsedStations.delete(stationId);
+    }
+    syncStationListVisibility();
+    viewer?.scene?.requestRender?.();
+  }
+
+  function collapseAllStations() {
+    setAllStationsCollapsed(true);
+  }
+
+  function expandAllStations() {
+    setAllStationsCollapsed(false);
   }
 
   function disable() {
@@ -1643,6 +1747,8 @@ export function createTransitRouteLines({
     getRoute: routeForId,
     setSelectedRoute,
     clearSelectedRoute,
+    collapseAllStations,
+    expandAllStations,
     diagnostics({ includeGeometry = false } = {}) {
       return {
         source: 'OpenStreetMap via Overpass',

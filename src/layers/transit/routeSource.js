@@ -381,12 +381,12 @@ function buildLineOverviews(segments) {
     for (const stop of segment.stops || []) stops.set(stop.id, stop);
     overview.stops = [...stops.values()];
   }
-  return [...overviews.values()].map((overview) => {
-    return {
-      ...overview,
-      lines: collapseParallelTracks(mergeConnectedLines(overview.lines)),
-    };
-  });
+  return [...overviews.values()].map((overview) => ({
+    ...overview,
+    // Preserve every source way. Joining or collapsing ways can connect
+    // unrelated branches and create long shortcut segments in the map.
+    lines: overview.lines,
+  }));
 }
 
 /** Decode and viewport-clip OSM route relation member ways. */

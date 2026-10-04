@@ -37,6 +37,12 @@ export function readShellElements(document = globalThis.document) {
       'detection-density-slider',
     ),
     _detectionDensityValue: document.getElementById('detection-density-value'),
+    _transitStationsCollapseAll: document.getElementById(
+      'transit-stations-collapse-all',
+    ),
+    _transitStationsExpandAll: document.getElementById(
+      'transit-stations-expand-all',
+    ),
     _detectionAllocationRow: document.getElementById(
       'detection-allocation-row',
     ),

@@ -84,6 +84,8 @@ export function createTransitLayer({
       raiseRouteLinesToTop: parts.routes.raiseRouteLinesToTop,
       getTransitRouteDiagnostics: (options) =>
         parts.routes.diagnostics(options),
+      collapseAllStations: parts.routes.collapseAllStations,
+      expandAllStations: parts.routes.expandAllStations,
     },
     parts.lifecycle.methods,
     parts.queries.methods,

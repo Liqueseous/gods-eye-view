@@ -256,7 +256,7 @@ test('line overviews retain every disconnected corridor including short branches
   );
 });
 
-test('line overviews collapse nearby parallel tracks', () => {
+test('line overviews preserve nearby parallel tracks', () => {
   const routes = normalizeTransitRoutes(
     {
       elements: [
@@ -291,7 +291,7 @@ test('line overviews collapse nearby parallel tracks', () => {
   );
 
   assert.equal(routes.length, 1);
-  assert.equal(routes[0].lines.length, 1);
+  assert.equal(routes[0].lines.length, 2);
 });
 
 test('route colors fall back to line name, then route type', () => {

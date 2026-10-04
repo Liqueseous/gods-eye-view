@@ -112,6 +112,8 @@ export class DisplayBindings {
         sonarSectorSlider: this._cyberSonarSector,
         cleanViewButton: this._cleanViewBtn,
         cleanViewExitButton: this._cleanViewExitBtn,
+        collapseStationsButton: this._transitStationsCollapseAll,
+        expandStationsButton: this._transitStationsExpandAll,
         densitySlider: this._detectionDensitySlider,
         detectionButton: this._detectionBtn,
         allocationButtons: this._detectionAllocationBtns,
@@ -163,6 +165,10 @@ export class DisplayBindings {
         },
         toggleCleanView: () => this.toggleCleanView(),
         exitCleanView: () => this.toggleCleanView(false),
+        collapseStations: () =>
+          this.services.transitLayer?.collapseAllStations?.(),
+        expandStations: () =>
+          this.services.transitLayer?.expandAllStations?.(),
         setDensity: (value) => {
           this.shareLinkManager?.claimRestoreLane?.('visual');
           this.claimDetection();

@@ -304,11 +304,11 @@ test('route lines render with a contrast outline and route color, then release o
   assert.ok(sourceCalls[0].east - sourceCalls[0].west <= 0.22);
   assert.equal(
     sceneEntities.length,
-    5,
-    'outline, colored route, station, placard, and line badge are drawn',
+    6,
+    'outline, colored route, station, placard, toggle, and line badge are drawn',
   );
   assert.equal(sceneEntities.filter((entity) => entity.point).length, 1);
-  assert.equal(sceneEntities.filter((entity) => entity.billboard).length, 2);
+  assert.equal(sceneEntities.filter((entity) => entity.billboard).length, 3);
   const station = sceneEntities.find((entity) => entity.point);
   assert.equal(station.label.disableDepthTestDistance, 0);
   assert.equal(station.label.pixelOffset.y, -42);
@@ -324,11 +324,11 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(badge.disableDepthTestDistance, 0);
   assert.equal(badge.eyeOffset.z, -100);
   const stationId = 'transit-station:name:central:0';
-  assert.equal(layer.selectFromPick(stationId), true);
+  assert.equal(layer.selectFromPick(`${stationId}:toggle`), true);
   assert.equal(station.label.pixelOffset.y, -16);
   assert.equal(station.label.showBackground, true);
   assert.equal(badge.show, false);
-  assert.equal(layer.selectFromPick(stationId), true);
+  assert.equal(layer.selectFromPick(`${stationId}:toggle`), true);
   assert.equal(station.label.pixelOffset.y, -42);
   assert.equal(station.label.showBackground, false);
   assert.equal(badge.show, true);
