@@ -302,6 +302,8 @@ export function createRendering({ state, services, parts }) {
       color: MODE_CESIUM_COLORS[entry.mode],
       rotation: 0,
       alignedAxis: Cesium.Cartesian3.ZERO,
+      // Keep vehicle sprites visible above terrain; placards are raised
+      // separately so vehicles cannot render through their panels.
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
     entry.marker = marker;

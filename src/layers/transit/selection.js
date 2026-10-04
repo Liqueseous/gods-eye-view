@@ -21,6 +21,7 @@ import { transitRouteMatchesVehicle } from './routeSource.js';
 export function createSelection({ state, services, parts, source }) {
   const { governorRequestRender } = services.render;
   let selectedRoute = null;
+  let selectedStation = null;
   let selectedRouteData = null;
   let selectedMbtaRouteId = null;
   let routeDataController = null;
@@ -257,7 +258,78 @@ export function createSelection({ state, services, parts, source }) {
     })();
   }
 
+  function publishSelectedStation() {
+    if (!selectedStation || !selectedRoute) return;
+    const routeRefs = selectedStation.routeRefs?.join(' · ') || '—';
+    const details = [
+      `Station · ${routeRefs}`,
+      `${selectedStation.routeIds?.length || 0} mapped routes`,
+    ];
+    if (selectedRouteData?.loading) {
+      details.push(`Next arrivals loading · ${selectedMbtaRouteId || 'transit'}`);
+    } else if (selectedRouteData?.error) {
+      details.push('Next arrivals unavailable');
+    } else if (selectedRouteData) {
+      const stationName = String(selectedStation.name || '').toLowerCase();
+      const predictions = (selectedRouteData.predictions || []).filter(
+        (prediction) =>
+          !stationName ||
+          String(prediction.stopName || '').toLowerCase() === stationName,
+      );
+      const arrivals = predictions.slice(0, 3).map((prediction) => {
+        const at = Date.parse(
+          prediction.arrivalTime || prediction.departureTime || '',
+        );
+        const time = Number.isFinite(at)
+          ? new Date(at).toLocaleTimeString(undefined, {
+              hour: 'numeric',
+              minute: '2-digit',
+            })
+          : 'time unavailable';
+        return `${time}${prediction.headsign ? ` · ${prediction.headsign}` : ''}`;
+      });
+      details.push(
+        arrivals.length
+          ? `Next arrivals: ${arrivals.join(' · ')}`
+          : 'No upcoming arrivals reported for this station',
+      );
+    } else {
+      details.push('Next arrivals are not provided for this feed');
+    }
+    const position = () =>
+      Cesium.Cartesian3.fromDegrees(selectedStation.lon, selectedStation.lat);
+    state._overlayHost.setEntries(
+      TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID,
+      [
+        {
+          id: `transit-station:${selectedStation.id}`,
+          position,
+          variant: 'selected',
+          selected: true,
+          moving: false,
+          protected: true,
+          paintLane: 'selected',
+          collisionGroup: 'ambient-card',
+          priority: Number.MAX_SAFE_INTEGER,
+          title: selectedStation.name || 'Transit station',
+          details,
+          accent: selectedRoute.color,
+          interactive: false,
+          verticalOnly: true,
+          placement: 'above',
+          horizonCull: true,
+          terrainOcclusion: false,
+        },
+      ],
+      TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS,
+    );
+  }
+
   function publishSelectedRoute() {
+    if (selectedStation) {
+      publishSelectedStation();
+      return;
+    }
     if (!selectedRoute) return;
     const routeId = selectedRoute.routeId;
     const position = () => {
@@ -365,6 +437,7 @@ export function createSelection({ state, services, parts, source }) {
     selectedRouteData = null;
     selectedMbtaRouteId = null;
     selectedRoute = null;
+    selectedStation = null;
     parts.routes.clearSelectedRoute();
     state._overlayHost.clearSource(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID);
     const entry = state._selectedKey
@@ -389,6 +462,17 @@ export function createSelection({ state, services, parts, source }) {
     parts.trails.select(entry);
     refreshSelectedCard(true);
     governorRequestRender('transit-select');
+  }
+
+  function selectStation(station, route) {
+    if (!station || !route?.routeId) return;
+    clearSelection();
+    selectedStation = station;
+    selectedRoute = route;
+    parts.routes.setSelectedRoute(route.routeId);
+    publishSelectedStation();
+    loadMbtaRouteDetails(route);
+    governorRequestRender('transit-station-select');
   }
 
   function selectRoute(route) {
@@ -504,6 +588,7 @@ export function createSelection({ state, services, parts, source }) {
     refreshSelectedCard,
     clearSelection,
     selectVehicle,
+    selectStation,
     selectRoute,
     refreshSelectedRouteCard,
     onKeyDown,
