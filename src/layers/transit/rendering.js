@@ -1,8 +1,5 @@
 import * as Cesium from 'cesium';
-import {
-  cameraPoseSignature,
-  perspectiveProjectedRotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import {
   updatePlayback,
   applyDisplayCourse,
@@ -26,7 +23,9 @@ import {
   VISIBILITY_REFRESH_MS,
   SELECTED_PIXEL_SIZE,
   TRANSIT_MODE_COLORS,
+  TRANSIT_ENTITY_GROUND_CLEARANCE_M,
   VISIBILITY_EXIT_GRACE_SWEEPS,
+  VISIBILITY_REFRESH_BUDGET_MS,
   vehicleNearView,
 } from './policy.js';
 
@@ -60,7 +59,7 @@ export function createRendering({ state, services, parts }) {
     return Cesium.Cartesian3.fromDegrees(
       lon,
       lat,
-      heightM || 0,
+      (heightM || 0) + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
       undefined,
       out,
     );
@@ -304,7 +303,7 @@ export function createRendering({ state, services, parts }) {
       color: MODE_CESIUM_COLORS[entry.mode],
       rotation: 0,
       alignedAxis: Cesium.Cartesian3.ZERO,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      disableDepthTestDistance: 0,
     });
     entry.marker = marker;
     entry.markerCollection = state._markers;
@@ -353,7 +352,7 @@ export function createRendering({ state, services, parts }) {
     if (!scene?.camera) return;
     if (now - state._rotationAt < ROTATION_REFRESH_MS) return;
     state._rotationAt = now;
-    const pose = cameraPoseSignature(scene.camera);
+    const pose = rotation.cameraPoseSignature(scene.camera);
     const cameraChanged =
       state._rotationPose !== pose ||
       state._rotationRevision !== state._cameraRevision;
@@ -391,7 +390,7 @@ export function createRendering({ state, services, parts }) {
       // camera-basis helper aircraft use is orthographic — fine at altitude,
       // and wrong by twenty-odd degrees for a street-level contact away from
       // the centre of an obliquely pitched view, which is most of them.
-      entry.marker.rotation = perspectiveProjectedRotation(
+      entry.marker.rotation = rotation.perspectiveProjectedRotation(
         scene,
         entry.marker.position,
         course,
@@ -470,7 +469,7 @@ export function createRendering({ state, services, parts }) {
     const selected = state._vehicles.get(state._selectedKey);
     if (selected && state._visible.has(selected)) {
       selected.marker.rotation = Number.isFinite(selected.courseDeg)
-        ? perspectiveProjectedRotation(
+        ? rotation.perspectiveProjectedRotation(
             state._viewer.scene,
             selected.marker.position,
             selected.courseDeg,
@@ -489,7 +488,12 @@ export function createRendering({ state, services, parts }) {
   /** Visibility work runs off the frame path, coalesced at four sweeps/second. */
   function requestVisibility() {
     state._visibilityDirty = true;
-    if (!state._enabled || state._visibilityTimer !== null) return;
+    if (
+      !state._enabled ||
+      state._visibilityTimer !== null ||
+      state._visibilityJob !== null
+    )
+      return;
     state._visibilityTimer = setTimeout(
       () => {
         state._visibilityTimer = null;
@@ -501,37 +505,85 @@ export function createRendering({ state, services, parts }) {
   function refreshVisibility() {
     if (!state._enabled) return 0;
     const now = Date.now();
-    if (now - state._visibilityAt < VISIBILITY_REFRESH_MS) {
+    if (
+      !state._visibilityJob &&
+      now - state._visibilityAt < VISIBILITY_REFRESH_MS
+    ) {
       requestVisibility();
       return state._shownCount;
     }
-    state._visibilityAt = now;
-    state._visibilityDirty = false;
-    const viewer = state._viewer,
-      camera = viewer?.camera;
-    if (!camera) return 0;
-    const position =
-      camera.positionWC ||
-      Cesium.Ellipsoid.WGS84.cartographicToCartesian(
-        camera.positionCartographic,
-        cameraPosition,
-      );
-    occluder.cameraPosition = position;
-    const frustum = camera.frustum?.computeCullingVolume(
-      position,
-      camera.directionWC,
-      camera.upWC,
-    );
+    if (!state._visibilityJob) {
+      state._visibilityAt = now;
+      state._visibilityDirty = false;
+      const viewer = state._viewer,
+        camera = viewer?.camera;
+      if (!camera) return 0;
+      const position =
+        camera.positionWC ||
+        Cesium.Ellipsoid.WGS84.cartographicToCartesian(
+          camera.positionCartographic,
+          cameraPosition,
+        );
+      state._visibilityJob = {
+        entries: [...state._vehicles.values()],
+        index: 0,
+        changed: false,
+        startedAt: performance.now(),
+        now,
+        viewer,
+        camera,
+        position,
+        frustum: camera.frustum?.computeCullingVolume(
+          position,
+          camera.directionWC,
+          camera.upWC,
+        ),
+      };
+    }
+    const job = state._visibilityJob;
+    const viewer = job.viewer;
+    const camera = job.camera;
+    const frustum = job.frustum;
     const planes = frustum?.planes;
-    let changed = false;
-    for (const entry of state._vehicles.values()) {
+    occluder.cameraPosition = job.position;
+    const startedAt = performance.now();
+    for (
+      ;
+      job.index < job.entries.length &&
+      (job.index === 0 ||
+        performance.now() - startedAt < VISIBILITY_REFRESH_BUDGET_MS);
+      job.index++
+    ) {
+      const entry = job.entries[job.index];
       if (!entry.marker) continue;
+
+      // Bypass visibility culling for ground primitives (GLOBE classification)
+      // when in Google 3D visual preset. This prevents them from being
+      // occluded by 3D tileset geometry.
+      if (
+        state._stylePreset === 'google3d' &&
+        entry.marker.classificationType === Cesium.ClassificationType.GLOBE
+      ) {
+        // Manually set visible to true to bypass frustum/horizon checks
+        entry.visibility = {
+          ...entry.visibility,
+          frustum: true,
+          occluder: true,
+          boundsApplied: true,
+        };
+        entry.marker.show = true;
+        entry.visibilityMisses = 0;
+        schedulePlayback(entry);
+        job.changed = true;
+        job.index++;
+        continue;
+      }
       // Refresh hidden clocks before testing admission, even if no frame has
       // ever sampled them. Do not write the billboard until it is admitted.
       const noSample = !entry.sample || !Number.isFinite(entry.sample.lat);
       if (entry.track?.count && (!state._visible.has(entry) || noSample)) {
         entry.sample ||= {};
-        updatePlayback(entry, now, performance.now());
+        updatePlayback(entry, job.now, performance.now());
       }
       sphere.center =
         state._visible.has(entry) || !entry.sample
@@ -594,7 +646,7 @@ export function createRendering({ state, services, parts }) {
       if (visible) state._visible.add(entry);
       else state._visible.delete(entry);
       if (visible && entry.track?.count) {
-        if (!wasVisible && !entry.qaFixture) syncPlayback(entry, now);
+        if (!wasVisible && !entry.qaFixture) syncPlayback(entry, job.now);
         // Re-entry can advance into an unprepared corridor; loaded tiles can
         // also resolve a cold path without a poll or a render-loop wakeup.
         if (!wasVisible || entry.surfaceReady === false || entry.heightPending)
@@ -602,7 +654,7 @@ export function createRendering({ state, services, parts }) {
         // Surface completion must recover while requestRenderMode is idle.
         // Otherwise surfaceReady=false prevents the very frame that clears it.
         if (!state._moving.has(entry)) {
-          updatePlayback(entry, now, performance.now());
+          updatePlayback(entry, job.now, performance.now());
           placeSample(entry);
         }
       }
@@ -613,10 +665,18 @@ export function createRendering({ state, services, parts }) {
       visibility.heightPending = !!entry.heightPending;
       visibility.surfaceReady = entry.surfaceReady ?? null;
       schedulePlayback(entry);
-      changed ||= visible !== wasVisible || wasShown !== entry.marker.show;
+      job.changed ||= visible !== wasVisible || wasShown !== entry.marker.show;
     }
+    if (job.index < job.entries.length) {
+      state._visibilityTimer = setTimeout(() => {
+        state._visibilityTimer = null;
+        refreshVisibility();
+      }, 0);
+      return state._shownCount;
+    }
+    state._visibilityJob = null;
     state._shownCount = state._visible.size;
-    if (changed) state._detectRevision++;
+    if (job.changed) state._detectRevision++;
     syncRenderHold();
     governorRequestRender('transit-visibility');
     return state._shownCount;

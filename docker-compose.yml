@@ -1,25 +1,75 @@
 services:
   gods-eye-view:
-    # Comment out the pre-built image to use the local Dockerfile build instead
-    #image: gods-eye-view:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: gods-eye-view:latest
+    # Published from main by CI. Set GEV_BUILD_NUMBER=build-<run-number> to
+    # deploy an immutable published image instead of the latest main build.
+    image: ghcr.io/liqueseous/gods-eye-view:${GEV_BUILD_NUMBER:-latest}
+    # To build locally, layer docker-compose.build.yml over this file:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+    # Development overrides can be layered on either image source.
     ports:
-      - "0.0.0.0:4173:4173"
+      - "0.0.0.0:${PORT:-4173}:4173"
     env_file:
       - path: .env
         required: false
     environment:
       HOST: 0.0.0.0
       PORT: 4173
+      # 'preview' (default) runs the built/minified app; 'dev' runs the Vite
+      # dev server instead (slower, but exposes the browser key-setup wizard).
+      GEV_RUN_MODE: ${GEV_RUN_MODE:-preview}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENSKY_AUTH_MODE: oauth
       OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID}
       OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET}
       AISSTREAM_API_KEY: ${AISSTREAM_API_KEY}
       TOMTOM_API_KEY: ${TOMTOM_API_KEY}
+    
+      MTA_BUS_API_KEY: ${MTA_BUS_API_KEY:-}
       CESIUM_ION_TOKEN: ${CESIUM_ION_TOKEN}
       FIRMS_MAP_KEY: ${FIRMS_MAP_KEY}
+      # Tried first for queries inside its coverage (see OVERPASS_SELF_HOSTED_BBOX
+      # default in server/providers/overpass/selfHosted.js); public mirrors
+      # remain the fallback for everything outside it and while it imports.
+      OVERPASS_SELF_HOSTED_URL: http://overpass:80/api/interpreter
+    volumes:
+      - overpass-cache:/app/.gev-cache/overpass
     restart: unless-stopped
+
+  overpass:
+    image: wiktorn/overpass-api:latest
+    stdin_open: true
+    tty: true
+    environment:
+      OVERPASS_MODE: init
+      OVERPASS_META: 'no'
+      # North America extract (Canada/US/Mexico/Central America/Caribbean) —
+      # matches the default coverage box in selfHosted.js. Swap both together
+      # for a different region. Geofabrik only ships .pbf; this image wants
+      # .osm.bz2, so PLANET_PREPROCESS converts it with the bundled osmium.
+      OVERPASS_PLANET_URL: https://download.geofabrik.de/north-america-latest.osm.pbf
+      OVERPASS_PLANET_PREPROCESS: 'mv /db/planet.osm.bz2 /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf && rm /db/planet.osm.pbf'
+      OVERPASS_DIFF_URL: https://download.geofabrik.de/north-america-updates/
+      OVERPASS_RULES_LOAD: 10
+      # A short sleep hammers download.geofabrik.de for a new diff every
+      # cycle; on flaky/slow links the resulting timeouts and partial diff
+      # applies corrupt the dispatcher's internal state and crash it on the
+      # next /api/status check (wiktorn/overpass-api#154, #152 — unrelated
+      # to this app). A longer interval cuts how often that fragile path
+      # runs. The app already falls back to public mirrors whenever the
+      # local instance is unhealthy, so staler local data here is safe.
+      OVERPASS_UPDATE_SLEEP: 1800
+    volumes:
+      - overpass-db:/db
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      # Initial import of a continent extract can take a while; don't flag
+      # unhealthy while it's still building the database.
+      start_period: 30m
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  overpass-cache:
+  overpass-db:

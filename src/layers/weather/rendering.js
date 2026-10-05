@@ -92,7 +92,7 @@ function createGlobeRendering({
     const template = weatherTileUrl(snapshot.product, time, {
       size: profile(snapshot.product).tileSize,
     });
-    const urls = [];
+    const tiles = [];
     for (let z = 0; z <= 1; z++) {
       for (let y = 0; y < scheme.getNumberOfYTilesAtLevel(z); y++) {
         for (let x = 0; x < scheme.getNumberOfXTilesAtLevel(z); x++) {
@@ -103,14 +103,22 @@ function createGlobeRendering({
             )
           )
             continue;
-          urls.push(
-            template.replace('{z}', z).replace('{x}', x).replace('{y}', y),
-          );
-          if (urls.length === MAX_PREFETCH_TILES) return urls;
+          const tile = scheme.tileXYToRectangle(x, y, z);
+          const tileCenter = cesium.Rectangle.center(tile);
+          const coverageCenter = cesium.Rectangle.center(coverage);
+          tiles.push({
+            distance:
+              Math.abs(tileCenter.latitude - coverageCenter.latitude) +
+              Math.abs(tileCenter.longitude - coverageCenter.longitude),
+            url: template.replace('{z}', z).replace('{x}', x).replace('{y}', y),
+          });
         }
       }
     }
-    return urls;
+    return tiles
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, MAX_PREFETCH_TILES)
+      .map((tile) => tile.url);
   }
 
   function remove(frame) {

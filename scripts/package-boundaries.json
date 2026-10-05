@@ -20,13 +20,13 @@
   },
   "viewer": {
     "exports": ["./application/viewer"],
-    "modules": ["src/app/viewer.js"],
+    "modules": ["src/app/viewer.js", "src/app/atmosphereCompat.js"],
     "external": ["cesium"]
   },
   "vite-build": {
     "runtime": "node",
     "exports": ["./build/vite", "./build/html"],
-    "modules": ["build/vite.js", "build/application-html.js"],
+    "modules": ["build/vite.js", "build/application-html.js", "package.json"],
     "external": ["vite-plugin-cesium"]
   },
   "live-providers": {
@@ -202,6 +202,7 @@
       "server/providers/overpass/constants.js",
       "server/providers/overpass/geometry.js",
       "server/providers/overpass/query.js",
+      "server/providers/overpass/selfHosted.js",
       "server/providers/overpass/transport.js",
       "server/providers/places/routes.js",
       "src/data/placeProviderPayloads.js",
@@ -374,6 +375,7 @@
       "src/ui/mapSource.js",
       "src/ui/mapSourceControls.js",
       "src/mapStackChips.js",
+      "src/maps/google3d.js",
       "src/keySetupCore.mjs"
     ],
     "external": []
@@ -493,6 +495,7 @@
     "modules": [
       "src/hudLayouts.js",
       "src/hudLayoutPolicy.js",
+      "src/buildInfo.js",
       "src/cyberSonar.js",
       "src/ui/radioPanelPlacement.js",
       "src/app/stateChannel.js",
@@ -514,6 +517,7 @@
       "src/loadingFeedback.js",
       "src/locationStatus.js",
       "src/mapStackChips.js",
+      "src/maps/google3d.js",
       "src/navigationPolicy.js",
       "src/panelStackLayout.js",
       "src/rightRailPolicy.js",
@@ -608,6 +612,7 @@
       "src/worldFocus.js",
       "src/data/feedState.js",
       "src/data/layerSnapshot.js",
+      "src/data/osmCacheBounds.js",
       "src/ui/aircraftDisplay.js",
       "src/layers/weather/imageryHost.js",
       "src/ui/layerBindings.js",
@@ -738,6 +743,7 @@
     "exports": ["./layers/flights"],
     "modules": [
       "src/cyberSonar.js",
+      "src/frameBudget.js",
       "src/data/aircraftClass.js",
       "src/data/aircraftIcons.js",
       "src/data/aircraftMeta.js",
@@ -779,6 +785,7 @@
     "exports": ["./layers/military"],
     "modules": [
       "src/cyberSonar.js",
+      "src/frameBudget.js",
       "src/data/aircraftClass.js",
       "src/data/aircraftIcons.js",
       "src/data/aircraftMeta.js",
@@ -839,6 +846,7 @@
   "vessel-layer": {
     "exports": ["./layers/vessels"],
     "modules": [
+      "src/data/vesselModels.js",
       "src/layers/vessels/cards.js",
       "src/layers/vessels/evidence.js",
       "src/layers/vessels/index.js",
@@ -1009,6 +1017,8 @@
     "modules": [
       "src/data/cameraSensitivity.js",
       "src/data/flowMatch.js",
+      "src/data/lineGeometry.js",
+      "src/data/osmCacheBounds.js",
       "src/data/tomtomTiles.js",
       "src/data/trafficBounds.js",
       "src/data/trafficFlowStyle.js",
@@ -1073,6 +1083,7 @@
       "src/layers/cctv/geometry.js",
       "src/layers/cctv/geometryQueue.js",
       "src/layers/cctv/ground.js",
+      "src/layers/cctv/headingConfidence.js",
       "src/layers/cctv/health.js",
       "src/layers/cctv/hover.js",
       "src/layers/cctv/index.js",
@@ -1107,6 +1118,7 @@
       "src/layers/alpr/overlay.js",
       "src/layers/alpr/source.js",
       "src/data/inputOwnership.js",
+      "src/data/osmCacheBounds.js",
       "src/layers/alpr/records.js"
     ],
     "external": ["cesium"]
@@ -1262,6 +1274,9 @@
       "./standalone/catalog"
     ],
     "modules": [
+      "src/frameBudget.js",
+      "src/buildInfo.js",
+      "src/data/vesselModels.js",
       "src/cyberSonarScene.js",
       "src/cyberSonar.js",
       "src/hudLayouts.js",
@@ -1277,6 +1292,7 @@
       "src/data/bhoteKoshiIncidentPlaces.js",
       "src/data/bhoteKoshiFloodPath.js",
       "src/data/bhoteKoshiShotPaths.js",
+      "src/data/lineGeometry.js",
       "src/annotations/annotationEngine.js",
       "src/annotations/annotationResolver.js",
       "src/annotations/hybridAnnotationRenderer.js",
@@ -1306,6 +1322,11 @@
       "src/app/layers/satellites.js",
       "src/app/layers/submarineCables.js",
       "src/app/layers/traffic.js",
+      "src/app/layers/tunnels.js",
+      "src/layers/tunnels/index.js",
+      "src/layers/tunnels/source.js",
+      "src/layers/transit/routeSource.js",
+      "src/layers/transit/routeLines.js",
       "src/app/operations.js",
       "src/app/scene.js",
       "src/sources/sourceSlot.js",
@@ -1315,6 +1336,7 @@
       "src/app/surfaceServices.js",
       "src/app/tools.js",
       "src/app/viewer.js",
+      "src/app/atmosphereCompat.js",
       "src/bloom.js",
       "src/camera.js",
       "src/cameraVerbs.js",
@@ -1336,6 +1358,7 @@
       "src/data/aircraftRecession.js",
       "src/data/aisLiveVessels.js",
       "src/data/alprCameras.js",
+      "src/data/osmCacheBounds.js",
       "src/data/analystEngine.js",
       "src/data/analystPrompt.js",
       "src/data/bikeshare.js",
@@ -1490,6 +1513,7 @@
       "src/layers/cctv/geometry.js",
       "src/layers/cctv/geometryQueue.js",
       "src/layers/cctv/ground.js",
+      "src/layers/cctv/headingConfidence.js",
       "src/layers/cctv/health.js",
       "src/layers/cctv/hover.js",
       "src/layers/cctv/index.js",
@@ -1853,6 +1877,8 @@
       "src/data/transitFeeds.js",
       "src/data/transitIcons.js",
       "src/data/transitPresetStyle.js",
+      "src/data/osmCacheBounds.js",
+      "src/data/trafficBounds.js",
       "src/layers/transit/controls.js",
       "src/layers/transit/height.js",
       "src/layers/transit/index.js",
@@ -1860,6 +1886,8 @@
       "src/layers/transit/lifecycle.js",
       "src/layers/transit/policy.js",
       "src/layers/transit/queries.js",
+      "src/layers/transit/routeLines.js",
+      "src/layers/transit/routeSource.js",
       "src/layers/transit/rendering.js",
       "src/layers/transit/selection.js",
       "src/layers/transit/state.js",
@@ -1983,6 +2011,8 @@
   "application-layer-construction": {
     "exports": ["./application/layers"],
     "modules": [
+      "src/frameBudget.js",
+      "src/data/vesselModels.js",
       "src/cyberSonar.js",
       "src/data/bhoteKoshiEvent.js",
       "src/ui/imagerySplit.js",
@@ -2022,6 +2052,12 @@
       "src/app/layers/satellites.js",
       "src/app/layers/submarineCables.js",
       "src/app/layers/traffic.js",
+      "src/app/layers/tunnels.js",
+      "src/data/osmCacheBounds.js",
+      "src/layers/tunnels/index.js",
+      "src/layers/tunnels/source.js",
+      "src/layers/transit/routeSource.js",
+      "src/layers/transit/routeLines.js",
       "src/sources/sourceSlot.js",
       "src/cctvFocusRequest.js",
       "src/celestialRing.js",
@@ -2047,6 +2083,7 @@
       "src/data/firmsAdapt.js",
       "src/data/firmsLabels.js",
       "src/data/flowMatch.js",
+      "src/data/lineGeometry.js",
       "src/data/focusDeemphasis.js",
       "src/data/geoid.js",
       "src/data/iconOrientation.js",
@@ -2136,6 +2173,7 @@
       "src/layers/cctv/geometry.js",
       "src/layers/cctv/geometryQueue.js",
       "src/layers/cctv/ground.js",
+      "src/layers/cctv/headingConfidence.js",
       "src/layers/cctv/health.js",
       "src/layers/cctv/hover.js",
       "src/layers/cctv/index.js",
@@ -2419,6 +2457,7 @@
       "src/data/detection.js",
       "src/data/detectionRenderDemand.js",
       "src/data/detectionPresentation.js",
+      "src/data/lineGeometry.js",
       "src/data/modelEligibility.js",
       "src/app/layers/recentImagery.js",
       "src/layers/recentImagery/index.js",
@@ -2664,7 +2703,8 @@
     "modules": [
       "src/layers/alpr/policy.js",
       "src/layers/alpr/records.js",
-      "src/layers/alpr/source.js"
+      "src/layers/alpr/source.js",
+      "src/data/osmCacheBounds.js"
     ],
     "external": []
   },
@@ -2717,7 +2757,9 @@
   "traffic-source-factory": {
     "exports": ["./layers/traffic/source"],
     "modules": [
+      "src/data/lineGeometry.js",
       "src/data/tomtomTiles.js",
+      "src/data/osmCacheBounds.js",
       "src/layers/traffic/flowDecode.js",
       "src/layers/traffic/flowSource.js",
       "src/layers/traffic/source.js",
@@ -2785,6 +2827,7 @@
       "src/data/gtfsRealtime.js",
       "src/data/transitFeeds.js",
       "src/data/transitProxy.js",
+      "src/sources/mtaStations.js",
       "src/sources/httpBody.js",
       "src/sources/transitHistory.js",
       "src/sources/transitService.js",
@@ -2830,6 +2873,8 @@
       "src/data/transitIcons.js",
       "src/data/transitPresetStyle.js",
       "src/data/transitProxy.js",
+      "src/data/osmCacheBounds.js",
+      "src/data/trafficBounds.js",
       "src/layers/transit/controls.js",
       "src/layers/transit/height.js",
       "src/layers/transit/index.js",
@@ -2839,6 +2884,8 @@
       "src/layers/transit/policy.js",
       "src/layers/transit/qaMetrics.js",
       "src/layers/transit/queries.js",
+      "src/layers/transit/routeLines.js",
+      "src/layers/transit/routeSource.js",
       "src/layers/transit/rendering.js",
       "src/layers/transit/selection.js",
       "src/layers/transit/state.js",
@@ -2872,6 +2919,8 @@
       "src/data/transitFeeds.js",
       "src/data/transitIcons.js",
       "src/data/transitPresetStyle.js",
+      "src/data/osmCacheBounds.js",
+      "src/data/trafficBounds.js",
       "src/layers/transit/controls.js",
       "src/layers/transit/height.js",
       "src/layers/transit/index.js",
@@ -2879,6 +2928,8 @@
       "src/layers/transit/lifecycle.js",
       "src/layers/transit/policy.js",
       "src/layers/transit/queries.js",
+      "src/layers/transit/routeLines.js",
+      "src/layers/transit/routeSource.js",
       "src/layers/transit/rendering.js",
       "src/layers/transit/selection.js",
       "src/layers/transit/state.js",
@@ -2912,6 +2963,7 @@
   "transit-service": {
     "exports": ["./sources/transit-service"],
     "modules": [
+      "src/sources/mtaStations.js",
       "src/data/transitFeeds.js",
       "src/data/transitProxy.js",
       "src/data/gtfsRealtime.js",

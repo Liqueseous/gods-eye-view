@@ -24,6 +24,13 @@ test('route resolution admits only the catalog and registered feed ids', () => {
   assert.equal(resolveTransitRoute('/vehicles/mbta')?.feed?.id, 'mbta');
   assert.equal(resolveTransitRoute('/vehicles/mbta/')?.feed?.id, 'mbta');
   assert.equal(resolveTransitRoute('/vehicles/mbta?trip=1')?.feed?.id, 'mbta');
+  assert.deepEqual(resolveTransitRoute('/route-details/mbta/Red'), {
+    route: 'route-details',
+    feed: getTransitFeed('mbta'),
+    routeId: 'Red',
+  });
+  assert.equal(resolveTransitRoute('/route-details/mta-nyc/M15'), null);
+  assert.equal(resolveTransitRoute('/route-details/mbta/../secrets'), null);
   assert.equal(resolveTransitRoute('/vehicles/nope'), null);
   assert.equal(resolveTransitRoute('/vehicles/'), null);
   assert.equal(resolveTransitRoute('/vehicles/mbta/extra'), null);
@@ -76,6 +83,56 @@ test('snapshot shape carries provenance the layer displays', () => {
   assert.equal(snapshot.version, '2.0');
   assert.equal(snapshot.count, 0);
   assert.deepEqual(snapshot.vehicles, []);
+});
+
+test('snapshot normalization turns subway TripUpdates into stop-based vehicles', () => {
+  const nested = (build) => {
+    const writer = new PbfWriter();
+    build(writer);
+    return writer.finish();
+  };
+  const stop = nested((writer) => {
+    writer.writeVarintField(1, 4);
+    writer.writeStringField(4, 'A12');
+    writer.writeBytesField(
+      2,
+      nested((arrival) => arrival.writeVarintField(2, 1_700_000_100)),
+    );
+  });
+  const tripUpdate = nested((writer) => {
+    writer.writeBytesField(
+      1,
+      nested((trip) => {
+        trip.writeStringField(1, 'trip-1');
+        trip.writeStringField(5, 'A');
+      }),
+    );
+    writer.writeBytesField(3, stop);
+    writer.writeVarintField(4, 1_700_000_050);
+  });
+  const bytes = nested((writer) => {
+    writer.writeBytesField(
+      1,
+      nested((header) => header.writeVarintField(3, 1_700_000_000)),
+    );
+    writer.writeBytesField(
+      2,
+      nested((entity) => {
+        entity.writeStringField(1, 'entity-1');
+        entity.writeBytesField(3, tripUpdate);
+      }),
+    );
+  });
+  const snapshot = buildTransitSnapshot(
+    { id: 'mta-subway-test', name: 'MTA Subway', realtimeType: 'trip-updates' },
+    bytes,
+    1_700_000_000_000,
+    { stationCoordinates: new Map([['A12', { lat: 40.75, lon: -73.99 }]]) },
+  );
+  assert.equal(snapshot.count, 1);
+  assert.equal(snapshot.vehicles[0].stopId, 'A12');
+  assert.equal(snapshot.vehicles[0].lat, 40.75);
+  assert.equal(snapshot.vehicles[0].timestampSource, 'vehicle');
 });
 
 test('cache policy: fresh within TTL, stale until the serve-stale window, expired after', () => {

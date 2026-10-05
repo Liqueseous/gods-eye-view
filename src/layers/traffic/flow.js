@@ -193,7 +193,14 @@ export function createFlow({ state: layerState, services, parts, source }) {
       );
     }
     if (generation !== layerState._loadGeneration) return false;
-    parts.rendering.renderRoadsForAltitude(roads, altitude, label, trace);
+    const rendered = await parts.rendering.renderRoadsForAltitude(
+      roads,
+      altitude,
+      label,
+      trace,
+      () => generation === layerState._loadGeneration,
+    );
+    if (!rendered) return false;
     if (outcome === 'timeout') {
       flowJob
         .then(() => {

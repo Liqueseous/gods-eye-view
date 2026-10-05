@@ -22,6 +22,20 @@ test('sonar on/off control cannot fire after disposal', () => {
   assert.deepEqual(calls, ['toggle']);
 });
 
+test('station placard toggle invokes its action', () => {
+  const stationToggleButton = element();
+  const calls = [];
+  const control = bindDisplayControls({
+    elements: { stationToggleButton },
+    actions: { toggleStations: () => calls.push('toggle') },
+  });
+
+  stationToggleButton.dispatchEvent(new Event('click'));
+  assert.deepEqual(calls, ['toggle']);
+
+  control.destroy();
+});
+
 test('controls read current values without preventing native input behavior', () => {
   const bloomSlider = element('24');
   const hudLayout = element('tactical');

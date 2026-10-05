@@ -15,6 +15,7 @@ test('reference factories retain compatibility without starting acquisition or s
   assert.deepEqual(Object.keys(first), [
     'earthquakes',
     'fire-perimeters',
+    'nws-alerts',
     'cables',
   ]);
   assert.notEqual(first.earthquakes, second.earthquakes);

@@ -59,6 +59,18 @@ const OVERPASS_TIMEOUT_MS = 22000;
 /** Max entries in the Overpass response cache (LRU-like, oldest evicted first). */
 const OVERPASS_CACHE_MAX_ENTRIES = 120;
 
+/**
+ * Cooldown (ms) after a fully-refused query (every mirror 4xx/timeout) before
+ * the SAME query is allowed to fan out to upstream again. A refusal is never
+ * cached as data (a 406 must not outlive the outage that caused it), but
+ * without this a stuck client (e.g. the always-on road-network sync retrying
+ * a viewport Overpass can never satisfy) re-fans to all 4 mirrors, each up to
+ * OVERPASS_TIMEOUT_MS, on every single retry — pegging CPU and holding the
+ * layer in "loading" indefinitely. Short enough that a real recovery is felt
+ * within a minute.
+ */
+const OVERPASS_REFUSAL_COOLDOWN_MS = 45_000;
+
 // --- Abuse guards shared by the Overpass + route proxies --------------------
 /** Max accepted POST body for the Overpass proxy (Overpass QL queries are tiny). */
 const OVERPASS_MAX_BODY_BYTES = 24 * 1024;
@@ -130,6 +142,7 @@ export {
   OVERPASS_DISK_DIR,
   OVERPASS_CACHE_MS,
   OVERPASS_CACHE_MAX_ENTRIES,
+  OVERPASS_REFUSAL_COOLDOWN_MS,
   OVERPASS_MAX_BODY_BYTES,
   OVERPASS_MAX_CONCURRENT,
   OVERPASS_MAX_AROUND_M,

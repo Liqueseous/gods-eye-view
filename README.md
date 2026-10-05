@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌐 God's Eye View
+# 🌐 God's Eye View — Unofficial Fork
 
 [![CI](https://github.com/bilawalsidhu/gods-eye-view/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bilawalsidhu/gods-eye-view/actions/workflows/ci.yml) [![Reached #1 on GitHub Trending](https://img.shields.io/badge/%231_GitHub_Trending-thank_you!-F0A63C?style=flat-square&logo=github)](https://x.com/bilawalsidhu/status/2093798887815348521)
 
@@ -36,6 +36,12 @@ _“pretty cool”_ — [Brendan Eich](https://x.com/BrendanEich/status/20945920
 
 </div>
 
+> **Fork notice:** This repository is a fork of the original [Bilawal Sidhu `gods-eye-view`](https://github.com/bilawalsidhu/gods-eye-view) repository. It is an independent fork and is **not** the original project or an official upstream release.
+>
+> **AI disclosure:** AI-assisted development tools were used during production of this application, including implementation, debugging, testing, and documentation work. Human review and validation remain the responsibility of this fork's maintainers.
+>
+> **Build identity:** The application displays its semantic version and build number under Visual Presets, with the parent source baseline under Location. The version comes from `package.json`; builds use `GEV_BUILD_NUMBER`, `BUILD_NUMBER`, or `GITHUB_RUN_NUMBER`, falling back to `dev` for local development. Pushes to `main` publish `ghcr.io/liqueseous/gods-eye-view:latest` and `:build-<run-number>` with the GitHub Actions run number baked in. The `SRC` field identifies the last parent-repository baseline merged into this fork (`0.1.1@b210ab0` by default).
+
 ---
 
 ## 🌍 Why This Exists
@@ -69,6 +75,7 @@ Start with the included data sources, then add your own. Each layer is a separat
 - **🔗 Share Links:** Camera, style, layers, and even one tracked target serialize into a URL — a live target is a handoff, not a bookmark.
 - **🏠 Reset Globe:** One control — or one sentence — back to the full Earth.
 - **🌦️ Weather:** Animate GFS or ECMWF forecast wind, replay observed radar, satellite clouds and lightning on one timeline, and follow NHC/CPHC cyclone tracks. No key needed.
+- **🚇 Transit:** View viewport-loaded rail routes and stations with collapsible station placards, MTA-style route symbols, express-service diamonds, PATH route normalization, and deterministic list-over-compact overlay ordering.
 - **📷 Mapped ALPR cameras:** License-plate-reader camera locations tagged in OpenStreetMap, one city at a time. Locations and tags only; no key needed.
 - **🔭 Satellite passes:** Ask by voice when any loaded satellite next rises over you: rise, peak and set times, and whether you can see it.
 - **🔎 Analyst answers:** Count, filter and rank satellites, datacenters and dams by voice, alongside flights, ships, fires and quakes; answers say when a feed is stale or on a fallback.
@@ -119,7 +126,7 @@ Use **Node.js 24.x (24.14.0 or later) or 26.x**. The setup doctor warns about
 Node 25, which is end-of-life.
 
 ```bash
-git clone https://github.com/bilawalsidhu/gods-eye-view.git
+git clone https://github.com/Liqueseous/gods-eye-view.git
 cd gods-eye-view
 npm ci
 npm run doctor
@@ -128,6 +135,35 @@ npm run dev
 
 Open **`http://localhost:4173`**. Choose **Live Contacts**, **Space Missions**,
 **Environmental**, or **Explore Manually** from the first-run panel.
+
+### Docker deployment
+
+The Docker Compose deployment uses `PORT` for both the host and container
+port, defaulting to `4173`. It pulls the `latest` image published from `main`.
+Set a different value per checkout in `.env`, or provide it when starting the
+instance:
+
+```bash
+PORT=4281 docker compose pull && PORT=4281 docker compose up -d
+```
+
+That instance is available at **`http://localhost:4281`**. Keep each checkout's
+`PORT` value distinct when running multiple instances on the same host.
+
+Every push to `main` publishes `ghcr.io/liqueseous/gods-eye-view:latest` and
+`ghcr.io/liqueseous/gods-eye-view:build-<run-number>`. To deploy an immutable
+published build, set its tag through `GEV_BUILD_NUMBER`:
+
+```bash
+GEV_BUILD_NUMBER=build-123 docker compose pull && GEV_BUILD_NUMBER=build-123 docker compose up -d
+```
+
+For a local build, layer the build override and pass the number to bake into the
+bundle:
+
+```bash
+GEV_BUILD_NUMBER=123 docker compose -f docker-compose.yml -f docker-compose.build.yml build
+```
 
 <details>
 <summary>Startup performance</summary>
@@ -291,7 +327,7 @@ Nineteen layers and map sources. **Seventeen have a keyless path.** Some offer a
 | 📹 **CCTV Mesh**            | ~3,600 public cameras projected _into_ the 3D space — Austin · Texas (TxDOT) · California (Caltrans) · London (TfL) · Ontario (511) · Finland (Fintraffic) · British Columbia (DriveBC) · Estonia (Tallinn, Tarktee) · Delaware (DelDOT live video) · New South Wales (Live Traffic NSW) · Calgary. Positions are published; poses are estimated priors **you calibrate by dragging a gizmo on the camera itself** | City APIs                               | 🟢                                                                                                  |
 | 📷 **Mapped ALPR Cameras**  | License-plate-reader camera locations tagged by OpenStreetMap contributors, loaded one city-sized view at a time, with **SHOW NEAREST**. Locations and tags only: no plate data, no video                                                                                                                                                                                           | OpenStreetMap (incl. DeFlock mapping)   | 🟢                                                                                                  |
 | 📻 **Radio**                | Geolocated world radio with an **analog tuner** — drag the needle across up to 750 stations and the globe flies to each broadcaster                                                                                                                                                                                                                                                 | Radio Browser / broadcasters            | 🟢                                                                                                  |
-| 🚌 **Transit**              | Live buses, trams, metros, trains and ferries with delayed playback between reports, selected-vehicle trails, and mode-coloured DETECT labels — Boston, Austin, Minneapolis, Helsinki, the Netherlands, Norway, South East Queensland                                                                                                                                               | Operator GTFS-Realtime feeds            | 🟢                                                                                                  |
+| 🚌 **Transit**              | Live buses, trams, metros, trains and ferries with delayed playback; selectable, smoothed colored rail routes; grouped station markers with line icons/lists; route-matched vehicles; and MBTA predictions/service alerts — including NYC subway stop-based TripUpdates and NYC buses (optional `MTA_BUS_API_KEY`) | Operator GTFS-Realtime feeds + OpenStreetMap + MTA Open Data | 🟢                                                                                              |
 | 🚲 **Bikeshare**            | Live station availability                                                                                                                                                                                                                                                                                                                                                           | GBFS                                    | 🟢                                                                                                  |
 | 🧭 **Directions**           | Click A and B on the globe for a street-following drive, walk or cycle route draped on the terrain with turn-by-turn steps — then FLY the camera along it. No key, no geocoder, no mic                                                                                                                                                                                              | OSRM on FOSSGIS servers (OpenStreetMap) | 🟢                                                                                                  |
 | 🔥 **Active Fires**         | Live NASA FIRMS detections, trailing 24h                                                                                                                                                                                                                                                                                                                                            | NASA FIRMS                              | 🟡                                                                                                  |

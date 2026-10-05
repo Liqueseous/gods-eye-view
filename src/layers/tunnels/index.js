@@ -1,0 +1,706 @@
+import * as Cesium from 'cesium';
+import { clampBoundsAroundCenter } from '../../data/trafficBounds.js';
+import { getDetectionTuning } from '../../data/detection.js';
+
+const OVERLAY_SOURCE_ID = 'tunnels';
+const OVERLAY_OPTIONS = Object.freeze({
+  cohortLimit: 96,
+  collisionCapacity: 64,
+  moving: false,
+});
+const MAX_CAMERA_ALTITUDE_M = 300_000;
+const QUERY_SPAN_DEG = 0.18;
+const CACHE_TTL_MS = 6 * 60 * 60_000;
+const ROAD_COLOR = '#F5B942';
+const RAIL_COLOR = '#50D8F0';
+const OUTLINE_COLOR = '#101820';
+const OUTLINE_WIDTH = 5;
+const ROAD_WIDTH = 2.4;
+const RAIL_WIDTH = 2.8;
+const OUTLINE_ALPHA = 0.08;
+const LINE_ALPHA = 0.28;
+const GHOST_MAX_CAMERA_ALTITUDE_M = 18_000;
+const GHOST_CENTER_HEIGHT_M = 4;
+const GHOST_ALPHA = 0.05;
+// No globe means no terrain surface to classify against — the depth-tested
+// ghost tube becomes the only correctly-occluded (behind-buildings) stand-in,
+// so it needs to read as a real tunnel line rather than a faint hint.
+const GHOST_ALPHA_NO_GLOBE = 0.2;
+
+function tunnelLabelLimit(densityPct = getDetectionTuning().densityPct) {
+  const density = Math.max(0, Math.min(100, Number(densityPct) || 0));
+  return Math.round((OVERLAY_OPTIONS.cohortLimit * density) / 100);
+}
+
+function tunnelOverlayEntry(tunnel, position) {
+  if (!tunnel.name) return null;
+  const accent = tunnel.kind === 'rail' ? RAIL_COLOR : ROAD_COLOR;
+  return {
+    id: `tunnel:${tunnel.kind}:${tunnel.id}`,
+    position,
+    variant: 'label',
+    title: tunnel.name,
+    accent,
+    priority: 450,
+    collisionGroup: 'ambient-label',
+    paintLane: 'ambient-label',
+    interactive: false,
+    minDistance: 0,
+    maxDistance: 180_000,
+    distanceFadeStartRatio: 0.75,
+    distanceScale: {
+      near: 2_000,
+      nearValue: 1,
+      far: 180_000,
+      farValue: 0.72,
+    },
+    horizonCull: true,
+    terrainOcclusion: false,
+    gapPx: 10,
+    verticalOnly: true,
+    placement: 'above',
+  };
+}
+
+function midpointOfLine(coordinates) {
+  const distances = [];
+  let total = 0;
+  for (let i = 1; i < coordinates.length; i++) {
+    const [lonA, latA] = coordinates[i - 1];
+    const [lonB, latB] = coordinates[i];
+    const distance = Cesium.Cartesian3.distance(
+      Cesium.Cartesian3.fromDegrees(lonA, latA),
+      Cesium.Cartesian3.fromDegrees(lonB, latB),
+    );
+    distances.push(distance);
+    total += distance;
+  }
+  if (!(total > 0)) return coordinates[0];
+  let remaining = total / 2;
+  for (let i = 0; i < distances.length; i++) {
+    const distance = distances[i];
+    if (remaining <= distance) {
+      const fraction = distance > 0 ? remaining / distance : 0;
+      const [lonA, latA] = coordinates[i];
+      const [lonB, latB] = coordinates[i + 1];
+      return [lonA + (lonB - lonA) * fraction, latA + (latB - latA) * fraction];
+    }
+    remaining -= distance;
+  }
+  return coordinates.at(-1);
+}
+
+function ghostTunnelShape(kind) {
+  const horizontalRadius = kind === 'rail' ? 4 : 5.5;
+  const verticalRadius = kind === 'rail' ? 3.5 : 4.5;
+  return Array.from({ length: 16 }, (_, index) => {
+    const angle = (index * Math.PI * 2) / 16;
+    return new Cesium.Cartesian2(
+      Math.cos(angle) * horizontalRadius,
+      Math.sin(angle) * verticalRadius,
+    );
+  });
+}
+
+function createOverlayPublisher(overlays) {
+  let visible = false;
+  let entries = [];
+  return {
+    show() {
+      if (visible) return;
+      visible = true;
+      overlays.setVisible(OVERLAY_SOURCE_ID, true);
+    },
+    publish(nextEntries) {
+      entries = nextEntries || [];
+      if (visible) {
+        overlays.setEntries(OVERLAY_SOURCE_ID, entries, {
+          ...OVERLAY_OPTIONS,
+          cohortLimit: tunnelLabelLimit(),
+        });
+      }
+    },
+    refresh() {
+      if (visible)
+        overlays.setEntries(OVERLAY_SOURCE_ID, entries, {
+          ...OVERLAY_OPTIONS,
+          cohortLimit: tunnelLabelLimit(),
+        });
+    },
+    hide() {
+      if (!visible) return;
+      overlays.clearSource(OVERLAY_SOURCE_ID);
+      overlays.setVisible(OVERLAY_SOURCE_ID, false);
+      visible = false;
+    },
+  };
+}
+
+async function yieldAssetBuild() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** Create a viewport-loaded tunnel alignment and label layer. */
+export function createTunnelsLayer({ source, services }) {
+  if (typeof source?.requestTunnels !== 'function')
+    throw new TypeError('A tunnel viewport source is required');
+  if (!services?.overlays)
+    throw new TypeError('A tunnel overlay service is required');
+
+  const publisher = createOverlayPublisher(services.overlays);
+  let viewer = null;
+  let enabled = false;
+  let generation = 0;
+  let abortController = null;
+  let cameraMoveEndRemove = null;
+  let postRenderRemove = null;
+  let requestBoundsKey = null;
+  let groundPrimitives = [];
+  let ghostPrimitives = [];
+  let fallbackEntities = [];
+  let pendingReplacement = null;
+  let lastBoundsKey = null;
+  let lastUpdate = null;
+  let loading = false;
+  let error = null;
+  const tuningListener = () => publisher.refresh();
+  let count = 0;
+  let roadCount = 0;
+  let railCount = 0;
+  let namedCount = 0;
+  let zoomLimited = false;
+
+  function removeGeometry(
+    primitives = groundPrimitives,
+    entities = fallbackEntities,
+  ) {
+    for (const primitive of primitives)
+      viewer?.scene?.groundPrimitives?.remove(primitive);
+    for (const entity of entities) viewer?.entities?.remove(entity);
+  }
+
+  function removeReplacement(replacement) {
+    removeGeometry(replacement?.primitives || [], replacement?.entities || []);
+    for (const primitive of replacement?.ghosts || [])
+      viewer?.scene?.primitives?.remove(primitive);
+  }
+
+  function clearGeometry() {
+    removeReplacement(pendingReplacement);
+    pendingReplacement = null;
+    removeGeometry();
+    for (const primitive of ghostPrimitives)
+      viewer?.scene?.primitives?.remove(primitive);
+    groundPrimitives = [];
+    ghostPrimitives = [];
+    fallbackEntities = [];
+    publisher.publish([]);
+    count = 0;
+    roadCount = 0;
+    railCount = 0;
+    namedCount = 0;
+  }
+
+  function cameraBounds() {
+    const camera = viewer?.camera;
+    const cartographic = camera?.positionCartographic;
+    if (!camera || !cartographic || cartographic.height > MAX_CAMERA_ALTITUDE_M)
+      return null;
+    const rectangle = camera.computeViewRectangle?.(Cesium.Ellipsoid.WGS84);
+    if (!rectangle) return null;
+    const bounds = {
+      south: Cesium.Math.toDegrees(rectangle.south),
+      west: Cesium.Math.toDegrees(rectangle.west),
+      north: Cesium.Math.toDegrees(rectangle.north),
+      east: Cesium.Math.toDegrees(rectangle.east),
+    };
+    let center = {
+      lat: Cesium.Math.toDegrees(cartographic.latitude),
+      lon: Cesium.Math.toDegrees(cartographic.longitude),
+    };
+    const canvas = viewer.scene.canvas;
+    const width = canvas?.clientWidth || canvas?.width || 0;
+    const height = canvas?.clientHeight || canvas?.height || 0;
+    if (width > 0 && height > 0 && typeof camera.pickEllipsoid === 'function') {
+      const hit = camera.pickEllipsoid(
+        new Cesium.Cartesian2(width / 2, height / 2),
+        Cesium.Ellipsoid.WGS84,
+      );
+      if (hit) {
+        const point = Cesium.Cartographic.fromCartesian(hit);
+        center = {
+          lat: Cesium.Math.toDegrees(point.latitude),
+          lon: Cesium.Math.toDegrees(point.longitude),
+        };
+      }
+    }
+    return clampBoundsAroundCenter(bounds, center, QUERY_SPAN_DEG);
+  }
+
+  async function makeGeometryInstances(tunnels, width, isCurrent) {
+    const instances = [];
+    for (let index = 0; index < tunnels.length; index++) {
+      if (!isCurrent()) return null;
+      const tunnel = tunnels[index];
+      instances.push(
+        new Cesium.GeometryInstance({
+          id: `tunnel:${tunnel.kind}:${tunnel.id}:${width}`,
+          geometry: new Cesium.GroundPolylineGeometry({
+            positions: tunnel.coordinates.map(([lon, lat]) =>
+              Cesium.Cartesian3.fromDegrees(lon, lat),
+            ),
+            width,
+          }),
+        }),
+      );
+      if (index % 64 === 63) await yieldAssetBuild();
+    }
+    return instances;
+  }
+
+  async function addGroundPrimitive(tunnels, width, cssColor, isCurrent) {
+    if (!tunnels.length) return null;
+    const geometryInstances = await makeGeometryInstances(
+      tunnels,
+      width,
+      isCurrent,
+    );
+    if (!geometryInstances) return null;
+    const primitive = new Cesium.GroundPolylinePrimitive({
+      geometryInstances,
+      appearance: new Cesium.PolylineMaterialAppearance({
+        // Glow (not solid Color) reads as light shining through geometry rather
+        // than a line painted on it — tunnels under Google 3D buildings.
+        material: Cesium.Material.fromType('PolylineGlow', {
+          color: Cesium.Color.fromCssColorString(cssColor).withAlpha(
+            cssColor === OUTLINE_COLOR ? OUTLINE_ALPHA : LINE_ALPHA,
+          ),
+          glowPower: 0.1,
+        }),
+      }),
+      // Tunnels are underground; classifying onto 3D tile buildings paints
+      // them up building facades instead of hiding them. Terrain only — the
+      // ghost tube (depth-tested, naturally occluded) covers the no-terrain case.
+      classificationType: Cesium.ClassificationType.TERRAIN,
+      asynchronous: true,
+      allowPicking: false,
+      show: false,
+    });
+    return viewer.scene.groundPrimitives.add(primitive);
+  }
+
+  async function addFallbackLines(tunnels, width, cssColor, isCurrent) {
+    const material = Cesium.Color.fromCssColorString(cssColor);
+    const created = [];
+    for (let index = 0; index < tunnels.length; index++) {
+      if (!isCurrent()) return null;
+      const tunnel = tunnels[index];
+      created.push(
+        viewer.entities.add({
+          id: `tunnel:${tunnel.kind}:${tunnel.id}:${width}`,
+          show: false,
+          polyline: {
+            positions: tunnel.coordinates.map(([lon, lat]) =>
+              Cesium.Cartesian3.fromDegrees(lon, lat),
+            ),
+            width,
+            material,
+            clampToGround: true,
+            // See addGroundPrimitive — terrain only, never painted onto buildings.
+            classificationType: Cesium.ClassificationType.TERRAIN,
+            zIndex: width === OUTLINE_WIDTH ? 10 : 11,
+          },
+        }),
+      );
+      if (index % 64 === 63) await yieldAssetBuild();
+    }
+    return created;
+  }
+
+  function ghostPathPositions(tunnel) {
+    const positions = [];
+    for (const [lon, lat] of tunnel.coordinates) {
+      const cartographic = Cesium.Cartographic.fromDegrees(lon, lat);
+      const terrainHeight = viewer.scene.globe?.getHeight?.(cartographic);
+      const position = Cesium.Cartesian3.fromRadians(
+        cartographic.longitude,
+        cartographic.latitude,
+        (Number.isFinite(terrainHeight) ? terrainHeight : 0) +
+          GHOST_CENTER_HEIGHT_M,
+      );
+      if (
+        !positions.length ||
+        Cesium.Cartesian3.distance(positions.at(-1), position) > 0.1
+      )
+        positions.push(position);
+    }
+    return positions.length >= 2 ? positions : null;
+  }
+
+  async function addGhostPrimitive(tunnels, kind, cssColor, isCurrent) {
+    if (!viewer.scene.primitives?.add) return null;
+    const alpha = globeHidden() ? GHOST_ALPHA_NO_GLOBE : GHOST_ALPHA;
+    const color = Cesium.Color.fromCssColorString(cssColor).withAlpha(alpha);
+    const geometryInstances = [];
+    const matching = tunnels.filter((tunnel) => tunnel.kind === kind);
+    for (let index = 0; index < matching.length; index++) {
+      if (!isCurrent()) return null;
+      const tunnel = matching[index];
+      const polylinePositions = ghostPathPositions(tunnel);
+      if (polylinePositions)
+        geometryInstances.push(
+          new Cesium.GeometryInstance({
+            id: `tunnel-ghost:${kind}:${tunnel.id}`,
+            attributes: {
+              color: Cesium.ColorGeometryInstanceAttribute.fromColor(color),
+            },
+            geometry: new Cesium.PolylineVolumeGeometry({
+              polylinePositions,
+              shapePositions: ghostTunnelShape(kind),
+              cornerType: Cesium.CornerType.ROUNDED,
+            }),
+          }),
+        );
+      if (index % 64 === 63) await yieldAssetBuild();
+    }
+    if (!geometryInstances.length) return null;
+
+    const primitive = new Cesium.Primitive({
+      geometryInstances,
+      appearance: new Cesium.PerInstanceColorAppearance({
+        translucent: true,
+        closed: false,
+        renderState: { depthMask: false },
+      }),
+      asynchronous: true,
+      allowPicking: false,
+      show: false,
+    });
+    return viewer.scene.primitives.add(primitive);
+  }
+
+  function globeHidden() {
+    return viewer?.scene?.globe?.show === false;
+  }
+
+  function updateGhostVisibility() {
+    const visible =
+      enabled &&
+      (globeHidden() ||
+        (viewer?.camera?.positionCartographic?.height ?? 0) <=
+          GHOST_MAX_CAMERA_ALTITUDE_M);
+    for (const primitive of ghostPrimitives) primitive.show = visible;
+  }
+
+  function commitGeometry(replacement) {
+    const previousPrimitives = groundPrimitives;
+    const previousGhosts = ghostPrimitives;
+    const previousEntities = fallbackEntities;
+    groundPrimitives = replacement.primitives;
+    ghostPrimitives = replacement.ghosts;
+    fallbackEntities = replacement.entities;
+    pendingReplacement = null;
+    for (const primitive of groundPrimitives) primitive.show = enabled;
+    for (const entity of fallbackEntities) entity.show = enabled;
+    updateGhostVisibility();
+    removeGeometry(previousPrimitives, previousEntities);
+    for (const primitive of previousGhosts)
+      viewer?.scene?.primitives?.remove(primitive);
+    publisher.publish(replacement.labels);
+    count = replacement.tunnels.length;
+    roadCount = replacement.roads.length;
+    railCount = replacement.rail.length;
+    namedCount = replacement.labels.length;
+    services.raiseRoutesAboveTunnels?.();
+    viewer?.scene?.requestRender?.();
+  }
+
+  function promoteReadyReplacement() {
+    if (!pendingReplacement) return;
+    const asynchronous = [
+      ...pendingReplacement.primitives,
+      ...pendingReplacement.ghosts,
+    ];
+    if (asynchronous.some((primitive) => primitive.ready !== true)) return;
+    commitGeometry(pendingReplacement);
+  }
+
+  async function replaceGeometry(tunnels, isCurrent = () => true) {
+    const roads = tunnels.filter((tunnel) => tunnel.kind === 'road');
+    const rail = tunnels.filter((tunnel) => tunnel.kind === 'rail');
+    const primitives = [];
+    const entities = [];
+    const ghosts = [];
+    let useGroundPrimitives = false;
+    if (
+      viewer.scene.context &&
+      viewer.scene.groundPrimitives?.add &&
+      typeof Cesium.GroundPolylinePrimitive.isSupported === 'function'
+    ) {
+      try {
+        useGroundPrimitives = Cesium.GroundPolylinePrimitive.isSupported(
+          viewer.scene,
+        );
+      } catch {
+        useGroundPrimitives = false;
+      }
+    }
+    try {
+      if (useGroundPrimitives) {
+        const outline = await addGroundPrimitive(
+          tunnels,
+          OUTLINE_WIDTH,
+          OUTLINE_COLOR,
+          isCurrent,
+        );
+        const roadLines = await addGroundPrimitive(
+          roads,
+          ROAD_WIDTH,
+          ROAD_COLOR,
+          isCurrent,
+        );
+        if (outline) primitives.push(outline);
+        if (roadLines) primitives.push(roadLines);
+        const railLines = await addGroundPrimitive(
+          rail,
+          RAIL_WIDTH,
+          RAIL_COLOR,
+          isCurrent,
+        );
+        if (railLines) primitives.push(railLines);
+      } else {
+        entities.push(
+          ...((await addFallbackLines(
+            tunnels,
+            OUTLINE_WIDTH,
+            OUTLINE_COLOR,
+            isCurrent,
+          )) || []),
+          ...((await addFallbackLines(
+            roads,
+            ROAD_WIDTH,
+            ROAD_COLOR,
+            isCurrent,
+          )) || []),
+          ...((await addFallbackLines(
+            rail,
+            RAIL_WIDTH,
+            RAIL_COLOR,
+            isCurrent,
+          )) || []),
+        );
+      }
+      if (!isCurrent())
+        throw Object.assign(new Error('Tunnel geometry superseded'), {
+          name: 'AbortError',
+        });
+      const roadGhost = await addGhostPrimitive(
+        tunnels,
+        'road',
+        ROAD_COLOR,
+        isCurrent,
+      );
+      if (roadGhost) ghosts.push(roadGhost);
+      const railGhost = await addGhostPrimitive(
+        tunnels,
+        'rail',
+        RAIL_COLOR,
+        isCurrent,
+      );
+      if (railGhost) ghosts.push(railGhost);
+      if (!isCurrent())
+        throw Object.assign(new Error('Tunnel geometry superseded'), {
+          name: 'AbortError',
+        });
+    } catch (caught) {
+      removeGeometry(primitives, entities);
+      for (const primitive of ghosts)
+        viewer?.scene?.primitives?.remove(primitive);
+      throw caught;
+    }
+
+    const labels = [];
+    for (let index = 0; index < tunnels.length; index++) {
+      if (!isCurrent())
+        throw Object.assign(new Error('Tunnel labels superseded'), {
+          name: 'AbortError',
+        });
+      const tunnel = tunnels[index];
+      if (!tunnel.name) continue;
+      const [lon, lat] = midpointOfLine(tunnel.coordinates);
+      const entry = tunnelOverlayEntry(
+        tunnel,
+        Cesium.Cartesian3.fromDegrees(lon, lat),
+      );
+      if (entry) labels.push(entry);
+      if (index % 64 === 63) await yieldAssetBuild();
+    }
+    const replacement = {
+      primitives,
+      ghosts,
+      entities,
+      labels,
+      tunnels,
+      roads,
+      rail,
+    };
+    removeReplacement(pendingReplacement);
+    pendingReplacement = replacement;
+    const hasCurrentGeometry =
+      groundPrimitives.length ||
+      ghostPrimitives.length ||
+      fallbackEntities.length;
+    const asynchronous = [...primitives, ...ghosts];
+    if (!hasCurrentGeometry) {
+      commitGeometry(replacement);
+    } else if (!asynchronous.length) commitGeometry(replacement);
+    else promoteReadyReplacement();
+    viewer.scene.requestRender?.();
+    return true;
+  }
+
+  async function loadForCamera() {
+    if (!enabled || !viewer) return;
+    updateGhostVisibility();
+    const bounds = cameraBounds();
+    if (!bounds) {
+      zoomLimited = true;
+      lastBoundsKey = null;
+      clearGeometry();
+      viewer.scene.requestRender?.();
+      return;
+    }
+    zoomLimited = false;
+    const boundsKey = Object.values(bounds)
+      .map((value) => value.toFixed(3))
+      .join(',');
+    if (
+      boundsKey === lastBoundsKey &&
+      lastUpdate !== null &&
+      Date.now() - lastUpdate < CACHE_TTL_MS
+    )
+      return;
+    if (loading && boundsKey === requestBoundsKey) return;
+
+    const requestGeneration = ++generation;
+    abortController?.abort();
+    abortController = new AbortController();
+    const { signal } = abortController;
+    loading = true;
+    requestBoundsKey = boundsKey;
+    error = null;
+    try {
+      const response = await source.requestTunnels(bounds, { signal });
+      if (!response.ok)
+        throw new Error(`Tunnel query returned ${response.status}`);
+      const payload = await response.json();
+      if (!enabled || requestGeneration !== generation || signal.aborted)
+        return;
+      const replaced = await replaceGeometry(
+        payload.tunnels,
+        () => enabled && requestGeneration === generation && !signal.aborted,
+      );
+      if (!replaced) return;
+      lastBoundsKey = boundsKey;
+      lastUpdate = Date.now();
+    } catch (caught) {
+      if (caught?.name !== 'AbortError' && requestGeneration === generation) {
+        error = caught?.message || 'Tunnel data unavailable';
+      }
+    } finally {
+      if (requestGeneration === generation) {
+        loading = false;
+        requestBoundsKey = null;
+      }
+    }
+  }
+
+  function onCameraMoveEnd() {
+    void loadForCamera();
+  }
+
+  function disable() {
+    enabled = false;
+    generation++;
+    abortController?.abort();
+    abortController = null;
+    loading = false;
+    requestBoundsKey = null;
+    lastBoundsKey = null;
+    clearGeometry();
+    publisher.hide();
+    viewer?.scene?.requestRender?.();
+  }
+
+  function destroy() {
+    disable();
+    globalThis.document?.removeEventListener?.(
+      'gev:detection-tuning-changed',
+      tuningListener,
+    );
+    cameraMoveEndRemove?.();
+    cameraMoveEndRemove = null;
+    postRenderRemove?.();
+    postRenderRemove = null;
+    viewer = null;
+    lastUpdate = null;
+    error = null;
+    zoomLimited = false;
+  }
+
+  return {
+    id: 'tunnels',
+    name: 'Tunnels',
+    icon: '🚇',
+    source: 'OpenStreetMap',
+    updateInterval: 0,
+
+    init(nextViewer) {
+      viewer = nextViewer;
+      globalThis.document?.addEventListener?.(
+        'gev:detection-tuning-changed',
+        tuningListener,
+      );
+      if (!cameraMoveEndRemove && viewer?.camera?.moveEnd?.addEventListener) {
+        cameraMoveEndRemove =
+          viewer.camera.moveEnd.addEventListener(onCameraMoveEnd);
+      }
+      if (!postRenderRemove && viewer?.scene?.postRender?.addEventListener) {
+        postRenderRemove = viewer.scene.postRender.addEventListener(
+          promoteReadyReplacement,
+        );
+      }
+    },
+
+    enable(nextViewer) {
+      if (nextViewer) viewer = nextViewer;
+      enabled = true;
+      publisher.show();
+      return loadForCamera();
+    },
+
+    disable,
+
+    update(nextViewer) {
+      if (nextViewer) viewer = nextViewer;
+      return loadForCamera();
+    },
+
+    destroy,
+
+    getStats() {
+      return {
+        count,
+        roadCount,
+        railCount,
+        namedCount,
+        loading,
+        lastUpdate,
+        error,
+        zoomLimited,
+      };
+    },
+  };
+}
+
+export { midpointOfLine, tunnelLabelLimit, tunnelOverlayEntry };

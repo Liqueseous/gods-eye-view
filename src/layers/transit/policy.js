@@ -13,6 +13,13 @@ export const TRANSIT_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
   collisionCapacity: 0,
   moving: true,
 });
+export const TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_ID =
+  'transit-route-selected';
+export const TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
+  cohortLimit: 1,
+  collisionCapacity: 0,
+  moving: true,
+});
 
 // --- Polling / activation ---
 /** Poll interval (ms). */
@@ -63,6 +70,8 @@ export const FEED_EVICT_AFTER_MS = 5 * 60_000;
  * must not queue a country's worth of ground lookups.
  */
 export const HEIGHT_SAMPLE_MAX_ALTITUDE_M = 60_000;
+/** Visual clearance above the resolved surface for transit entities. */
+export const TRANSIT_ENTITY_GROUND_CLEARANCE_M = 8;
 /**
  * Floor cells warmed per poll. The shared resolver batches and chunks, but the
  * bound belongs here: a metropolitan fleet is hundreds of vehicles and only the
@@ -73,6 +82,8 @@ export const FLOOR_WARM_PER_POLL = 300;
 export const FLOOR_REREAD_MS = 900;
 /** Re-reads before a poll's cycle gives up and waits for the next poll. */
 export const FLOOR_REREAD_ATTEMPTS = 6;
+/** Maximum synchronous work for one floor-reread slice. */
+export const FLOOR_REREAD_BUDGET_MS = 6;
 
 // --- Rendering ---
 /** On-screen glyph size in CSS px at the near end of the distance ramp. */
@@ -91,6 +102,8 @@ export const ROTATION_REFRESH_MS = 200;
  * fleet once a frame — which is the cost it exists to avoid.
  */
 export const VISIBILITY_REFRESH_MS = 250;
+/** Maximum synchronous work for one visibility-sweep slice. */
+export const VISIBILITY_REFRESH_BUDGET_MS = 6;
 /** Consecutive missed sweeps tolerated before hiding an already-rendered marker. */
 export const VISIBILITY_EXIT_GRACE_SWEEPS = 1;
 /**

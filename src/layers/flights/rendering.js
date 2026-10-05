@@ -5,11 +5,7 @@ import { civilAircraftModelSpec } from './modelSpec.js';
 import { CLASS_SCALE_2D } from '../../data/aircraftClass.js';
 import { cockpitContactDotImage } from '../../data/cockpitContactDot.js';
 import { aircraftIcon, TRACKED_ICON_PX } from '../../data/aircraftIcons.js';
-import {
-  cameraPoseSignature,
-  horizonOccluder,
-  screenProjectedRotation,
-} from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 import { limitCourseStep, courseSlewCapDps } from '../../data/motionModel.js';
 import {
   MIL_TINT,
@@ -30,10 +26,16 @@ import {
   TRACKED_MODEL_MIN_PX,
   TRACKED_MODEL_MAX_PX,
   FLEET_DR_INTERVAL_MS,
+  FLEET_HIDDEN_BUDGET_MS,
   COURSE_SLEW_DT_MAX_SEC,
   ROTATION_REFRESH_MS,
   COURSE_MAX_DPS,
 } from './policy.js';
+import {
+  beginSharedFrameBudget,
+  recordSharedFrameBudget,
+  sharedFrameBudgetAllows,
+} from '../../frameBudget.js';
 
 export function createRendering({
   flightState,
@@ -821,6 +823,7 @@ export function createRendering({
     const scene = flightState._viewer.scene;
     const camera = flightState._viewer.camera;
     const nowMs = focusNowMs(Date.now());
+    beginSharedFrameBudget(flightState._viewer.scene.frameState?.frameNumber);
 
     // (The tracked trail head is now the per-frame _trailHeadEntity segment — no 1 Hz
     // primitive rebuild needed here anymore.)
@@ -837,7 +840,7 @@ export function createRendering({
     _drainIrReloadQueue(); // bounded per-tick slice of any pending boost-flip reload
     if (flightState._cockpitContactMode)
       parts.tracking._refreshCockpitNearContacts();
-    const poseSig = cameraPoseSignature(camera);
+    const poseSig = rotation.cameraPoseSignature(camera);
     // Only the nearby Cockpit silhouettes need projected course; far dots are
     // rotation-free. The per-contact gate below keeps the pip path cheap.
     const doRotations =
@@ -848,7 +851,6 @@ export function createRendering({
       flightState._lastRotPassMs = nowMs;
     }
 
-    const occluder = horizonOccluder(camera);
     const focusTarget = getFocusTarget();
 
     // 3D model regime: only when enabled AND the camera is zoomed in past the altitude ceiling.
@@ -931,8 +933,24 @@ export function createRendering({
       for (const icao of toRelease) _releaseModel(icao);
     }
 
+    let hiddenSeen = 0;
+    let hiddenProcessed = 0;
+    const hiddenCursor = flightState._fleetHiddenCursor || 0;
+    const hiddenStartedAt = performance.now();
     for (const [icao24, bb] of flightState._billboards) {
       if (icao24 === flightState._trackedIcao) continue; // tracked entity owns its own motion
+      const hidden = bb.show !== true;
+      if (hidden) {
+        const ordinal = hiddenSeen++;
+        if (ordinal < hiddenCursor) continue;
+        if (
+          hiddenProcessed > 0 &&
+          (performance.now() - hiddenStartedAt >= FLEET_HIDDEN_BUDGET_MS ||
+            !sharedFrameBudgetAllows(0.15))
+        )
+          continue;
+        hiddenProcessed += 1;
+      }
 
       const info = flightState.records.data.get(icao24);
 
@@ -962,7 +980,9 @@ export function createRendering({
       // sub-ellipsoid point near the limb "beyond the horizon" and the fleet
       // pass would hide a plane that is really just low over high-N terrain
       // waiting for its floor to warm (ATL grounded contacts at geoid −31 m).
-      const beyondHorizon = !occluder.isPointVisible(
+      const beyondHorizon = !rotation.isPointVisible(
+        scene,
+        camera,
         flightState._cullPositions.get(icao24) || bb.position,
       );
       // A billboard flipping INTO view (horizon reveal while the camera idles)
@@ -1115,7 +1135,7 @@ export function createRendering({
         (!flightState._cockpitContactMode || isCockpitNear) &&
         (doRotations || revealed)
       ) {
-        const rot = screenProjectedRotation(
+        const rot = rotation.screenProjectedRotation(
           scene,
           bb.position,
           course,
@@ -1126,6 +1146,13 @@ export function createRendering({
         }
       }
     }
+    flightState._fleetHiddenCursor = hiddenSeen
+      ? (hiddenCursor + hiddenProcessed) % hiddenSeen
+      : 0;
+    recordSharedFrameBudget(
+      'flights-hidden',
+      performance.now() - hiddenStartedAt,
+    );
   }
   return {
     _fleetBillboardColor,

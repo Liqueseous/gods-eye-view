@@ -5,6 +5,7 @@ import {
   OVERPASS_DISK_DIR,
   OVERPASS_CACHE_MS,
   OVERPASS_CACHE_MAX_ENTRIES,
+  OVERPASS_REFUSAL_COOLDOWN_MS,
 } from './constants.js';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -13,6 +14,31 @@ import { overpassPayloadIsData } from './transport.js';
 
 /** @type {Map<string,{status:number,body:string,contentType:string,endpoint:string,cachedAt:number}>} */
 const _overpassCache = new Map();
+
+/** @type {Map<string,{payload:object,at:number}>} last refusal per query, for the short circuit-breaker cooldown. */
+const _overpassRefusalCooldown = new Map();
+
+/** Remember a fully-refused fetch so identical queries skip upstream briefly. */
+function recordOverpassRefusal(cacheKey, payload, now = Date.now()) {
+  _overpassRefusalCooldown.set(cacheKey, { payload, at: now });
+  // Opportunistic sweep so a long-running process doesn't accumulate one
+  // entry per distinct viewport tile ever queried.
+  for (const [key, entry] of _overpassRefusalCooldown) {
+    if (now - entry.at > OVERPASS_REFUSAL_COOLDOWN_MS)
+      _overpassRefusalCooldown.delete(key);
+  }
+}
+
+/** A recent refusal for this exact query, if still within its cooldown window. */
+function readRecentRefusal(
+  cacheKey,
+  now = Date.now(),
+  cooldownMs = OVERPASS_REFUSAL_COOLDOWN_MS,
+) {
+  const entry = _overpassRefusalCooldown.get(cacheKey);
+  if (!entry || now - entry.at > cooldownMs) return null;
+  return entry.payload;
+}
 
 /** Disk TTL for a query: boundary geometry keeps for a month, the rest 7 days. */
 function overpassDiskTtlMs(cacheKey) {
@@ -95,14 +121,22 @@ async function resolveOverpassPreflight({
   cacheMs = OVERPASS_CACHE_MS,
 }) {
   const cached = memoryCache.get(cacheKey);
-  if (overpassPayloadIsData(cached) && now - cached.cachedAt <= cacheMs)
+  if (overpassPayloadIsData(cached) && now - cached.cachedAt <= cacheMs) {
+    // Refresh insertion order so the bounded memory cache is true LRU.
+    memoryCache.delete(cacheKey);
+    memoryCache.set(cacheKey, cached);
     return { source: 'HIT', payload: cached };
+  }
 
   const pending = inFlight.get(cacheKey);
   if (pending) return { source: 'INFLIGHT', payload: await pending };
 
   const disk = await readDisk();
   if (overpassPayloadIsData(disk)) return { source: 'DISK', payload: disk };
+
+  const recentRefusal = readRecentRefusal(cacheKey, now);
+  if (recentRefusal)
+    return { source: 'REFUSED_RECENT', payload: recentRefusal };
 
   return allowUpstream()
     ? { source: 'UPSTREAM', payload: null }
@@ -134,4 +168,6 @@ export {
   readStaleOverpass,
   trimOverpassCache,
   writeOverpassDisk,
+  recordOverpassRefusal,
+  readRecentRefusal,
 };

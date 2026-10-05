@@ -8,6 +8,8 @@ import {
   MISSED_POLLS_TO_DROP,
   SELECTED_CARD_REFRESH_MS,
   TRANSIT_POLL_MS,
+  TRANSIT_ENTITY_GROUND_CLEARANCE_M,
+  TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS,
   VEHICLE_MAX_FIX_AGE_MS,
 } from './policy.js';
 import { FLOOR_WARM_PER_POLL } from './policy.js';
@@ -151,6 +153,7 @@ function harness(
   t,
   {
     source,
+    routeSource,
     altitude = 4_000,
     floorAt = () => 12,
     at = BOSTON,
@@ -185,6 +188,7 @@ function harness(
   const originalFetch = globalThis.fetch;
   const originalDocument = globalThis.document;
   const primitives = [];
+  const entities = [];
   const sprites = new Map();
   const pickOwners = new Map();
   const overlaySources = new Map();
@@ -204,6 +208,18 @@ function harness(
   const preRender = new Cesium.Event();
   const cameraChanged = new Cesium.Event();
   const viewer = {
+    entities: {
+      add(entity) {
+        entities.push(entity);
+        return entity;
+      },
+      remove(entity) {
+        const index = entities.indexOf(entity);
+        if (index < 0) return false;
+        entities.splice(index, 1);
+        return true;
+      },
+    },
     camera: {
       changed: cameraChanged,
       percentageChanged: 0.5,
@@ -270,6 +286,7 @@ function harness(
   const meshCalls = [];
   const layer = createTransitLayer({
     source,
+    routeSource,
     services: {
       ground,
       mesh: {
@@ -334,6 +351,7 @@ function harness(
     overlaySources,
     credits,
     requested,
+    entities,
     serve(feedId, responder) {
       responders.set(feedId, responder);
     },
@@ -407,6 +425,192 @@ function harness(
     },
   };
 }
+
+test('static OSM rail routes render when the realtime fleet is empty', async (t) => {
+  const app = harness(t);
+  app.serve('overpass', () => ({
+    status: 200,
+    body: {
+      elements: [
+        {
+          type: 'relation',
+          id: 123,
+          tags: {
+            route: 'light_rail',
+            name: 'Green Line',
+            colour: '#00843D',
+          },
+          members: [
+            {
+              type: 'way',
+              ref: 456,
+              geometry: [
+                { lon: -71.1, lat: 42.35 },
+                { lon: -71.05, lat: 42.35 },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  }));
+
+  app.layer.enable(app.viewer);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(app.vehicles().length, 0);
+  assert.ok(app.requested.includes('/api/overpass'));
+  assert.equal(app.layer._transitPartsForTest().routes.diagnostics().count, 1);
+  assert.equal(
+    app.entities.length,
+    2,
+    'outlined route is visible without live vehicles',
+  );
+  assert.deepEqual(
+    app.entities[1].polyline.material,
+    Cesium.Color.fromCssColorString('#00843D'),
+  );
+  app.layer.disable(app.viewer);
+  assert.equal(app.entities.length, 0);
+});
+
+test('selecting a mapped route opens route details and replaces vehicle selection', async (t) => {
+  const routeDataCalls = [];
+  const alertHeader =
+    'Red Line trains are experiencing major delays between Alewife and Ashmont due to emergency track repairs';
+  const app = harness(t, {
+    source: {
+      async requestSnapshot() {
+        return {
+          ok: false,
+          status: 503,
+          async json() {
+            return { error: 'Vehicle snapshot unavailable' };
+          },
+        };
+      },
+      async getHistory() {
+        return { fixes: [], epochs: [] };
+      },
+      async requestRouteDetails(feedId, routeId) {
+        routeDataCalls.push({ feedId, routeId });
+        return {
+          ok: true,
+          async json() {
+            return {
+              feedId,
+              routeId,
+              fetchedAt: Date.now(),
+              predictions: [
+                {
+                  stopId: '70073',
+                  stopName: 'Harvard',
+                  arrivalTime: new Date(Date.now() + 300_000).toISOString(),
+                  departureTime: null,
+                },
+              ],
+              alerts: [{ header: 'Red Line delays', effect: 'DELAY' }],
+              alerts: [{ header: alertHeader, effect: 'DELAY' }],
+            };
+          },
+        };
+      },
+    },
+    routeSource: {
+      async requestRoutes() {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          async json() {
+            return {
+              routes: [
+                {
+                  id: '123:456',
+                  routeId: '123',
+                  ref: 'Red',
+                  name: 'Red Line',
+                  type: 'subway',
+                  color: '#DA291C',
+                  network: 'MBTA',
+                  operator: 'MBTA',
+                  from: 'Alewife',
+                  to: 'Ashmont/Braintree',
+                  lines: [
+                    [
+                      [-71.1, 42.35],
+                      [-71.05, 42.35],
+                    ],
+                  ],
+                  stops: [
+                    {
+                      id: '1',
+                      name: 'Central',
+                      role: 'stop',
+                      lat: 42.35,
+                      lon: -71.1,
+                    },
+                  ],
+                },
+              ],
+            };
+          },
+        };
+      },
+    },
+  });
+  app.layer.enable(app.viewer);
+  await new Promise((resolve) => setImmediate(resolve));
+  app.layer._loadTransitFleetForTest(1, BOSTON, 70, ['Red']);
+  const parts = app.layer._transitPartsForTest();
+  assert.equal(
+    app.entities.length,
+    6,
+    'route has outline, color stroke, station placard, marker, line icon, and badge',
+  );
+  app.viewer.scene.pick = () => ({ id: app.entities[0] });
+  app
+    .state()
+    ._clickHandler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK)({
+    position: new Cesium.Cartesian2(500, 400),
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const routeCard = app.overlaySources.get('transit-route-selected')?.[0];
+  assert.equal(routeCard.title, 'Red Line');
+  assert.equal(routeCard.moving, true);
+  assert.equal(TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS.moving, true);
+  assert.equal(typeof routeCard.position, 'function');
+  const initialAnchor = routeCard.position();
+  app.viewer.camera.positionCartographic.longitude =
+    Cesium.Math.toRadians(-71.1);
+  const pannedAnchor = routeCard.position();
+  assert.ok(Cesium.Cartesian3.distance(initialAnchor, pannedAnchor) > 1000);
+  assert.match(routeCard.details.join(' · '), /Subway · MBTA/);
+  assert.match(routeCard.details.join(' · '), /1 mapped stops/);
+  assert.match(routeCard.details.join(' · '), /Central/);
+  assert.match(
+    routeCard.details.join(' · '),
+    /1 matching live vehicles · MBTA/,
+  );
+  assert.match(routeCard.details.join(' · '), /Next MBTA stops: Harvard/);
+  assert.match(routeCard.details.join(' · '), /MBTA alert: Red Line trains/);
+  assert.match(routeCard.details.join(' · '), /MBTA alert: Red Line trains/);
+  const alertStart = routeCard.details.findIndex((line) =>
+    line.startsWith('MBTA alert:'),
+  );
+  const wrappedAlert = routeCard.details.slice(alertStart);
+  assert.ok(wrappedAlert.length > 1, 'long MBTA alert wraps to multiple rows');
+  assert.ok(wrappedAlert.every((line) => line.length <= 42));
+  assert.equal(wrappedAlert.join(' '), `MBTA alert: ${alertHeader}`);
+  assert.deepEqual(routeDataCalls, [{ feedId: 'mbta', routeId: 'Red' }]);
+  assert.ok(app.credits.includes('transit-mbta'));
+
+  const vehicle = app.vehicles()[0];
+  parts.selection.selectVehicle(vehicle.key);
+  assert.equal(app.overlaySources.has('transit-route-selected'), false);
+  assert.ok(app.overlaySources.has('transit-selected'));
+});
 
 test('transit coverage follows the center-screen ground point, not the view-rectangle midpoint', (t) => {
   const app = harness(t, { at: { lat: 39.7392, lon: -104.9903 } });
@@ -946,6 +1150,28 @@ test('a finer claim wins while it stands, and the coarser one survives it', asyn
   );
   app.layer.disable(app.viewer);
   assert.equal(app.viewer.camera.percentageChanged, 0.5);
+});
+
+test('ROUTES and PLACARDS row chips retain independent visibility settings', async (t) => {
+  const app = harness(t);
+  assert.deepEqual(app.layer.getParams(), { routes: true, placards: true });
+  assert.equal(app.layer.getRowControls().chips[0].active, true);
+  assert.equal(app.layer.getRowControls().chips[1].active, true);
+  assert.equal(app.layer.getRowControls().chips[1].disabled, false);
+
+  app.layer.enable(app.viewer);
+  app.layer.setParams({ routes: false });
+  assert.deepEqual(app.layer.getParams(), { routes: false, placards: true });
+  const [routesChip, placardsChip] = app.layer.getRowControls().chips;
+  assert.equal(routesChip.active, false);
+  assert.deepEqual(routesChip.params, { routes: true });
+  assert.equal(placardsChip.disabled, true);
+  assert.equal(placardsChip.state, 'disabled');
+
+  app.layer.setParams({ routes: true, placards: false });
+  assert.deepEqual(app.layer.getParams(), { routes: true, placards: false });
+  assert.equal(app.layer.getRowControls().chips[1].active, false);
+  assert.equal(app.layer.getRowControls().chips[1].disabled, false);
 });
 
 test('destroy releases every shared registration this layer took', async (t) => {
@@ -1603,7 +1829,8 @@ test('a height that arrives from a neighbour lifts a stationary vehicle too', as
 
   const carto = Cesium.Cartographic.fromCartesian(entry.marker.position);
   assert.ok(
-    Math.abs(carto.height - 126.5) < 1,
+    Math.abs(carto.height - entry.heightM - TRANSIT_ENTITY_GROUND_CLEARANCE_M) <
+      1,
     `the vehicle stands on the ground its cell reported (drew at ${carto.height.toFixed(1)} m)`,
   );
 });
@@ -1711,7 +1938,8 @@ test('a vehicle with no surface yet waits instead of floating', async (t) => {
   assert.equal(entry.marker.show, true, 'and appears once the ground answers');
   const carto = Cesium.Cartographic.fromCartesian(entry.marker.position);
   assert.ok(
-    Math.abs(carto.height - 31.5) < 1,
+    Math.abs(carto.height - entry.heightM - TRANSIT_ENTITY_GROUND_CLEARANCE_M) <
+      1,
     `standing on its floor plus the shared lift, got ${carto.height.toFixed(1)} m`,
   );
 });
@@ -1832,7 +2060,7 @@ test('a segment climbs from the ground it left to the ground it reaches', async 
     Cesium.Cartographic.fromCartesian(entry.marker.position).height;
   app.run(400);
   assert.ok(
-    height() < 30,
+    height() < 30 + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
     `still on the ground it is drawn on, got ${height().toFixed(1)} m`,
   );
 
@@ -1840,12 +2068,12 @@ test('a segment climbs from the ground it left to the ground it reaches', async 
   const firstFixAt = start - AGE_MS;
   app.run(firstFixAt + LAG_MS + TRANSIT_POLL_MS / 2 - Date.now());
   assert.ok(
-    Math.abs(height() - 11.5) < 3,
+    Math.abs(height() - 11.5 - TRANSIT_ENTITY_GROUND_CLEARANCE_M) < 3,
     `at the corridor floor, got ${height().toFixed(1)} m`,
   );
   app.run(TRANSIT_POLL_MS);
   assert.ok(
-    Math.abs(height() - 101.5) < 1.5,
+    Math.abs(height() - 101.5 - TRANSIT_ENTITY_GROUND_CLEARANCE_M) < 1.5,
     `and arrives on the high ground, got ${height().toFixed(1)} m`,
   );
 });
@@ -2430,7 +2658,9 @@ test('a resolved floor still adopts a later mesh sample or a regime change on a 
   assert.ok(Math.abs(entry.heightM - 11.5) < 1e-9, 'DEM floor, lifted');
   const height = () =>
     Cesium.Cartographic.fromCartesian(entry.marker.position).height;
-  assert.ok(Math.abs(height() - 11.5) < 0.5);
+  assert.ok(
+    Math.abs(height() - (11.5 + TRANSIT_ENTITY_GROUND_CLEARANCE_M)) < 0.5,
+  );
 
   // The mesh lands on the same cell.
   app.ground._warm.set(app.ground._key(42.36, -71.06), 50);
@@ -2441,14 +2671,20 @@ test('a resolved floor still adopts a later mesh sample or a regime change on a 
     Math.abs(entry.heightM - 51.5) < 1e-9,
     'the parked vehicle adopts the mesh floor',
   );
-  assert.ok(Math.abs(height() - 51.5) < 0.5, 'and is drawn on it');
+  assert.ok(
+    Math.abs(height() - (51.5 + TRANSIT_ENTITY_GROUND_CLEARANCE_M)) < 0.5,
+    'and is drawn above it',
+  );
 
   // Leaving the photoreal regime: the shared floor answers the DEM again.
   app.ground._warm.set(app.ground._key(42.36, -71.06), 10);
   app.advance(TRANSIT_POLL_MS);
   await app.layer.update();
   app.frame();
-  assert.ok(Math.abs(height() - 11.5) < 0.5, 'and follows it back down');
+  assert.ok(
+    height() >= 11.5 + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
+    'and remains above the ground after the floor changes',
+  );
 });
 
 test('a stamp an hour ahead is bounded, so the honest fixes that follow are not refused', async (t) => {

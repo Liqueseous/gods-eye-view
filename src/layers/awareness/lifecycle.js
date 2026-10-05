@@ -1,4 +1,4 @@
-import { cameraPoseSignature } from '../../data/iconOrientation.js';
+import { rotation } from '../../data/iconOrientation.js';
 
 export function createLifecycle({
   state: layerState,
@@ -18,7 +18,7 @@ export function createLifecycle({
 
   function cameraMotionSignature(camera) {
     if (!camera?.positionWC || !Number.isFinite(camera.heading)) return '';
-    return cameraPoseSignature(camera);
+    return rotation.cameraPoseSignature(camera);
   }
 
   /**

@@ -164,7 +164,8 @@
 #right-context-rail > #cctv-panel,
 #right-context-rail > #weather-panel,
 #right-context-rail > #recent-imagery-panel,
-#right-context-rail > #global-context-panel {
+#right-context-rail > #global-context-panel,
+#right-context-rail > #developer-tools-panel {
   position: relative;
   inset: auto;
   flex: 0 0 auto;
@@ -182,6 +183,11 @@
   max-height: 100%;
   pointer-events: auto;
 }
+#right-context-rail #developer-tools-panel {
+  width: 100%;
+  max-height: 100%;
+  pointer-events: auto;
+}
 #right-context-rail > #weather-panel,
 /* Collapsed, it must stay hideable by the rail's exclusive layout. */
 #right-context-rail > #recent-imagery-panel:not(.collapsed) {
@@ -193,6 +199,10 @@
 #right-context-rail #cctv-panel.collapsed,
 #right-context-rail #weather-panel.collapsed,
 #right-context-rail #recent-imagery-panel.collapsed {
+  width: var(--right-display-collapsed-width);
+  margin-left: auto;
+}
+#right-context-rail #developer-tools-panel.collapsed {
   width: var(--right-display-collapsed-width);
   margin-left: auto;
 }
@@ -214,6 +224,33 @@
   min-height: 50px;
   box-sizing: border-box;
 }
+#right-context-rail #developer-tools-panel.collapsed .developer-tools-inner {
+  height: 50px;
+  min-height: 50px;
+  box-sizing: border-box;
+  justify-content: center;
+  padding: 8px 10px 8px 14px;
+  overflow: hidden;
+}
+#right-context-rail #developer-tools-panel.collapsed .developer-tools-scope,
+#right-context-rail
+  #developer-tools-panel.collapsed
+  #developer-diagnostics-export,
+#right-context-rail #developer-tools-panel.collapsed .developer-tools-content {
+  display: none;
+}
+#right-context-rail #developer-tools-panel.collapsed .developer-tools-header {
+  flex-wrap: nowrap;
+  margin-bottom: 0;
+}
+#right-context-rail
+  #developer-tools-panel.collapsed
+  .developer-tools-header
+  .panel-title {
+  flex: 0 0 auto;
+  font-size: 8px;
+  letter-spacing: 1.8px;
+}
 #right-context-rail #cctv-panel:not(.collapsed) .cctv-panel-inner {
   max-height: 100%;
   overflow-y: auto;
@@ -228,6 +265,61 @@
   max-height: 100%;
   overflow-y: auto;
   scrollbar-gutter: stable;
+}
+#right-context-rail
+  #developer-tools-panel:not(.collapsed)
+  .developer-tools-inner {
+  max-height: 100%;
+}
+#right-context-rail .global-context-panel-inner,
+#right-context-rail .global-context-panel-inner > .cyber-panel-body,
+#right-context-rail .developer-tools-inner {
+  --context-scrollbar-thumb: color-mix(in srgb, var(--accent) 52%, transparent);
+  --context-scrollbar-thumb-hover: color-mix(
+    in srgb,
+    var(--accent) 76%,
+    transparent
+  );
+  --context-scrollbar-track: rgba(255, 255, 255, 0.035);
+}
+#right-context-rail .global-context-panel-inner,
+#right-context-rail .global-context-panel-inner > .cyber-panel-body {
+  scrollbar-color: var(--context-scrollbar-thumb) var(--context-scrollbar-track);
+  scrollbar-width: thin;
+}
+#right-context-rail .developer-assets-list {
+  scrollbar-color: var(--context-scrollbar-thumb) var(--context-scrollbar-track);
+  scrollbar-width: thin;
+}
+#right-context-rail .global-context-panel-inner::-webkit-scrollbar,
+#right-context-rail
+  .global-context-panel-inner
+  > .cyber-panel-body::-webkit-scrollbar,
+#right-context-rail .developer-assets-list::-webkit-scrollbar {
+  width: 6px;
+}
+#right-context-rail .global-context-panel-inner::-webkit-scrollbar-track,
+#right-context-rail
+  .global-context-panel-inner
+  > .cyber-panel-body::-webkit-scrollbar-track,
+#right-context-rail .developer-assets-list::-webkit-scrollbar-track {
+  background: var(--context-scrollbar-track);
+}
+#right-context-rail .global-context-panel-inner::-webkit-scrollbar-thumb,
+#right-context-rail
+  .global-context-panel-inner
+  > .cyber-panel-body::-webkit-scrollbar-thumb,
+#right-context-rail .developer-assets-list::-webkit-scrollbar-thumb {
+  border: 1px solid rgba(4, 17, 31, 0.72);
+  border-radius: 4px;
+  background: var(--context-scrollbar-thumb);
+}
+#right-context-rail .global-context-panel-inner:hover::-webkit-scrollbar-thumb,
+#right-context-rail
+  .global-context-panel-inner
+  > .cyber-panel-body:hover::-webkit-scrollbar-thumb,
+#right-context-rail .developer-assets-list:hover::-webkit-scrollbar-thumb {
+  background: var(--context-scrollbar-thumb-hover);
 }
 #right-context-rail #global-context-panel.collapsed {
   width: var(--right-context-collapsed-width);

@@ -23,6 +23,7 @@ export async function checkPackageBoundaries(root) {
     );
   }
   const reports = [];
+  const allViolations = new Set();
   for (const [name, group] of Object.entries(groups)) {
     const node = group.runtime === 'node';
     if (group.runtime && !['browser', 'node'].includes(group.runtime)) {
@@ -87,6 +88,7 @@ export async function checkPackageBoundaries(root) {
       return path.resolve(root, target);
     });
     const seen = new Set();
+    const violations = new Set();
     await build({
       root,
       // Keep this gate out of a running dev server's dependency cache
@@ -102,11 +104,10 @@ export async function checkPackageBoundaries(root) {
         {
           name: 'check-package-ownership',
           moduleParsed(info) {
-            if (!allowed.has(info.id)) {
-              throw new Error(
+            if (!allowed.has(info.id))
+              violations.add(
                 `Package boundary ${name} imports an unowned module: ${path.relative(root, info.id)}`,
               );
-            }
             seen.add(info.id);
           },
         },
@@ -131,8 +132,10 @@ export async function checkPackageBoundaries(root) {
         },
       },
     });
+    for (const violation of violations) allViolations.add(violation);
     reports.push({ name, exports: input.length, modules: seen.size });
   }
+  if (allViolations.size) throw new Error([...allViolations].join('\n'));
   return reports;
 }
 

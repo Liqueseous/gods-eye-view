@@ -1,5 +1,25 @@
+import packageManifest from '../package.json' with { type: 'json' };
 import { applicationHtmlPlugin } from './application-html.js';
 import cesium from 'vite-plugin-cesium';
+
+function buildMetadata() {
+  return {
+    version: process.env.GEV_VERSION || packageManifest.version,
+    sourceVersion:
+      process.env.GEV_SOURCE_VERSION ||
+      packageManifest.sourceVersion ||
+      packageManifest.version,
+    sourceCommit:
+      process.env.GEV_SOURCE_COMMIT ||
+      packageManifest.sourceCommit ||
+      'unknown',
+    buildNumber:
+      process.env.GEV_BUILD_NUMBER ||
+      process.env.BUILD_NUMBER ||
+      process.env.GITHUB_RUN_NUMBER ||
+      'dev',
+  };
+}
 
 /** Build browser assets with explicit inputs; never load environment or providers. */
 export function createBrowserViteConfig({
@@ -11,6 +31,7 @@ export function createBrowserViteConfig({
   port = 4173,
   command,
 } = {}) {
+  const metadata = buildMetadata();
   return {
     plugins: [cesium(), applicationHtmlPlugin(), ...plugins],
     ...(publicDir === undefined ? {} : { publicDir }),
@@ -44,9 +65,32 @@ export function createBrowserViteConfig({
         'Content-Security-Policy': "frame-ancestors 'none'",
       },
     },
+    // `vite preview` reads its own host/port; it does not inherit `server.port`.
+    // Explicit so a container's HOST/PORT env still binds correctly in preview.
+    preview: {
+      host: host || 'localhost',
+      port: parseInt(port, 10) || 4173,
+      strictPort: true,
+      allowedHosts:
+        host === '0.0.0.0' || host === '::'
+          ? true
+          : ['localhost', '127.0.0.1', '.local'],
+      headers: {
+        'X-Frame-Options': 'DENY',
+        'Content-Security-Policy': "frame-ancestors 'none'",
+      },
+    },
     define: {
       'import.meta.env.GOOGLE_MAPS_API_KEY': JSON.stringify(googleApiKey),
       'import.meta.env.CESIUM_ION_TOKEN': JSON.stringify(cesiumToken),
+      'import.meta.env.GEV_VERSION': JSON.stringify(metadata.version),
+      'import.meta.env.GEV_BUILD_NUMBER': JSON.stringify(metadata.buildNumber),
+      'import.meta.env.GEV_SOURCE_VERSION': JSON.stringify(
+        metadata.sourceVersion,
+      ),
+      'import.meta.env.GEV_SOURCE_COMMIT': JSON.stringify(
+        metadata.sourceCommit,
+      ),
     },
     build: { chunkSizeWarningLimit: 1500 },
   };

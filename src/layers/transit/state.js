@@ -24,6 +24,10 @@ export function createState({ services }) {
 
   /** @type {Cesium.Viewer|null} */
   state._viewer = null;
+  /** Runtime params (DataLayerManager.setLayerParams path). */
+  state._params = { routes: true, placards: true };
+  /** @type {(() => void)|null} Row-controls "repaint me" hook for the manager. */
+  state._rowControlsListener = null;
   /** @type {Cesium.BillboardCollection|null} */
   state._markers = null;
   state._animatedMarkers = null;
@@ -37,6 +41,7 @@ export function createState({ services }) {
   state._generation = 0;
 
   state._cameraChangedAttached = false;
+  state._cameraMoveEndAttached = false;
   state._cameraDebounceTimer = null;
   state._altitudeGateOpen = false;
   /** Camera sensitivity as we found it, so disable() can hand it back. */
@@ -59,6 +64,15 @@ export function createState({ services }) {
   state._moving = new Set();
   /** Vehicles whose sampled height landed after they were drawn. @type {Set<object>} */
   state._heightDirty = new Set();
+  state._floorRereadDiagnostics = {
+    durationMs: 0,
+    candidates: 0,
+    cells: 0,
+    demAdmissions: 0,
+    meshAdmissions: 0,
+    yields: 0,
+    running: false,
+  };
   /**
    * Inflated camera view bounds in degrees, or null before the first camera
    * read. Decides which vehicles are worth animating frame by frame.
@@ -70,6 +84,7 @@ export function createState({ services }) {
   /** Deferred shown/hidden sweep bookkeeping. */
   state._visibilityDirty = true;
   state._visibilityAt = 0;
+  state._visibilityJob = null;
   /** Throttle bookkeeping for the screen-space rotation pass. */
   state._rotationAt = 0;
   state._rotationPose = null;
@@ -83,6 +98,8 @@ export function createState({ services }) {
   state._inFlight = new Map();
   /** @type {Map<string, object>} vehicle key → runtime entry */
   state._vehicles = new Map();
+  /** Route stations currently rendered, used to keep detection brackets behind their overlays. */
+  state._stationPositions = [];
 
   /** Timer for the floor re-read cycle, and how many it has spent. */
   state._floorTimer = null;

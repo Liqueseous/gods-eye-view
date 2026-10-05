@@ -274,7 +274,7 @@ export function createQueries({
       parts.testing._clearDisplayFloorStateForTest,
 
     /** @type {number} Polling interval (ms) between update() calls */
-    updateInterval: 30000,
+    updateInterval: 25000,
 
     /**
      * Live layer params.

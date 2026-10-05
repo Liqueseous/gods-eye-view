@@ -13,11 +13,13 @@ import {
   readStaleOverpass,
   trimOverpassCache,
   writeOverpassDisk,
+  recordOverpassRefusal,
 } from './overpass/cache.js';
 import {
   overpassPayloadIsData,
   fetchOverpassPayload,
 } from './overpass/transport.js';
+import { resolveOverpassEndpoints } from './overpass/selfHosted.js';
 import { installRouteMiddleware } from './places/routes.js';
 
 /** @type {Map<string,Promise>} In-flight Overpass requests keyed by normalized query body. */
@@ -183,7 +185,9 @@ function overpassProxy({ routing = {} } = {}) {
           return;
         }
         _overpassConcurrent += 1;
-        const requestPromise = fetchOverpassPayload(safeBody)
+        const requestPromise = fetchOverpassPayload(safeBody, undefined, {
+          endpoints: resolveOverpassEndpoints(safeBody),
+        })
           .then((payload) => {
             // Only a 2xx is data. `< 500` cached every 4xx, so one mirror's
             // refusal was written to memory AND disk — and boundary-class
@@ -194,6 +198,8 @@ function overpassProxy({ routing = {} } = {}) {
               _overpassCache.set(cacheKey, entry);
               trimOverpassCache();
               writeOverpassDisk(cacheKey, entry);
+            } else {
+              recordOverpassRefusal(cacheKey, payload);
             }
             return payload;
           })

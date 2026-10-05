@@ -47,6 +47,32 @@ export class DisplayBindings {
   get _detectionAllocationBtns() {
     return this.readState()._detectionAllocationBtns;
   }
+  _transitLayer() {
+    return this.services.transitLayer?.module || this.services.transitLayer;
+  }
+  _syncTransitStationToggle() {
+    const button = this._transitStationsToggle;
+    if (!button) return;
+    const transitLayer = this._transitLayer();
+    const params = transitLayer?.getParams?.();
+    const enabled = !!params?.routes && !!params?.placards;
+    const collapsed = enabled && transitLayer?.areAllStationsCollapsed?.();
+    const showing = enabled && !collapsed;
+    button.disabled = !enabled;
+    if (this._transitStationsStatus)
+      this._transitStationsStatus.hidden = enabled;
+    button.classList.toggle('active', showing);
+    button.setAttribute('aria-pressed', String(showing));
+    button.setAttribute(
+      'aria-label',
+      collapsed ? 'Expand station placards' : 'Collapse station placards',
+    );
+    button.title = enabled
+      ? collapsed
+        ? 'Expand all station placards'
+        : 'Collapse all station placards'
+      : 'Enable transit routes and placards to control station panels';
+  }
   _initUI() {
     const {
       cycleDetectionMode,
@@ -112,6 +138,7 @@ export class DisplayBindings {
         sonarSectorSlider: this._cyberSonarSector,
         cleanViewButton: this._cleanViewBtn,
         cleanViewExitButton: this._cleanViewExitBtn,
+        stationToggleButton: this._transitStationsToggle,
         densitySlider: this._detectionDensitySlider,
         detectionButton: this._detectionBtn,
         allocationButtons: this._detectionAllocationBtns,
@@ -163,6 +190,15 @@ export class DisplayBindings {
         },
         toggleCleanView: () => this.toggleCleanView(),
         exitCleanView: () => this.toggleCleanView(false),
+        toggleStations: () => {
+          const transitLayer = this._transitLayer();
+          const params = transitLayer?.getParams?.();
+          if (!params?.routes || !params?.placards) return;
+          if (transitLayer.areAllStationsCollapsed?.())
+            transitLayer.expandAllStations?.();
+          else transitLayer.collapseAllStations?.();
+          this._syncTransitStationToggle();
+        },
         setDensity: (value) => {
           this.shareLinkManager?.claimRestoreLane?.('visual');
           this.claimDetection();
@@ -218,8 +254,22 @@ export class DisplayBindings {
         setModelsMode: (mode) => this._setModels3dMode(mode),
       },
     });
+    this._transitParamsListener?.();
+    const onTransitParamsChanged = () => this._syncTransitStationToggle();
+    document.addEventListener(
+      'gev:transit-params-changed',
+      onTransitParamsChanged,
+    );
+    this._transitParamsListener = () =>
+      document.removeEventListener(
+        'gev:transit-params-changed',
+        onTransitParamsChanged,
+      );
+    this._syncTransitStationToggle();
   }
   destroy() {
+    this._transitParamsListener?.();
+    this._transitParamsListener = null;
     this._applicationShortcuts?.destroy();
     this._applicationShortcuts = null;
     this._frameRateMonitor?.destroy();

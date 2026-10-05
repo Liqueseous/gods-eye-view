@@ -10,6 +10,7 @@ import {
   HEAT_LINE_SLOW_WIDTH,
   TRAFFIC_TIMING_ENABLED,
   MAX_DOTS,
+  adaptTrafficDotCap,
 } from './policy.js';
 
 export function createRendering({
@@ -51,6 +52,16 @@ export function createRendering({
       layerState._heatSlowPrim = null;
     }
     layerState._heatLineCount = 0;
+  }
+
+  function raiseHeatLinesToTop() {
+    const primitives = layerState._viewer?.scene?.groundPrimitives;
+    for (const primitive of [
+      layerState._heatJamPrim,
+      layerState._heatSlowPrim,
+    ]) {
+      if (primitive) primitives?.raiseToTop?.(primitive);
+    }
   }
 
   /**
@@ -153,6 +164,7 @@ export function createRendering({
     }
 
     layerState._heatLineCount = kept.length;
+    raiseHeatLinesToTop();
     if (candidates.length > kept.length) {
       console.log(
         `[Data:Traffic] Heat-lines capped at ${HEAT_LINE_CAP} (${candidates.length} congested roads in view)`,
@@ -172,7 +184,13 @@ export function createRendering({
    * @param {Object|null} [trace=null] - Development-only correlated load trace.
    */
 
-  function renderRoadsForAltitude(roads, altitude, label, trace = null) {
+  async function renderRoadsForAltitude(
+    roads,
+    altitude,
+    label,
+    trace = null,
+    isCurrent = () => true,
+  ) {
     const state =
       TRAFFIC_TIMING_ENABLED && trace
         ? parts.timing.trafficTimingRenderState(trace, label)
@@ -224,18 +242,31 @@ export function createRendering({
           visibleRoadCount: filteredRoads.length,
         })
       : null;
+    const dotCap = layerState._adaptiveDotCap || MAX_DOTS;
     const roadBudgets = parts.model.allocateRoadDotBudgets(
       filteredRoads,
       altitude,
-      MAX_DOTS,
+      dotCap,
     );
+    const dotConstructionStart = performance.now();
+    let batchStartedAt = performance.now();
     for (let i = 0; i < filteredRoads.length; i++) {
+      if (!isCurrent()) return false;
       const road = filteredRoads[i];
       const budget = roadBudgets[i] || 0;
       if (budget <= 0) continue;
       parts.animation.spawnDotsForRoad(road, altitude, budget);
-      if (layerState._dots.length >= MAX_DOTS) break;
+      if (layerState._dots.length >= dotCap) break;
+      if (performance.now() - batchStartedAt >= 4) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (!isCurrent()) return false;
+        batchStartedAt = performance.now();
+      }
     }
+    layerState._adaptiveDotCap = adaptTrafficDotCap(
+      dotCap,
+      performance.now() - dotConstructionStart,
+    );
 
     const renderMetrics = state
       ? {
@@ -268,6 +299,7 @@ export function createRendering({
           renderMetrics,
         )
       : null;
+    if (!isCurrent()) return false;
     rebuildHeatLines(filteredRoads);
     if (state) {
       const heatEnd = parts.timing.trafficTimingMark(
@@ -308,11 +340,13 @@ export function createRendering({
         renderMetrics,
       );
     }
+    return true;
   }
   return {
     visibleRoadsForAltitude,
     removeHeatLines,
     rebuildHeatLines,
+    raiseHeatLinesToTop,
     renderRoadsForAltitude,
   };
 }

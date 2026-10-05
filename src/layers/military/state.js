@@ -186,6 +186,7 @@ export function createFlightState({ source, services }) {
   /** @type {number} Epoch ms of the last fleet dead-reckoning pass */
 
   flightState._lastFleetTickMs = 0;
+  flightState._fleetHiddenCursor = 0;
 
   /** @type {string} Camera pose signature at the last rotation pass */
 

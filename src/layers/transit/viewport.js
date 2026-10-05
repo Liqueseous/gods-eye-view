@@ -6,6 +6,7 @@ import {
   RANGE_SLACK_KM,
   inflateViewBounds,
 } from './policy.js';
+import { TRANSIT_ROUTE_MAX_ALTITUDE_M } from './routeLines.js';
 import { transitFeedsInRange } from '../../data/transitFeeds.js';
 
 /**
@@ -16,6 +17,8 @@ import { transitFeedsInRange } from '../../data/transitFeeds.js';
  */
 export function createViewport({ state, services, parts }) {
   const { governorRequestRender } = services.render;
+  let cameraBounds = null;
+  let routesAltitudeVisible = false;
 
   function getCameraAltitude(viewer = state._viewer) {
     const carto = viewer?.camera?.positionCartographic;
@@ -75,14 +78,15 @@ export function createViewport({ state, services, parts }) {
     const rect = viewer?.camera?.computeViewRectangle?.(
       viewer.scene.globe?.ellipsoid,
     );
-    state._viewBounds = rect
-      ? inflateViewBounds({
+    cameraBounds = rect
+      ? {
           south: Cesium.Math.toDegrees(rect.south),
           north: Cesium.Math.toDegrees(rect.north),
           west: Cesium.Math.toDegrees(rect.west),
           east: Cesium.Math.toDegrees(rect.east),
-        })
+        }
       : null;
+    state._viewBounds = cameraBounds ? inflateViewBounds(cameraBounds) : null;
     // The sweep itself is deferred: `marker.show` is a dirty flag, and a drag
     // fires this on every frame, so re-deciding visibility inline would put the
     // whole fleet back into the vertex buffer once a frame — the exact cost
@@ -144,12 +148,39 @@ export function createViewport({ state, services, parts }) {
     }, CAMERA_DEBOUNCE_MS);
   }
 
+  function onCameraMoveEnd() {
+    if (!state._enabled || state._params.routes === false) return;
+    syncRouteVisibility();
+    const altitude = getCameraAltitude();
+    if (
+      Number.isFinite(altitude) &&
+      altitude > TRANSIT_ROUTE_MAX_ALTITUDE_M * 1.5
+    )
+      return;
+    void parts.routes.update(cameraBounds || state._viewBounds);
+  }
+
+  function syncRouteVisibility() {
+    const altitude = getCameraAltitude();
+    if (Number.isFinite(altitude)) {
+      routesAltitudeVisible = routesAltitudeVisible
+        ? altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M * 1.5
+        : altitude <= TRANSIT_ROUTE_MAX_ALTITUDE_M;
+    }
+    parts.routes.setVisible(
+      routesAltitudeVisible && state._params.routes !== false,
+    );
+  }
+
   return {
     refreshViewBounds,
     getCameraAltitude,
     getCameraCenterLatLon,
+    getCameraBounds: () => cameraBounds,
     altitudeGateOpen,
     runProximityCheck,
     onCameraChanged,
+    onCameraMoveEnd,
+    syncRouteVisibility,
   };
 }

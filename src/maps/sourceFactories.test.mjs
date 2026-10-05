@@ -128,8 +128,14 @@ test('credentialed source factories reject an omitted token instead of consuming
 });
 
 test('both Google 3D routes keep tiles drawing while draped imagery loads', async () => {
-  const { createGoogleDirectTileset, createGoogleIonTileset } =
-    await import('./google3d.js');
+  const {
+    createGoogleDirectTileset,
+    createGoogleIonTileset,
+    google3dQualityError,
+  } = await import('./google3d.js');
+  assert.equal(google3dQualityError('performance'), 64);
+  assert.equal(google3dQualityError('balanced'), 16);
+  assert.equal(google3dQualityError('high'), 1);
   const calls = [];
   const sdk = {
     createGooglePhotorealistic3DTileset: async (...args) => {
@@ -148,10 +154,47 @@ test('both Google 3D routes keep tiles drawing while draped imagery loads', asyn
   assert.equal(await createGoogleIonTileset(sdk, 'token'), 'ion');
   assert.deepEqual(calls[0], [
     { key: 'key', onlyUsingWithGoogleGeocoder: true },
-    { asynchronouslyLoadImagery: true },
+    {
+      asynchronouslyLoadImagery: true,
+      progressiveResolutionHeightFraction: 0.1,
+      maximumScreenSpaceError: 16,
+      dynamicScreenSpaceError: false,
+      skipLevelOfDetail: true,
+      baseScreenSpaceError: 1024,
+    },
   ]);
   assert.equal(calls[1][0].id, 2275207);
   assert.equal(calls[1][0].accessToken, 'token');
   assert.equal(calls[1][1].asynchronouslyLoadImagery, true);
   assert.equal(calls[1][1].enableCollision, true);
+  assert.equal(calls[1][1].dynamicScreenSpaceError, false);
+  assert.equal(calls[1][1].progressiveResolutionHeightFraction, 0.1);
+  assert.equal(calls[1][1].maximumScreenSpaceError, 16);
+  assert.equal(calls[1][1].skipLevelOfDetail, true);
+  assert.equal(calls[1][1].baseScreenSpaceError, 1024);
+});
+
+test('Google 3D quality storage fails open when the browser blocks localStorage', async () => {
+  const { getGoogle3dQuality, setGoogle3dQuality } =
+    await import('./google3d.js');
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'localStorage',
+  );
+  try {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Storage is unavailable', 'SecurityError');
+      },
+    });
+    assert.equal(getGoogle3dQuality(), 'balanced');
+    assert.equal(setGoogle3dQuality('high'), 'high');
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(globalThis, 'localStorage', originalDescriptor);
+    } else {
+      delete globalThis.localStorage;
+    }
+  }
 });

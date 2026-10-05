@@ -1,6 +1,6 @@
 /**
  * @module gtfsRealtime
- * @description Minimal GTFS-Realtime decoder for VehiclePosition feeds.
+ * @description Minimal GTFS-Realtime decoder for VehiclePosition and TripUpdate feeds.
  *
  * Decodes only what the Transit layer needs from a `FeedMessage` — the header
  * and every entity's `VehiclePosition` — straight from the protobuf wire
@@ -125,12 +125,36 @@ function readVehiclePosition(tag, vehicle, pbf) {
   else if (tag === 9) vehicle.occupancyStatus = pbf.readVarint();
 }
 
+function readStopTimeEvent(tag, event, pbf) {
+  if (tag === 1) event.delay = pbf.readVarint(true);
+  else if (tag === 2) event.time = pbf.readVarint(true);
+  else if (tag === 3) event.uncertainty = pbf.readVarint(true);
+}
+
+function readStopTimeUpdate(tag, update, pbf) {
+  if (tag === 1) update.stopSequence = pbf.readVarint();
+  else if (tag === 2) update.arrival = pbf.readMessage(readStopTimeEvent, {});
+  else if (tag === 3) update.departure = pbf.readMessage(readStopTimeEvent, {});
+  else if (tag === 4) update.stopId = readBoundedString(pbf, update);
+  else if (tag === 5) update.scheduleRelationship = pbf.readVarint();
+}
+
+function readTripUpdate(tag, update, pbf) {
+  if (tag === 1) update.trip = pbf.readMessage(readTripDescriptor, {});
+  else if (tag === 3)
+    update.stopTimeUpdates.push(pbf.readMessage(readStopTimeUpdate, {}));
+  else if (tag === 4) update.timestamp = pbf.readVarint(true);
+  else if (tag === 5) update.delay = pbf.readVarint(true);
+}
+
 function readFeedEntity(tag, entity, pbf) {
   if (tag === 1) entity.id = readBoundedString(pbf, entity);
   else if (tag === 2) entity.isDeleted = pbf.readBoolean();
+  else if (tag === 3)
+    entity.tripUpdate = pbf.readMessage(readTripUpdate, {
+      stopTimeUpdates: [],
+    });
   else if (tag === 4) entity.vehicle = pbf.readMessage(readVehiclePosition, {});
-  // 3 (trip_update) and 5 (alert) are skipped: pbf advances past any tag the
-  // reader leaves untouched.
 }
 
 function readFeedMessage(tag, message, pbf) {
@@ -245,6 +269,98 @@ export function normalizeVehicleEntity(entity) {
  * @returns {{ version: string|null, timestamp: number|null, incrementality: number,
  *   entityCount: number, truncated: boolean, vehicles: object[] }}
  */
+export function normalizeTripUpdateEntity(
+  entity,
+  stationCoordinates = new Map(),
+  nowS = Math.floor(Date.now() / 1000),
+) {
+  if (!entity || entity.isDeleted === true) return null;
+  const update = entity.tripUpdate;
+  const trip = update?.trip;
+  if (!update || !trip || update.oversize || trip.oversize) return null;
+  const stops = (update.stopTimeUpdates || [])
+    .filter((stop) => !stop.oversize && nonEmptyString(stop.stopId))
+    .sort(
+      (a, b) =>
+        (a.stopSequence ?? Number.MAX_SAFE_INTEGER) -
+        (b.stopSequence ?? Number.MAX_SAFE_INTEGER),
+    );
+  if (!stops.length) return null;
+  const current =
+    stops.find((stop) => {
+      const time = stop.departure?.time ?? stop.arrival?.time;
+      return !Number.isFinite(time) || time >= nowS;
+    }) || stops[stops.length - 1];
+  const stopId = nonEmptyString(current.stopId);
+  const stationKey = stopId.replace(/[NS]$/i, '');
+  const coordinates =
+    stationCoordinates instanceof Map
+      ? stationCoordinates.get(stopId) || stationCoordinates.get(stationKey)
+      : stationCoordinates?.[stopId] || stationCoordinates?.[stationKey];
+  if (
+    !coordinates ||
+    !isPlausibleVehiclePosition(coordinates.lat, coordinates.lon)
+  )
+    return null;
+  const timestamp =
+    Number.isFinite(update.timestamp) && update.timestamp > 0
+      ? update.timestamp
+      : null;
+  const id = nonEmptyString(trip.tripId) || nonEmptyString(entity.id);
+  if (!id) return null;
+  const event = current.departure || current.arrival || {};
+  return {
+    id,
+    lat: Number(coordinates.lat.toFixed(6)),
+    lon: Number(coordinates.lon.toFixed(6)),
+    bearing: null,
+    speedMps: null,
+    timestamp,
+    routeId: nonEmptyString(trip.routeId),
+    tripId: nonEmptyString(trip.tripId),
+    directionId: Number.isInteger(trip.directionId) ? trip.directionId : null,
+    label: nonEmptyString(trip.routeId) || id,
+    stopId,
+    stopSequence: Number.isInteger(current.stopSequence)
+      ? current.stopSequence
+      : null,
+    stopTime: Number.isFinite(event.time) ? event.time : null,
+    delaySeconds: Number.isFinite(event.delay) ? event.delay : null,
+    status: current === stops[stops.length - 1] ? 'STOPPED_AT' : 'INCOMING_AT',
+    occupancy: null,
+  };
+}
+
+export function decodeTripUpdates(
+  bytes,
+  stationCoordinates = new Map(),
+  nowS = Math.floor(Date.now() / 1000),
+) {
+  const message = decodeFeedMessage(bytes);
+  const byId = new Map();
+  for (const entity of message.entities) {
+    const record = normalizeTripUpdateEntity(entity, stationCoordinates, nowS);
+    if (!record) continue;
+    const existing = byId.get(record.id);
+    if (!existing || (record.timestamp ?? 0) >= (existing.timestamp ?? 0))
+      byId.set(record.id, record);
+  }
+  const headerTimestamp = message.header?.timestamp;
+  return {
+    version: nonEmptyString(message.header?.version),
+    timestamp:
+      Number.isFinite(headerTimestamp) && headerTimestamp > 0
+        ? headerTimestamp
+        : null,
+    incrementality: Number.isFinite(message.header?.incrementality)
+      ? message.header.incrementality
+      : GTFS_INCREMENTALITY_FULL_DATASET,
+    entityCount: message.entities.length,
+    truncated: message.truncated === true,
+    vehicles: [...byId.values()],
+  };
+}
+
 export function decodeVehiclePositions(bytes) {
   const message = decodeFeedMessage(bytes);
   const byId = new Map();

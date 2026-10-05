@@ -1,5 +1,22 @@
 # God's Eye View Current State
 
+## Transit station placards — October 3, 2026
+
+Transit routes use viewport-loaded OpenStreetMap rail geometry with station placards. Expanded list placards render as a deterministic foreground layer; compact station placards, route icons, and markers render behind them. Placards are opaque, content is kept inside the frame, and compact station content is lifted above its own background. Station panels collapse only from their dedicated header control, which is
+kept clear of route icons; clicking any other part of a panel opens the same
+route details as selecting its marker. The Transit row's
+PLACARDS control independently shows or hides station placards and is available
+only while ROUTES is enabled. Display has a separate STATIONS toggle that
+collapses or expands all placards and is enabled only when both controls are
+active; otherwise the Display panel explains which Transit controls to enable.
+Transit markers and station placards retain an
+8 m clearance above their resolved surface while still depth-testing against
+terrain and 3D content. Below 1,300 m camera altitude, station placards scale
+smoothly up to 2.5×, with their dedicated buttons anchored to the scaled
+placard header.
+
+Route badges follow agency conventions: subway routes use circles, express subway services use diamonds, and PATH identifiers normalize internal variants such as `HOB3` and `JSQ3` to `HOB` and `JSQ`. Endpoint text is removed from line names before display.
+
 ## Cyber HUD — September 23, 2026
 
 Display > HUD > Layout includes Cyber, also available through the HUD voice
@@ -701,6 +718,25 @@ snapshots, lifecycle actions and row descriptors. Remount and teardown remove
 listeners and row subscriptions; obsolete completions do not repaint old rows.
 The clear control presents busy state while its existing action owns the transaction.
 
+## Model atmosphere on Apple Metal
+
+Cesium's per-vertex model atmosphere is kept out of the pipeline on devices
+whose driver cannot link it. `AtmosphereStageVS` binds shader `out` parameters
+directly to varyings, which ANGLE's Metal backend rejects at link time, tearing
+down the render loop on iPadOS and iOS. `ModelSceneGraph.configurePipeline`
+attaches that stage only when `fog.enabled && fog.renderable`, so the viewer
+clears `scene.fog.renderable` and leaves `fog.enabled` — and the fog density
+that drives 3D Tiles screen-space-error scaling — intact. Sky atmosphere and the
+ground-atmosphere fragment path route through locals and are unaffected.
+Affected devices lose distance fog on 3D tiles and on globe basemaps (Esri,
+Bing, keyless), since the globe fog shader uses the same `renderable` flag.
+The probe releases its throwaway WebGL2 context immediately.
+
+Detection is a WebGL2 link probe of the same out-parameter/varying pattern, so a
+future driver fix restores the effect with no code change; iOS/iPadOS platform
+detection is the backstop for when no probe context can be created. Applied
+during viewer construction, before any tile builds a draw command.
+
 ## Map Source control ownership
 
 Map Source controls own chip listeners, source-state subscriptions and selection
@@ -794,10 +830,12 @@ their `configured: false` response.
 
 CCTV media waits at most 15 seconds for upstream response headers and returns
 504 on timeout. Its timer stops when headers arrive, so live bodies can continue
-streaming; body idle deadlines are separate from this header deadline. Error
-responses are cancelled. Buffered snapshots have a 16 MiB streaming cap; an
-oversized image remains an upstream miss and uses the normal fallback chain.
-The existing declared media size ceiling remains 64 MiB.
+streaming; a separate 30-second idle deadline then bounds the gap between
+upstream chunks and releases a body that has gone silent. A response that is
+still waiting to drain reschedules that deadline, so a slow client does not read
+as a stalled upstream. Error responses are cancelled. Buffered snapshots have a
+16 MiB streaming cap; an oversized image remains an upstream miss and uses the
+normal fallback chain. The existing declared media size ceiling remains 64 MiB.
 
 ## GBFS upstream bounds
 
@@ -857,6 +895,22 @@ and stale/error responses remain unchanged. Each has a Node-only package entry
 under `gods-eye-view/server/providers/`. Portable terrain mechanics, traffic tile
 math and GBFS source rules are available under `gods-eye-view/sources/`.
 The browser layers and their rendering remain in their existing modules.
+
+## Terrain height cache bound
+
+The client terrain-height resolver's in-memory cache is bounded at 20 000
+entries (`DEFAULT_MAX_CACHE_ENTRIES`, overridable per instance through
+`createTerrainHeights({ maxCacheEntries })`). Coordinate rounding makes repeated
+visits to one place share a key but does not bound how many distinct places a
+session visits, and the cache previously had no eviction, so a long session
+retained every coordinate it ever resolved. Eviction is least-recently-used:
+a consumer read promotes its entry, so the cell being watched is not dropped for
+having been resolved early. The bound sits far above a city-scale session, so
+normal use never evicts and issues no additional proxy requests. A batch's
+results are assembled from what that call resolved, so eviction during a large
+batch cannot report a just-resolved point as unresolved. Re:Earth and
+geoid-fallback entry semantics, the fallback cooldown and the abort-time flush
+are unchanged.
 
 ## Landmark annotation identity
 
@@ -2687,9 +2741,16 @@ Historical planning documents may not match runtime behavior.
 
 ## Current Baseline
 
-- Repository metadata and public URLs use the `bilawalsidhu/gods-eye-view`
-  project identity. Runtime behavior is defined by this document and the current
-  source tree rather than historical branch notes.
+- This checkout is the independent `Liqueseous/gods-eye-view` fork of the
+  original `bilawalsidhu/gods-eye-view` project; it is not the original or an
+  official upstream release. AI-assisted tools were used during production for
+  implementation, debugging, testing, and documentation. The Vite build injects
+  the package version plus `GEV_BUILD_NUMBER`/`BUILD_NUMBER`/`GITHUB_RUN_NUMBER`
+  into the browser and displays them in the command dock. The displayed `SRC`
+field records the last parent-repository baseline merged into this fork
+(`0.1.1@b210ab0` by default). Runtime behavior is
+  defined by this document and the current source tree rather than historical
+  branch notes.
 
 ## Runtime Stack
 
@@ -2704,6 +2765,8 @@ Historical planning documents may not match runtime behavior.
 - Proxy middleware and API wiring in `vite.config.js`
 
 ### Active Data Layers in Runtime
+
+This checkout is an independent fork of the original [Bilawal Sidhu `gods-eye-view`](https://github.com/bilawalsidhu/gods-eye-view) repository, not the original or an official upstream release. AI-assisted tools were used during production for implementation, debugging, testing, and documentation; maintainers remain responsible for review and validation.
 
 Qualified Radio playback requests—category, station, country, coordinates, or
 nearby place—always use station selection. Unqualified “turn on/start the radio”
@@ -2720,9 +2783,10 @@ its criteria cannot be silently ignored.
 | Satellites             | CelesTrak                                                                                                                                                                                       | `src/data/satellites.js`                              | `/api/celestrak`                                         | 120s                                                                              |
 | Space Missions (30d)   | Launch Library 2 + CelesTrak                                                                                                                                                                    | `src/data/rocketLaunches.js`                          | `/api/launches` + `/api/celestrak/active`                | 5 min                                                                             |
 | Traffic                | OSM Overpass (+ optional TomTom live flow)                                                                                                                                                      | `src/data/traffic.js`                                 | `/api/overpass` + `/api/tomtom`                          | viewport-driven                                                                   |
+| Tunnels 🚇             | OSM highway and railway ways tagged as tunnels; mapped names/ref labels                                                                                                                        | `src/layers/tunnels/` via `src/app/layers/tunnels.js`  | `/api/overpass`                                          | viewport-driven, 6 h client cache                                                 |
 | CCTV                   | Austin + Caltrans (CA) + TfL London + Ontario 511 + Fintraffic (FI) + DriveBC (BC) + TxDOT (TX) + Estonia (Tallinn, Tarktee) + Live Traffic NSW + Open Calgary Open Data + Street View fallback | `src/data/cctv.js`                                    | `/api/cctv`                                              | 10s (active)                                                                      |
 | Radio                  | Radio Browser (public-domain station directory)                                                                                                                                                 | `src/data/radio.js`                                   | `/api/radio/stations`, `/api/radio/click/:uuid`          | 45 min directory refresh                                                          |
-| Transit 🚌             | Operator GTFS-Realtime VehiclePositions (7 keyless regions, `src/data/transitFeeds.js`)                                                                                                         | `src/layers/transit/` via `src/app/layers/transit.js` | `/api/transit`                                           | 15s (poll + delayed playback)                                                     |
+| Transit 🚌             | Operator GTFS-Realtime vehicles plus NYC MTA subway TripUpdates, viewport-bounded OpenStreetMap rail routes, grouped stations, colored line icons/lists, and route-aware station overlays | `src/layers/transit/` via `src/app/layers/transit.js` | `/api/transit`, `/api/overpass` | 15s (vehicles) + camera-settled route fetches |
 | Bikeshare 🚲           | GBFS (Lyft + BCycle)                                                                                                                                                                            | `src/data/bikeshare.js`                               | `/api/gbfs`                                              | 60s                                                                               |
 | Directions 🧭          | OSRM on FOSSGIS servers (OpenStreetMap)                                                                                                                                                         | `src/data/directions.js`                              | `/api/route` (`steps=1`)                                 | on placement / mode change                                                        |
 | Datacenters ▣          | OSM extract (bundled)                                                                                                                                                                           | `src/data/localLayers.js`                             | —                                                        | static                                                                            |
@@ -3347,6 +3411,12 @@ silently demoting every later lookup for the session.
 - **The DENSE chip reports the dense LOAD, not the catalog param.** The param flips synchronously while the Starlink shell takes seconds to arrive over a chunked load, and CelesTrak 502s that feed regularly. So the chip reads `DENSE ···` (busy, disabled) while loading, ACTIVE only once dense points are actually on screen, and `DENSE ✕` with the reason on hover when the load fails — a failure also reverts `catalog` to `core`, drops any partial chunk, and leaves the chip clickable to retry. A load is judged by points added, not by HTTP status: a 200 carrying an empty body, a passed-through HTML error page, or only TLEs the core catalog already owns fails with the same revert semantics as a 502. Any explicit request for `core` clears a latched error even when the mode does not change, so a Space Missions restore of an already-core snapshot never leaves the user with a failure they did not cause. Because the load settles asynchronously, the layer pushes a re-render through the optional `setRowControlsListener()` hook; nothing else would repaint that row before the 5-minute catalog refresh, so the count and legend would otherwise sit stale.
 - **A dependency owner takes the row with it.** Space Missions borrows this layer for TLE lookup with `showPoints:false`; while points are hidden the layer returns empty row controls, so the legend never describes an empty sky and the chip cannot accept a write that the owner's restore would silently revert.
 - The detection-overlay record cache (`_detectionObjects`) is cleared with the catalog on every rebuild: it stamps id/class at creation only, and a rebuild can re-tag a satellite when a partial CelesTrak outage changes which group wins dedupe.
+- **CCTV estimated bearings:** a camera whose pack marks `headingConfidence: 'low'` (the id-hash
+  `fallbackHeadingFromId` bearing) shows `HDG n° (ESTIMATED)` in the HUD and draws its coverage
+  wireframe dashed; colours, widths and active/idle emphasis are unchanged. A manual calibration
+  (`calSource: 'manual'`) or curated pose (`poseSource: 'curated'`) is never presented as
+  estimated, matching the CAL badge. Public camera state carries `headingConfidence` and
+  `headingEstimated` (`src/layers/cctv/headingConfidence.js`, #639).
 - **FIRMS**: no ground clamping (zero 3D-tiles height sampling), ≤18 screen-decluttered ambient labels, click-to-inspect detail card, 2.5k/3k sprite budgets viewport-clipped by FRP.
 - **CCTV v2 foundation:** a pitched
   frustum wireframe (4 corner rays + far-cap rectangle) with a monitor plane at the frustum's
@@ -3446,6 +3516,7 @@ silently demoting every later lookup for the session.
 - HTTP refusals such as 406 now rotate alongside the existing network, rate-limit, and runtime-error cases. A refusal from one mirror no longer prevents reaching healthy alternatives or persists under the seven-day road/month-long boundary cache TTLs. Concurrent identical queries share one mirror sequence; if it fails, both the initiating and joined callers can use the same last-good data.
 - A refusal every mirror agrees on is still reported with the first mirror's status and body, so a genuinely malformed query says what upstream said — but only after every mirror has had the chance to answer it. `fetchOverpassPayload` takes injectable endpoints and fetch so the rotation is tested without a live mirror (`src/overpassProxy.test.mjs`).
 - Every mirror is asked with a User-Agent that names the application, its version and the project address (`OVERPASS_USER_AGENT` in `server/providers/overpass/constants.js`), which is what the OSM API usage policy asks for. Mirrors may refuse a client they cannot identify; such a refusal is never treated as data and costs the fan-out that mirror, so the header is what keeps the list at full strength.
+- When the fan-out has nothing left to offer, the traffic row says which upstream declined and how: `Overpass rate-limited`, `Overpass timed out`, or `Overpass refused the road query (HTTP 406)`; the proxy's own 502 (every mirror unreachable) and 503 (local limiter busy) read `Overpass mirrors unreachable` and `Overpass temporarily unavailable`. Street Traffic draws on two upstreams — OpenStreetMap for geometry, TomTom for flow — so a row that only said "road data unavailable" sent readers to check a TomTom key that was never the problem (#661). `roadRequestError` in `src/layers/traffic/source.js` owns the mapping and tags the error with its status. A refusal whose code is unreadable — the layer takes its source by injection, so an adapter may not supply one — reports `Overpass temporarily unavailable` rather than printing `HTTP undefined`, and anything the layer did not classify at all (a dropped connection, a malformed snapshot) still reads `Road data temporarily unavailable`, because a platform exception is not a sentence to put on a panel.
 
 ### Share-link v2 layer state (August 2026)
 

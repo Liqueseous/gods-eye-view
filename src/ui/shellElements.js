@@ -37,6 +37,8 @@ export function readShellElements(document = globalThis.document) {
       'detection-density-slider',
     ),
     _detectionDensityValue: document.getElementById('detection-density-value'),
+    _transitStationsToggle: document.getElementById('transit-stations-toggle'),
+    _transitStationsStatus: document.getElementById('transit-stations-status'),
     _detectionAllocationRow: document.getElementById(
       'detection-allocation-row',
     ),
@@ -54,6 +56,9 @@ export function readShellElements(document = globalThis.document) {
     _scopeFeatherValue: document.getElementById('scope-feather-value'),
     _mapStackChips: document.getElementById('map-stack-chips'),
     _mapStackStatus: document.getElementById('map-stack-status'),
+    _google3dQuality: document.getElementById('google-3d-quality'),
+    _appBuildInfo: document.getElementById('app-build-info'),
+    _appSourceInfo: document.getElementById('app-source-info'),
     _cleanViewBtn: document.getElementById('clean-view-toggle'),
     _cleanViewExitBtn: document.getElementById('clean-view-exit'),
     _dataPanel: document.getElementById('data-panel'),

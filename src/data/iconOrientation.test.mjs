@@ -4,6 +4,7 @@ import * as Cesium from 'cesium';
 import {
   HORIZON_FEATHER_RAD,
   horizonOccluder,
+  isPointVisible,
   screenProjectedRotation,
   skyBackdropFactor,
   stabilizeScreenRotation,

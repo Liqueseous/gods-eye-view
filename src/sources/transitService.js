@@ -1,4 +1,5 @@
 import { createTransitHistory } from './transitHistoryStore.js';
+import { fetchMtaStationCoordinates } from './mtaStations.js';
 /**
  * GTFS-Realtime transit proxy for the Transit data layer.
  *
@@ -50,8 +51,21 @@ export async function fetchTransitFeed(
   signal,
   fetchImpl = fetch,
   validators = null,
+  requestUrl = feed.url,
 ) {
-  let current = feed.url;
+  let current = requestUrl;
+  try {
+    if (
+      !isAcceptableTransitUpstreamUrl(current) ||
+      new URL(current).origin !== new URL(feed.url).origin
+    )
+      throw new Error(
+        'configured upstream URL must stay on the registered origin',
+      );
+  } catch (error) {
+    if (error?.message?.startsWith('configured upstream URL')) throw error;
+    throw new Error('configured upstream URL is invalid');
+  }
   for (let hop = 0; hop <= TRANSIT_MAX_REDIRECTS; hop += 1) {
     const response = await fetchImpl(current, {
       signal,
@@ -83,6 +97,84 @@ export async function fetchTransitFeed(
   throw new Error('upstream redirected too many times');
 }
 
+const MBTA_API_BASE_URL = 'https://api-v3.mbta.com';
+const MBTA_ROUTE_DETAILS_TTL_MS = 30_000;
+const MBTA_ROUTE_DETAILS_MAX_BYTES = 2 * 1024 * 1024;
+
+function mbtaRouteResourceUrl(resource, routeId) {
+  const url = new URL(`/${resource}`, MBTA_API_BASE_URL);
+  url.searchParams.set('filter[route]', routeId);
+  url.searchParams.set('page[limit]', resource === 'predictions' ? '20' : '10');
+  if (resource === 'predictions') {
+    url.searchParams.set('sort', 'arrival_time');
+    url.searchParams.set('include', 'stop');
+  }
+  return url.toString();
+}
+
+function normalizeMbtaRouteDetails(
+  routeId,
+  predictionsPayload,
+  alertsPayload,
+  now,
+) {
+  const stopNames = new Map(
+    (predictionsPayload.included || [])
+      .filter((entry) => entry?.type === 'stop' && entry.id)
+      .map((entry) => [entry.id, entry.attributes?.name || entry.id]),
+  );
+  const predictions = (predictionsPayload.data || [])
+    .filter((entry) => entry?.relationships?.route?.data?.id === routeId)
+    .map((entry) => {
+      const attributes = entry.attributes || {};
+      const stopId = entry.relationships?.stop?.data?.id || null;
+      return {
+        tripId: entry.relationships?.trip?.data?.id || null,
+        stopId,
+        stopName: stopId ? stopNames.get(stopId) || stopId : null,
+        arrivalTime: attributes.arrival_time || null,
+        departureTime: attributes.departure_time || null,
+        headsign: attributes.trip_headsign || null,
+        status: attributes.status || null,
+        directionId: Number.isInteger(attributes.direction_id)
+          ? attributes.direction_id
+          : null,
+      };
+    })
+    .filter((prediction) =>
+      Number.isFinite(
+        Date.parse(prediction.arrivalTime || prediction.departureTime || ''),
+      ),
+    )
+    .sort(
+      (a, b) =>
+        Date.parse(a.arrivalTime || a.departureTime) -
+        Date.parse(b.arrivalTime || b.departureTime),
+    )
+    .slice(0, 6);
+  const alerts = (alertsPayload.data || [])
+    .filter((entry) =>
+      (entry?.attributes?.informed_entity || []).some(
+        (informed) => informed.route === routeId,
+      ),
+    )
+    .map((entry) => ({
+      id: String(entry.id || ''),
+      header: String(
+        entry.attributes?.short_header || entry.attributes?.header || '',
+      ).slice(0, 240),
+      description: String(entry.attributes?.description || '').slice(0, 500),
+      effect: entry.attributes?.effect || null,
+      severity: Number.isInteger(entry.attributes?.severity)
+        ? entry.attributes.severity
+        : null,
+      updatedAt: entry.attributes?.updated_at || null,
+    }))
+    .filter((alert) => alert.header || alert.description)
+    .slice(0, 6);
+  return { feedId: 'mbta', routeId, fetchedAt: now, predictions, alerts };
+}
+
 /**
  * Vite plugin: GTFS-Realtime VehiclePositions proxy for the Transit layer.
  *
@@ -104,13 +196,35 @@ export async function fetchTransitFeed(
  * re-asked once per poll for a whole session: consecutive failures push the
  * next permitted attempt out to five minutes, and one success resets it.
  *
- * @param {{fetchImpl?: typeof fetch}} [options]
+ * @param {{fetchImpl?: typeof fetch, resolveFeedUrl?: (feed:object)=>string}} [options]
  * @returns {{handle: (request: Request) => Promise<Response>, close: () => void}}
  */
-export function createTransitService({ fetchImpl = fetch } = {}) {
+export function createTransitService({
+  fetchImpl = fetch,
+  resolveFeedUrl = (feed) => feed.url,
+} = {}) {
   /** @type {Map<string, {at:number, body:string, host:string}>} feedId → snapshot */
   const cache = new Map();
+  let mtaStationsCache = null;
+  let mtaStationsInFlight = null;
   const history = createTransitHistory();
+
+  async function getMtaStations(signal) {
+    const now = Date.now();
+    if (mtaStationsCache && now - mtaStationsCache.at < 24 * 60 * 60 * 1000)
+      return mtaStationsCache.coordinates;
+    if (!mtaStationsInFlight) {
+      mtaStationsInFlight = fetchMtaStationCoordinates(fetchImpl, signal)
+        .then((coordinates) => {
+          mtaStationsCache = { at: Date.now(), coordinates };
+          return coordinates;
+        })
+        .finally(() => {
+          mtaStationsInFlight = null;
+        });
+    }
+    return mtaStationsInFlight;
+  }
   const admitHistory = makeRateLimiter({
     windowMs: 60000,
     max: 30,
@@ -121,12 +235,26 @@ export function createTransitService({ fetchImpl = fetch } = {}) {
   const controllers = new Set();
   /** @type {Map<string, {failures:number, nextAttemptAt:number, reason:string}>} */
   const cooldown = new Map();
+  const mbtaRouteDetailsCache = new Map();
+  const mbtaRouteDetailsInFlight = new Map();
   const admit = makeRateLimiter({
     windowMs: TRANSIT_ADMISSION_WINDOW_MS,
     max: TRANSIT_ADMISSION_MAX_PER_FEED,
     globalMax: TRANSIT_ADMISSION_MAX_GLOBAL,
   });
+  const routeDetailsCache = new Map();
+  const routeDetailsInFlight = new Map();
+  const admitRouteDetails = makeRateLimiter({
+    windowMs: 60_000,
+    max: 12,
+    globalMax: 48,
+  });
   const ttlSeconds = Math.ceil(TRANSIT_PROXY_TTL_MS / 1000);
+  const admitMbtaRouteDetails = makeRateLimiter({
+    windowMs: 60_000,
+    max: 12,
+    globalMax: 48,
+  });
 
   function reply(status, body, headers) {
     return new Response(body, { status, headers });
@@ -156,6 +284,7 @@ export function createTransitService({ fetchImpl = fetch } = {}) {
         previous
           ? { etag: previous.etag, lastModified: previous.lastModified }
           : null,
+        resolveFeedUrl(feed),
       );
       if (closed) throw new Error('Transit provider closed');
       if (!isAcceptableTransitUpstreamUrl(finalUrl)) {
@@ -188,7 +317,13 @@ export function createTransitService({ fetchImpl = fetch } = {}) {
         response,
         TRANSIT_PROXY_MAX_BODY_BYTES,
       );
-      const snapshot = buildTransitSnapshot(feed, bytes, now);
+      const stationCoordinates =
+        feed.realtimeType === 'trip-updates'
+          ? await getMtaStations(controller.signal)
+          : undefined;
+      const snapshot = buildTransitSnapshot(feed, bytes, now, {
+        stationCoordinates,
+      });
       if (closed) throw new Error('Transit provider closed');
       history.ingest(feed, snapshot.vehicles, Date.now());
       const entry = {
@@ -206,6 +341,174 @@ export function createTransitService({ fetchImpl = fetch } = {}) {
       clearTimeout(timeout);
       controller.abort();
       controllers.delete(controller);
+    }
+  }
+
+  async function fetchMbtaRouteDetails(routeId) {
+    const controller = new AbortController();
+    controllers.add(controller);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      TRANSIT_PROXY_TIMEOUT_MS,
+    );
+    const fetchJson = async (resource) => {
+      const url = mbtaRouteResourceUrl(resource, routeId);
+      if (!isAcceptableTransitUpstreamUrl(url))
+        throw new Error('MBTA route endpoint must use HTTPS');
+      const response = await fetchImpl(url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/vnd.api+json' },
+        redirect: 'error',
+      });
+      if (!response.ok) {
+        const error = new Error(
+          `MBTA ${resource} returned HTTP ${response.status}`,
+        );
+        error.upstreamStatus = response.status;
+        throw error;
+      }
+      const bytes = await readResponseBytesCapped(
+        response,
+        MBTA_ROUTE_DETAILS_MAX_BYTES,
+      );
+      let payload;
+      try {
+        payload = JSON.parse(new TextDecoder().decode(bytes));
+      } catch {
+        throw new Error(`MBTA ${resource} returned invalid JSON`);
+      }
+      if (!Array.isArray(payload?.data))
+        throw new Error(`MBTA ${resource} response has no data array`);
+      return payload;
+    };
+
+    try {
+      const [predictions, alerts] = await Promise.all([
+        fetchJson('predictions'),
+        fetchJson('alerts'),
+      ]);
+      if (closed) throw new Error('Transit provider closed');
+      return normalizeMbtaRouteDetails(
+        routeId,
+        predictions,
+        alerts,
+        Date.now(),
+      );
+    } finally {
+      clearTimeout(timeout);
+      controller.abort();
+      controllers.delete(controller);
+    }
+  }
+
+  async function getMbtaRouteDetails(routeId) {
+    const now = Date.now();
+    const cached = routeDetailsCache.get(routeId);
+    if (cached && now - cached.at < MBTA_ROUTE_DETAILS_TTL_MS)
+      return { data: cached.data, cache: 'HIT' };
+
+    let request = routeDetailsInFlight.get(routeId);
+    const shared = Boolean(request);
+    if (!request) {
+      if (!admitRouteDetails(routeId)) {
+        const error = new Error('MBTA route details rate limit reached');
+        error.status = 429;
+        throw error;
+      }
+      request = fetchMbtaRouteDetails(routeId);
+      routeDetailsInFlight.set(routeId, request);
+    }
+    try {
+      const data = await request;
+      if (!shared) routeDetailsCache.set(routeId, { at: Date.now(), data });
+      return { data, cache: shared ? 'INFLIGHT' : 'MISS' };
+    } finally {
+      if (!shared && routeDetailsInFlight.get(routeId) === request)
+        routeDetailsInFlight.delete(routeId);
+    }
+  }
+
+  async function fetchMbtaRouteDetails(routeId) {
+    const controller = new AbortController();
+    controllers.add(controller);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      TRANSIT_PROXY_TIMEOUT_MS,
+    );
+    const requestJson = async (resource) => {
+      const url = mbtaRouteResourceUrl(resource, routeId);
+      if (!isAcceptableTransitUpstreamUrl(url))
+        throw new Error('MBTA route data URL must use HTTPS');
+      const response = await fetchImpl(url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/vnd.api+json' },
+        redirect: 'error',
+      });
+      if (!response.ok) {
+        const error = new Error(
+          `MBTA ${resource} returned HTTP ${response.status}`,
+        );
+        error.upstreamStatus = response.status;
+        throw error;
+      }
+      const bytes = await readResponseBytesCapped(
+        response,
+        MBTA_ROUTE_DETAILS_MAX_BYTES,
+      );
+      let payload;
+      try {
+        payload = JSON.parse(new TextDecoder().decode(bytes));
+      } catch {
+        throw new Error(`MBTA ${resource} returned invalid JSON`);
+      }
+      if (!Array.isArray(payload?.data))
+        throw new Error(`MBTA ${resource} response has no data array`);
+      return payload;
+    };
+
+    try {
+      const [predictions, alerts] = await Promise.all([
+        requestJson('predictions'),
+        requestJson('alerts'),
+      ]);
+      if (closed) throw new Error('Transit provider closed');
+      return normalizeMbtaRouteDetails(
+        routeId,
+        predictions,
+        alerts,
+        Date.now(),
+      );
+    } finally {
+      clearTimeout(timeout);
+      controller.abort();
+      controllers.delete(controller);
+    }
+  }
+
+  async function getMbtaRouteDetails(routeId) {
+    const now = Date.now();
+    const cached = mbtaRouteDetailsCache.get(routeId);
+    if (cached && now - cached.at < MBTA_ROUTE_DETAILS_TTL_MS)
+      return { data: cached.data, cache: 'HIT' };
+
+    let request = mbtaRouteDetailsInFlight.get(routeId);
+    const shared = Boolean(request);
+    if (!request) {
+      if (!admitMbtaRouteDetails(routeId)) {
+        const error = new Error('MBTA route details rate limit reached');
+        error.status = 429;
+        throw error;
+      }
+      request = fetchMbtaRouteDetails(routeId);
+      mbtaRouteDetailsInFlight.set(routeId, request);
+    }
+    try {
+      const data = await request;
+      if (!shared) mbtaRouteDetailsCache.set(routeId, { at: Date.now(), data });
+      return { data, cache: shared ? 'INFLIGHT' : 'MISS' };
+    } finally {
+      if (!shared && mbtaRouteDetailsInFlight.get(routeId) === request)
+        mbtaRouteDetailsInFlight.delete(routeId);
     }
   }
 
@@ -244,6 +547,35 @@ export function createTransitService({ fetchImpl = fetch } = {}) {
         'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'public, max-age=3600',
       });
+    }
+    if (route.route === 'route-details') {
+      try {
+        const result = await getMbtaRouteDetails(route.routeId);
+        return reply(200, JSON.stringify(result.data), {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': `public, max-age=${MBTA_ROUTE_DETAILS_TTL_MS / 1000}`,
+          'X-Route-Data-Cache': result.cache,
+        });
+      } catch (error) {
+        const status = Number.isInteger(error?.status)
+          ? error.status
+          : Number.isInteger(error?.upstreamStatus)
+            ? 502
+            : 504;
+        return reply(
+          status,
+          JSON.stringify({
+            error: 'MBTA route details unavailable',
+            feedId: 'mbta',
+            routeId: route.routeId,
+          }),
+          {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            ...(status === 429 ? { 'Retry-After': '60' } : {}),
+          },
+        );
+      }
     }
     const { feed } = route;
     const now = Date.now();
