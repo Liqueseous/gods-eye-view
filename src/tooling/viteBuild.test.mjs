@@ -74,6 +74,19 @@ test('build helper does not discover environment values or construct local provi
   }
 });
 
+test('tracking test server can disable dependency optimization', () => {
+  const previous = process.env.GEV_DISABLE_DEP_OPTIMIZATION;
+  process.env.GEV_DISABLE_DEP_OPTIMIZATION = '1';
+  try {
+    assert.deepEqual(createBrowserViteConfig().optimizeDeps, {
+      noDiscovery: true,
+    });
+  } finally {
+    if (previous === undefined) delete process.env.GEV_DISABLE_DEP_OPTIMIZATION;
+    else process.env.GEV_DISABLE_DEP_OPTIMIZATION = previous;
+  }
+});
+
 test('root config retains existing named exports and standalone provider order', () => {
   for (const [name, value] of Object.entries(providers))
     assert.equal(compatibility[name], value, name);
