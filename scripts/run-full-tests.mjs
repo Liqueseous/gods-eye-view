@@ -57,11 +57,7 @@ async function runTrackingRegression() {
   const server = spawn(
     process.execPath,
     [VITE_CLI, '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
-    {
-      cwd: ROOT,
-      env: { ...process.env, GEV_DISABLE_DEP_OPTIMIZATION: '1' },
-      stdio: 'inherit',
-    },
+    { cwd: ROOT, env: process.env, stdio: 'inherit' },
   );
 
   try {
