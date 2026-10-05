@@ -43,6 +43,11 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Install Chrome for tracking regression
+        run: npx puppeteer browsers install chrome
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '0'
+
       - name: Run setup policy checks
         run: npm run doctor -- --json
 

@@ -565,8 +565,8 @@ test('selecting a mapped route opens route details and replaces vehicle selectio
   const parts = app.layer._transitPartsForTest();
   assert.equal(
     app.entities.length,
-    5,
-    'route has outline, color stroke, station placard, marker, and line icon',
+    6,
+    'route has outline, color stroke, station placard, marker, line icon, and badge',
   );
   app.viewer.scene.pick = () => ({ id: app.entities[0] });
   app
@@ -1829,7 +1829,8 @@ test('a height that arrives from a neighbour lifts a stationary vehicle too', as
 
   const carto = Cesium.Cartographic.fromCartesian(entry.marker.position);
   assert.ok(
-    Math.abs(carto.height - 126.5) < 1,
+    Math.abs(carto.height - entry.heightM - TRANSIT_ENTITY_GROUND_CLEARANCE_M) <
+      1,
     `the vehicle stands on the ground its cell reported (drew at ${carto.height.toFixed(1)} m)`,
   );
 });
@@ -1937,7 +1938,8 @@ test('a vehicle with no surface yet waits instead of floating', async (t) => {
   assert.equal(entry.marker.show, true, 'and appears once the ground answers');
   const carto = Cesium.Cartographic.fromCartesian(entry.marker.position);
   assert.ok(
-    Math.abs(carto.height - 31.5) < 1,
+    Math.abs(carto.height - entry.heightM - TRANSIT_ENTITY_GROUND_CLEARANCE_M) <
+      1,
     `standing on its floor plus the shared lift, got ${carto.height.toFixed(1)} m`,
   );
 });
@@ -2058,7 +2060,7 @@ test('a segment climbs from the ground it left to the ground it reaches', async 
     Cesium.Cartographic.fromCartesian(entry.marker.position).height;
   app.run(400);
   assert.ok(
-    height() < 30,
+    height() < 30 + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
     `still on the ground it is drawn on, got ${height().toFixed(1)} m`,
   );
 
@@ -2066,12 +2068,12 @@ test('a segment climbs from the ground it left to the ground it reaches', async 
   const firstFixAt = start - AGE_MS;
   app.run(firstFixAt + LAG_MS + TRANSIT_POLL_MS / 2 - Date.now());
   assert.ok(
-    Math.abs(height() - 11.5) < 3,
+    Math.abs(height() - 11.5 - TRANSIT_ENTITY_GROUND_CLEARANCE_M) < 3,
     `at the corridor floor, got ${height().toFixed(1)} m`,
   );
   app.run(TRANSIT_POLL_MS);
   assert.ok(
-    Math.abs(height() - 101.5) < 1.5,
+    Math.abs(height() - 101.5 - TRANSIT_ENTITY_GROUND_CLEARANCE_M) < 1.5,
     `and arrives on the high ground, got ${height().toFixed(1)} m`,
   );
 });
