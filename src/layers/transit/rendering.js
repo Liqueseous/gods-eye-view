@@ -23,6 +23,7 @@ import {
   VISIBILITY_REFRESH_MS,
   SELECTED_PIXEL_SIZE,
   TRANSIT_MODE_COLORS,
+  TRANSIT_ENTITY_GROUND_CLEARANCE_M,
   VISIBILITY_EXIT_GRACE_SWEEPS,
   VISIBILITY_REFRESH_BUDGET_MS,
   vehicleNearView,
@@ -58,7 +59,7 @@ export function createRendering({ state, services, parts }) {
     return Cesium.Cartesian3.fromDegrees(
       lon,
       lat,
-      heightM || 0,
+      (heightM || 0) + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
       undefined,
       out,
     );
@@ -302,7 +303,7 @@ export function createRendering({ state, services, parts }) {
       color: MODE_CESIUM_COLORS[entry.mode],
       rotation: 0,
       alignedAxis: Cesium.Cartesian3.ZERO,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      disableDepthTestDistance: 0,
     });
     entry.marker = marker;
     entry.markerCollection = state._markers;

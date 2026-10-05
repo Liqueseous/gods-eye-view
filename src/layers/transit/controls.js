@@ -17,41 +17,77 @@ export function createControls({ state, parts }) {
     /**
      * Runtime params (DataLayerManager.setLayerParams path).
      * routes: whether route-line geometry draws at all (still subject to the
-     * altitude gate when true).
-     * @param {{routes?: boolean}} [params]
+     * altitude gate when true). placards: whether station placards draw.
+     * @param {{routes?: boolean, placards?: boolean}} [params]
      */
     setParams(params = {}) {
+      let changed = false;
       if (params.routes !== undefined) {
         state._params.routes = params.routes !== false;
         parts.viewport?.syncRouteVisibility?.();
         parts.viewport?.runProximityCheck();
+        changed = true;
+      }
+      if (params.placards !== undefined) {
+        state._params.placards = params.placards !== false;
+        parts.routes?.setStationPlacardsVisible?.(state._params.placards);
+        changed = true;
+      }
+      if (changed) {
         state._rowControlsListener?.();
+        if (typeof document !== 'undefined')
+          document.dispatchEvent(
+            new CustomEvent('gev:transit-params-changed', {
+              detail: {
+                routes: state._params.routes !== false,
+                placards: state._params.placards !== false,
+              },
+            }),
+          );
       }
       return true;
     },
 
-    /** @returns {{routes: boolean}} Current runtime params. */
+    /** @returns {{routes: boolean, placards: boolean}} Current runtime params. */
     getParams() {
-      return { routes: state._params.routes !== false };
+      return {
+        routes: state._params.routes !== false,
+        placards: state._params.placards !== false,
+      };
     },
 
     /**
-     * Layer-row sub-control (DataLayerManager row-controls contract): a ROUTES
-     * chip toggling route-line geometry independent of the altitude gate.
+     * Layer-row sub-controls (DataLayerManager row-controls contract).
+     * Station placards require visible routes, so their chip is unavailable
+     * until ROUTES is enabled.
      * @returns {{chips: Array<object>}} Row controls.
      */
     getRowControls() {
-      const active = state._params.routes !== false;
+      const routesActive = state._params.routes !== false;
+      const placardsActive = state._params.placards !== false;
       return {
         chips: [
           {
             id: 'routes',
             label: 'ROUTES',
-            active,
-            title: active
+            active: routesActive,
+            title: routesActive
               ? 'Hide transit route lines'
               : 'Show transit route lines (below the altitude gate)',
-            params: { routes: !active },
+            params: { routes: !routesActive },
+          },
+          {
+            id: 'placards',
+            label: 'PLACARDS',
+            active: placardsActive,
+            state: routesActive ? undefined : 'disabled',
+            disabled: !routesActive,
+            title: !routesActive
+              ? 'Enable transit route lines to show station placards'
+              : placardsActive
+                ? 'Hide station placards'
+                : 'Show station placards',
+            params: { placards: !placardsActive },
           },
         ],
       };

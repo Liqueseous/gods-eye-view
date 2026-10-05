@@ -5,9 +5,41 @@ import {
   createTransitRouteLines,
   groupTransitStations,
   smoothTransitRouteLine,
+  stationPlacardScale,
+  stationPlacardToggleOffset,
   transitRouteBadgeShape,
   transitRouteBadgeText,
 } from './routeLines.js';
+import { TRANSIT_ENTITY_GROUND_CLEARANCE_M } from './policy.js';
+
+test('station placards grow only below the close-range altitude threshold', () => {
+  assert.equal(stationPlacardScale(1_300), 1);
+  assert.equal(stationPlacardScale(650), 1.75);
+  assert.equal(stationPlacardScale(0), 2.5);
+  assert.equal(stationPlacardScale(-500), 2.5);
+});
+
+test('station buttons stay anchored to the scaled placard header', () => {
+  const scale = 2.5;
+  const width = 100;
+  const height = 48;
+  const placardOffsetY = -37;
+  const offset = stationPlacardToggleOffset({
+    width,
+    height,
+    placardOffsetY,
+    scale,
+  });
+  const panelRight = (width / 2) * scale;
+  const panelTop = placardOffsetY - (height / 2) * scale;
+  const buttonRight = offset.x + (18 / 2) * scale;
+  const buttonTop = offset.y - (18 / 2) * scale;
+
+  assert.ok(buttonRight <= panelRight);
+  assert.ok(buttonTop >= panelTop);
+  assert.ok(panelRight - buttonRight < 10);
+  assert.ok(buttonTop - panelTop < 5);
+});
 
 test('sharp route vertices are replaced by a bounded smooth curve', () => {
   const line = smoothTransitRouteLine([
@@ -310,6 +342,13 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(sceneEntities.filter((entity) => entity.point).length, 1);
   assert.equal(sceneEntities.filter((entity) => entity.billboard).length, 3);
   const station = sceneEntities.find((entity) => entity.point);
+  assert.ok(
+    Math.abs(
+      Cesium.Cartographic.fromCartesian(station.position).height -
+        TRANSIT_ENTITY_GROUND_CLEARANCE_M,
+    ) < 0.01,
+    'station markers retain clearance above an unresolved ellipsoid floor',
+  );
   assert.equal(station.label.disableDepthTestDistance, 0);
   assert.equal(station.label.pixelOffset.y, -42);
   assert.equal(
@@ -323,10 +362,37 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(badge.pixelOffset.y, -30);
   assert.equal(badge.disableDepthTestDistance, 0);
   assert.equal(badge.eyeOffset.z, -100);
+  layer.setStationPlacardsVisible(false);
+  assert.equal(station.point.show, false);
+  assert.equal(badge.show, false);
+  layer.setStationPlacardsVisible(true);
+  assert.equal(station.point.show, true);
+  layer.collapseAllStations();
+  assert.equal(layer.areAllStationsCollapsed(), true);
+  layer.expandAllStations();
+  assert.equal(layer.areAllStationsCollapsed(), false);
   const stationId = 'transit-station:name:central:0';
+  const stationToggle = sceneEntities.find(
+    (entity) => entity.id === `${stationId}:toggle`,
+  );
+  assert.equal(
+    stationToggle.billboard.show,
+    true,
+    'the dedicated button is visible while the placard is expanded',
+  );
+  assert.ok(
+    stationToggle.billboard.pixelOffset.y + stationToggle.billboard.height / 2 <=
+      badge.pixelOffset.y - badge.height / 2,
+    'the placard button clears compact route icons',
+  );
+  assert.equal(layer.selectFromPick(`${stationId}:placard`), true);
+  assert.equal(selectedRoute.routeId, '12');
+  assert.equal(station.label.showBackground, false);
+  assert.equal(badge.show, true);
   assert.equal(layer.selectFromPick(`${stationId}:toggle`), true);
   assert.equal(station.label.pixelOffset.y, -16);
   assert.equal(station.label.showBackground, true);
+  assert.equal(stationToggle.billboard.show, true);
   assert.equal(badge.show, false);
   assert.equal(layer.selectFromPick(`${stationId}:toggle`), true);
   assert.equal(station.label.pixelOffset.y, -42);

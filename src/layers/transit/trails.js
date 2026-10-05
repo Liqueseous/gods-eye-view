@@ -3,6 +3,7 @@ import {
   transitRouteColor,
 } from '../../data/transitFeeds.js';
 import * as Cesium from 'cesium';
+import { TRANSIT_ENTITY_GROUND_CLEARANCE_M } from './policy.js';
 import {
   readFix,
   correctHeight,
@@ -163,7 +164,11 @@ export function createTrails({ state, services, parts, source }) {
           );
         } else
           positions.push(
-            Cesium.Cartesian3.fromDegrees(point.lon, point.lat, h),
+            Cesium.Cartesian3.fromDegrees(
+              point.lon,
+              point.lat,
+              h + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
+            ),
           );
       }
       signature += `${a.seq}/${b.seq}:${heights.join(',')};`;

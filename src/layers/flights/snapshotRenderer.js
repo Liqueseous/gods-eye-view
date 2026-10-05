@@ -179,8 +179,13 @@ export function createFlightSnapshotRenderer({
         // as the enrichment path — the class's GLB/scale may have changed.
         if (prevMeta?.klass !== meta.klass) rendering._syncModelToClass(icao24);
       } else {
+        // A new billboard must join the same delayed display timeline as the
+        // established fleet. Seeding it at the raw snapshot fix makes its next
+        // fleet tick jump backward to the render-behind position.
+        const displayPosition =
+          motion._deadReckon(icao24, new Cesium.Cartesian3()) || position;
         const bb = flightState._billboardCollection.add({
-          position,
+          position: displayPosition,
           image: aircraftIcon(rendering._iconKind(icao24, meta.klass)),
           width: isTracked ? 24 : 20,
           height: isTracked ? 24 : 20,

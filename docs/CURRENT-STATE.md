@@ -2,7 +2,18 @@
 
 ## Transit station placards — October 3, 2026
 
-Transit routes use viewport-loaded OpenStreetMap rail geometry with station placards. Expanded list placards render as a deterministic foreground layer; compact station placards, route icons, and markers render behind them. Placards are opaque, content is kept inside the frame, and compact station content is lifted above its own background. Station panels can be collapsed by selecting the station.
+Transit routes use viewport-loaded OpenStreetMap rail geometry with station placards. Expanded list placards render as a deterministic foreground layer; compact station placards, route icons, and markers render behind them. Placards are opaque, content is kept inside the frame, and compact station content is lifted above its own background. Station panels collapse only from their dedicated header control, which is
+kept clear of route icons; clicking any other part of a panel opens the same
+route details as selecting its marker. The Transit row's
+PLACARDS control independently shows or hides station placards and is available
+only while ROUTES is enabled. Display has a separate STATIONS toggle that
+collapses or expands all placards and is enabled only when both controls are
+active; otherwise the Display panel explains which Transit controls to enable.
+Transit markers and station placards retain an
+8 m clearance above their resolved surface while still depth-testing against
+terrain and 3D content. Below 1,300 m camera altitude, station placards scale
+smoothly up to 2.5×, with their dedicated buttons anchored to the scaled
+placard header.
 
 Route badges follow agency conventions: subway routes use circles, express subway services use diamonds, and PATH identifiers normalize internal variants such as `HOB3` and `JSQ3` to `HOB` and `JSQ`. Endpoint text is removed from line names before display.
 

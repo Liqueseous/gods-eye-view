@@ -496,6 +496,7 @@ export class StyleManager extends ShellFacade {
     this._displayBindings = new DisplayBindings({
       viewer,
       services: {
+        transitLayer,
         cycleDetectionMode: services.cycleDetectionMode,
         setScopeMaskEnabled: services.setScopeMaskEnabled,
         isScopeMaskEnabled: services.isScopeMaskEnabled,
@@ -519,8 +520,8 @@ export class StyleManager extends ShellFacade {
         _cyberSonarSector: this._cyberSonarSector,
         _cleanViewBtn: this._cleanViewBtn,
         _cleanViewExitBtn: this._cleanViewExitBtn,
-        _transitStationsCollapseAll: this._transitStationsCollapseAll,
-        _transitStationsExpandAll: this._transitStationsExpandAll,
+        _transitStationsToggle: this._transitStationsToggle,
+        _transitStationsStatus: this._transitStationsStatus,
         _detectionDensitySlider: this._detectionDensitySlider,
         _detectionBtn: this._detectionBtn,
         _detectionFadeSlider: this._detectionFadeSlider,
@@ -537,10 +538,6 @@ export class StyleManager extends ShellFacade {
         _syncShareState: (...args) => this._syncShareState(...args),
         _toggleOrbit: (...args) => this._toggleOrbit(...args),
         toggleCleanView: (...args) => this.toggleCleanView(...args),
-        collapseStations: () =>
-          this.services.transitLayer?.collapseAllStations?.(),
-        expandStations: () =>
-          this.services.transitLayer?.expandAllStations?.(),
         _toggleCctvEnabled: (...args) => this._toggleCctvEnabled(...args),
         _setBloomEnabled: (...args) => this._setBloomEnabled(...args),
         _setBloomIntensity: (...args) => this._setBloomIntensity(...args),

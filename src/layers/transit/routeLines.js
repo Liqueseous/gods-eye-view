@@ -1,7 +1,39 @@
 import * as Cesium from 'cesium';
 import { clampTransitRouteBounds } from './routeSource.js';
+import { TRANSIT_ENTITY_GROUND_CLEARANCE_M } from './policy.js';
 
 export const TRANSIT_ROUTE_MAX_ALTITUDE_M = 500_000;
+export const STATION_PLACARD_ZOOM_ALTITUDE_M = 1_300;
+const STATION_PLACARD_MAX_SCALE = 2.5;
+const STATION_TOGGLE_INSET_PX = 12;
+const STATION_TOGGLE_HEADER_CENTER_Y = 10;
+
+/** Scale station placards as the camera moves below the close-range threshold. */
+export function stationPlacardScale(cameraHeightM) {
+  if (!Number.isFinite(cameraHeightM)) return 1;
+  const progress = Math.max(
+    0,
+    Math.min(
+      1,
+      (STATION_PLACARD_ZOOM_ALTITUDE_M - cameraHeightM) /
+        STATION_PLACARD_ZOOM_ALTITUDE_M,
+    ),
+  );
+  return 1 + progress * (STATION_PLACARD_MAX_SCALE - 1);
+}
+
+/** Keep the dedicated control anchored to the placard's scaled header. */
+export function stationPlacardToggleOffset({
+  width,
+  height,
+  placardOffsetY,
+  scale = 1,
+}) {
+  return {
+    x: (width / 2 - STATION_TOGGLE_INSET_PX) * scale,
+    y: placardOffsetY + (STATION_TOGGLE_HEADER_CENTER_Y - height / 2) * scale,
+  };
+}
 
 const MIN_VIEW_SPAN_DEG = 0.1;
 const QUERY_GRID_DEG = 0.01;
@@ -20,7 +52,6 @@ const STATION_LABEL_MAX_DISTANCE_M = 150_000;
 const STATION_LIST_MAX_ALTITUDE_M = 5_000;
 const STATION_MATCH_DISTANCE_DEG = 0.003;
 const STATION_EYE_OFFSET_M = -100;
-const GOOGLE_3D_ROUTE_LIFT_M = 8;
 const MAX_VERTEX_TURN_DEG = 24;
 const CORNER_CUT_FRACTION = 0.28;
 
@@ -309,7 +340,7 @@ function stationPanelImage(
         })
         .join('');
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="4" fill="#05090d" fill-opacity="1" stroke="#b8eaff" stroke-opacity=".7"/><rect x="${width - 22}" y="5" width="16" height="16" rx="4" fill="#14212a" stroke="#d8e3e8" stroke-width="1"/><path d="M${width - 18} 11.5 ${width - 14} 15 ${width - 10} 11.5" fill="none" stroke="#f1f6f8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><text x="${width / 2 - 6}" y="16" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="11">${escape(station.name)}</text>${rows}</svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="4" fill="#05090d" fill-opacity="1" stroke="#b8eaff" stroke-opacity=".7"/><text x="${(width - 24) / 2}" y="16" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="11">${escape(station.name)}</text>${rows}</svg>`,
   )}`;
 }
 
@@ -322,7 +353,8 @@ function stationPlacardSize(station) {
   const badgeRowWidth = station.badges.length * 24 + 8;
   const width = Math.max(
     100,
-    (station.name || '').length * 6.2 + 24,
+    // Reserve the header's right edge for the dedicated placard button.
+    (station.name || '').length * 6.2 + 44,
     lineListWidth + 12,
     badgeRowWidth,
   );
@@ -563,7 +595,9 @@ export function createTransitRouteLines({
   let cameraChangedRemove = null;
   let densityChangedRemove = null;
   let stationDensityPct = 50;
+  let stationPlacardsVisible = true;
   const collapsedStations = new Set();
+  let allStationsCollapsed = null;
   const routeHeightCache = new Map();
   const routeSectionCache = new Map();
   let selectedRouteId = null;
@@ -584,7 +618,23 @@ export function createTransitRouteLines({
     stationListItems = [];
   }
 
+  function setStationItemVisible(item, show) {
+    if (item.billboard) item.billboard.show = show;
+    if (item.label) item.label.show = show;
+    if (item.point) item.point.show = show;
+    if (item.stationNameLabel) item.stationNameLabel.show = show;
+    if (item.entity) {
+      if (item.entity.billboard) item.entity.billboard.show = show;
+      if (item.entity.label) item.entity.label.show = show;
+      if (item.entity.point) item.entity.point.show = show;
+    }
+  }
+
   function syncStationListVisibility() {
+    if (!stationPlacardsVisible) {
+      for (const item of stationListItems) setStationItemVisible(item, false);
+      return;
+    }
     const camera = viewer?.camera;
     const worldPosition = camera?.positionWC;
     const cartographic = worldPosition
@@ -599,25 +649,46 @@ export function createTransitRouteLines({
       !Number.isFinite(height) || height <= STATION_LIST_MAX_ALTITUDE_M;
     const showNames = visible && stationDensityPct >= 25;
     const showList = visible && altitudeVisible && stationDensityPct >= 50;
+    const placardScale = stationPlacardScale(height);
     for (const item of stationListItems) {
-      const expanded = !collapsedStations.has(item.stationId);
+      if (item.isPlacard) {
+        const billboard = item.billboard || item.entity?.billboard;
+        if (billboard) billboard.scale = placardScale;
+      }
+      const expanded =
+        allStationsCollapsed === true
+          ? false
+          : allStationsCollapsed === false ||
+            !collapsedStations.has(item.stationId);
       const showExpandedList = showList && expanded;
       if (item.isStationToggle) {
-        const expanded = !collapsedStations.has(item.stationId);
-        const show = !expanded && showNames && altitudeVisible;
-        const y = -16;
+        const expanded =
+          allStationsCollapsed === true
+            ? false
+            : allStationsCollapsed === false ||
+              !collapsedStations.has(item.stationId);
+        const show = showNames && altitudeVisible;
+        const toggleScale = showExpandedList ? placardScale : 1;
+        const expandedOffset = stationPlacardToggleOffset({
+          width: item.placardWidth,
+          height: item.placardHeight,
+          placardOffsetY: item.placardOffsetY,
+          scale: toggleScale,
+        });
         const offset = new Cesium.Cartesian2(
-          showExpandedList ? item.offsetX || 0 : item.collapsedOffsetX || 0,
-          y,
+          showExpandedList ? expandedOffset.x : item.collapsedOffsetX || 0,
+          showExpandedList ? expandedOffset.y : item.collapsedOffsetY || -16,
         );
         const image = stationToggleImage(expanded);
         if (item.billboard) {
           item.billboard.image = image;
+          item.billboard.scale = toggleScale;
           item.billboard.pixelOffset = offset;
           item.billboard.show = show;
         }
         if (item.entity?.billboard) {
           item.entity.billboard.image = image;
+          item.entity.billboard.scale = toggleScale;
           item.entity.billboard.pixelOffset = offset;
           item.entity.billboard.show = show;
         }
@@ -798,7 +869,8 @@ export function createTransitRouteLines({
           });
         const positions = sectionRoutePositions(
           routeSection(route, index),
-          (lat, lon) => stableRouteHeight(lat, lon) + GOOGLE_3D_ROUTE_LIFT_M,
+          (lat, lon) =>
+            stableRouteHeight(lat, lon) + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
         );
         if (positions.length < 2) continue;
         const id = `transit-route:${route.routeId}:${route.id}:${index}:${width}`;
@@ -857,9 +929,10 @@ export function createTransitRouteLines({
         ? {
             // Cesium composites these collections in insertion order. Keep
             // list content in the foreground collections and compact content
-            // behind it; the compact placard is last so its own icons render
-            // above its opaque background.
+            // behind it; toggles are last so they receive pointer picks above
+            // their opaque placards.
             compactPlacards: new Cesium.BillboardCollection(),
+            stationToggles: new Cesium.BillboardCollection(),
             compactBillboards: new Cesium.BillboardCollection(),
             compactLabels: new Cesium.LabelCollection(),
             compactPoints: new Cesium.PointPrimitiveCollection(),
@@ -884,7 +957,7 @@ export function createTransitRouteLines({
       const id = `transit-station:${station.id}`;
       const listEntries = stationListEntries(station);
       const isList = listEntries.length > 0;
-      const stationDepthTestDistance = isList ? Number.POSITIVE_INFINITY : 0;
+      const stationDepthTestDistance = 0;
       // A station is one selectable object even when several routes share it.
       // The first route keeps the existing route-selection contract; the label
       // and properties expose the complete group to the UI and diagnostics.
@@ -911,14 +984,22 @@ export function createTransitRouteLines({
             ),
           )
         : Cesium.Color.WHITE;
-      const google3d = viewer?.scene?.globe?.show === false;
+      const globe = viewer?.scene?.globe;
+      const groundCartographic = Cesium.Cartographic.fromDegrees(
+        station.lon,
+        station.lat,
+      );
+      const renderedGround =
+        globe?.show !== false ? globe?.getHeight?.(groundCartographic) : null;
+      const stationHeight =
+        (Number.isFinite(renderedGround)
+          ? renderedGround
+          : stableRouteHeight(station.lat, station.lon)) +
+        TRANSIT_ENTITY_GROUND_CLEARANCE_M;
       const stationPosition = Cesium.Cartesian3.fromDegrees(
         station.lon,
         station.lat,
-        google3d
-          ? stableRouteHeight(station.lat, station.lon) +
-              GOOGLE_3D_ROUTE_LIFT_M
-          : 0,
+        stationHeight,
       );
       const stationOverlay = overlay
         ? {
@@ -939,6 +1020,7 @@ export function createTransitRouteLines({
           overlay.compactLabels,
           overlay.compactBillboards,
           overlay.compactPlacards,
+          overlay.stationToggles,
         ];
         for (const collection of collections) {
           viewer.scene.primitives.add(collection);
@@ -954,6 +1036,8 @@ export function createTransitRouteLines({
         width: placardWidth,
         height: placardHeight,
       } = stationPlacardSize(station);
+      const placardOffsetY = stationLabelOffset / 2 - 10 + compactLift;
+      const toggleOffsetY = placardOffsetY + 10 - placardHeight / 2;
       // Collection order, not placard area or per-station depth offsets,
       // determines which station content is in front.
       const stationLabel = station.name
@@ -980,10 +1064,12 @@ export function createTransitRouteLines({
             ),
           }
         : null;
+      const placardId = `${id}:placard`;
       const toggleId = `${id}:toggle`;
+      pickTargets.set(placardId, station.routeIds[0]);
       pickTargets.set(toggleId, station.routeIds[0]);
       const placard = {
-        id: toggleId,
+        id: placardId,
         position: stationPosition,
         image: stationPanelImage(
           station,
@@ -994,10 +1080,7 @@ export function createTransitRouteLines({
         ),
         width: placardWidth,
         height: placardHeight,
-        pixelOffset: new Cesium.Cartesian2(
-          0,
-          stationLabelOffset / 2 - 10 + compactLift,
-        ),
+        pixelOffset: new Cesium.Cartesian2(0, placardOffsetY),
         eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
         disableDepthTestDistance: stationDepthTestDistance,
         show: false,
@@ -1032,25 +1115,23 @@ export function createTransitRouteLines({
         height: 18,
         pixelOffset: new Cesium.Cartesian2(
           placardWidth / 2 - 12,
-          stationLabelOffset / 2 - 10 + compactLift,
+          toggleOffsetY,
         ),
-        eyeOffset: new Cesium.Cartesian3(
-          0,
-          0,
-          STATION_EYE_OFFSET_M - 10,
-        ),
+        eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M - 10),
         disableDepthTestDistance: 0,
         show: false,
       };
       if (overlay) {
-        const toggleInstance = stationOverlay.placards.add(toggle);
+        const toggleInstance = overlay.stationToggles.add(toggle);
         nextStationListItems.push({
           stationId: id,
           isStationToggle: true,
           billboard: toggleInstance,
-          offsetX: placardWidth / 2 - 12,
+          placardWidth,
+          placardHeight,
+          placardOffsetY,
           collapsedOffsetX: ((station.name || '').length * 6.2) / 2 + 10,
-          expandedOffset: stationLabelOffset / 2 - 10 + compactLift,
+          collapsedOffsetY: -16,
         });
       } else {
         const toggleEntity = viewer.entities.add({
@@ -1063,9 +1144,11 @@ export function createTransitRouteLines({
           stationId: id,
           isStationToggle: true,
           entity: toggleEntity,
-          offsetX: placardWidth / 2 - 12,
+          placardWidth,
+          placardHeight,
+          placardOffsetY,
           collapsedOffsetX: ((station.name || '').length * 6.2) / 2 + 10,
-          expandedOffset: stationLabelOffset / 2 - 10 + compactLift,
+          collapsedOffsetY: -16,
         });
       }
       const marker = stationOverlay?.points.add({
@@ -1463,6 +1546,12 @@ export function createTransitRouteLines({
     applyVisibility(next);
   }
 
+  function setStationPlacardsVisible(next) {
+    stationPlacardsVisible = next !== false;
+    syncStationListVisibility();
+    viewer?.scene?.requestRender?.();
+  }
+
   function routeForId(routeId) {
     const segments = routes.filter((route) => route.routeId === routeId);
     if (!segments.length) return null;
@@ -1602,6 +1691,14 @@ export function createTransitRouteLines({
     if (!loadedInView || !enabled || requestGeneration !== generation) return;
   }
 
+  function refreshStationRendering() {
+    for (const collection of stationOverlayCollections) {
+      collection.show = false;
+      collection.show = visible;
+    }
+    viewer?.scene?.requestRender?.();
+  }
+
   function selectFromPick(picked) {
     const candidateIds = [
       typeof picked === 'string' ? picked : null,
@@ -1627,11 +1724,12 @@ export function createTransitRouteLines({
             stationPick.startsWith(`${item.stationId}:`)),
       )?.stationId;
       if (stationId) {
+        allStationsCollapsed = null;
         if (collapsedStations.has(stationId))
           collapsedStations.delete(stationId);
         else collapsedStations.add(stationId);
         syncStationListVisibility();
-        viewer?.scene?.requestRender?.();
+        refreshStationRendering();
       }
     }
     selectedRouteId = routeId;
@@ -1648,16 +1746,18 @@ export function createTransitRouteLines({
   }
 
   function setAllStationsCollapsed(collapsed) {
+    allStationsCollapsed = collapsed === true;
     const stationIds = new Set(
       stationListItems.map((item) => item.stationId).filter(Boolean),
     );
-    for (const station of groupTransitStations(routes)) stationIds.add(station.id);
+    for (const station of groupTransitStations(routes))
+      stationIds.add(station.id);
     for (const stationId of stationIds) {
       if (collapsed) collapsedStations.add(stationId);
       else collapsedStations.delete(stationId);
     }
     syncStationListVisibility();
-    viewer?.scene?.requestRender?.();
+    refreshStationRendering();
   }
 
   function collapseAllStations() {
@@ -1666,6 +1766,10 @@ export function createTransitRouteLines({
 
   function expandAllStations() {
     setAllStationsCollapsed(false);
+  }
+
+  function areAllStationsCollapsed() {
+    return allStationsCollapsed === true;
   }
 
   function disable() {
@@ -1749,6 +1853,8 @@ export function createTransitRouteLines({
     clearSelectedRoute,
     collapseAllStations,
     expandAllStations,
+    areAllStationsCollapsed,
+    setStationPlacardsVisible,
     diagnostics({ includeGeometry = false } = {}) {
       return {
         source: 'OpenStreetMap via Overpass',

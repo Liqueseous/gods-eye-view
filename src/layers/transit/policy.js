@@ -70,6 +70,8 @@ export const FEED_EVICT_AFTER_MS = 5 * 60_000;
  * must not queue a country's worth of ground lookups.
  */
 export const HEIGHT_SAMPLE_MAX_ALTITUDE_M = 60_000;
+/** Visual clearance above the resolved surface for transit entities. */
+export const TRANSIT_ENTITY_GROUND_CLEARANCE_M = 8;
 /**
  * Floor cells warmed per poll. The shared resolver batches and chunks, but the
  * bound belongs here: a metropolitan fleet is hundreds of vehicles and only the

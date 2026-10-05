@@ -86,6 +86,8 @@ export function createTransitLayer({
         parts.routes.diagnostics(options),
       collapseAllStations: parts.routes.collapseAllStations,
       expandAllStations: parts.routes.expandAllStations,
+      areAllStationsCollapsed: parts.routes.areAllStationsCollapsed,
+      setStationPlacardsVisible: parts.routes.setStationPlacardsVisible,
     },
     parts.lifecycle.methods,
     parts.queries.methods,

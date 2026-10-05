@@ -8,6 +8,7 @@ import {
   MISSED_POLLS_TO_DROP,
   SELECTED_CARD_REFRESH_MS,
   TRANSIT_POLL_MS,
+  TRANSIT_ENTITY_GROUND_CLEARANCE_M,
   TRANSIT_ROUTE_SELECTED_OVERLAY_SOURCE_OPTIONS,
   VEHICLE_MAX_FIX_AGE_MS,
 } from './policy.js';
@@ -1151,20 +1152,26 @@ test('a finer claim wins while it stands, and the coarser one survives it', asyn
   assert.equal(app.viewer.camera.percentageChanged, 0.5);
 });
 
-test('the ROUTES row chip toggles route-line visibility independent of the altitude gate', async (t) => {
+test('ROUTES and PLACARDS row chips retain independent visibility settings', async (t) => {
   const app = harness(t);
-  assert.deepEqual(app.layer.getParams(), { routes: true });
+  assert.deepEqual(app.layer.getParams(), { routes: true, placards: true });
   assert.equal(app.layer.getRowControls().chips[0].active, true);
+  assert.equal(app.layer.getRowControls().chips[1].active, true);
+  assert.equal(app.layer.getRowControls().chips[1].disabled, false);
 
   app.layer.enable(app.viewer);
   app.layer.setParams({ routes: false });
-  assert.deepEqual(app.layer.getParams(), { routes: false });
-  const chip = app.layer.getRowControls().chips[0];
-  assert.equal(chip.active, false);
-  assert.deepEqual(chip.params, { routes: true });
+  assert.deepEqual(app.layer.getParams(), { routes: false, placards: true });
+  const [routesChip, placardsChip] = app.layer.getRowControls().chips;
+  assert.equal(routesChip.active, false);
+  assert.deepEqual(routesChip.params, { routes: true });
+  assert.equal(placardsChip.disabled, true);
+  assert.equal(placardsChip.state, 'disabled');
 
-  app.layer.setParams({ routes: true });
-  assert.deepEqual(app.layer.getParams(), { routes: true });
+  app.layer.setParams({ routes: true, placards: false });
+  assert.deepEqual(app.layer.getParams(), { routes: true, placards: false });
+  assert.equal(app.layer.getRowControls().chips[1].active, false);
+  assert.equal(app.layer.getRowControls().chips[1].disabled, false);
 });
 
 test('destroy releases every shared registration this layer took', async (t) => {
@@ -2649,7 +2656,9 @@ test('a resolved floor still adopts a later mesh sample or a regime change on a 
   assert.ok(Math.abs(entry.heightM - 11.5) < 1e-9, 'DEM floor, lifted');
   const height = () =>
     Cesium.Cartographic.fromCartesian(entry.marker.position).height;
-  assert.ok(Math.abs(height() - 11.5) < 0.5);
+  assert.ok(
+    Math.abs(height() - (11.5 + TRANSIT_ENTITY_GROUND_CLEARANCE_M)) < 0.5,
+  );
 
   // The mesh lands on the same cell.
   app.ground._warm.set(app.ground._key(42.36, -71.06), 50);
@@ -2660,14 +2669,20 @@ test('a resolved floor still adopts a later mesh sample or a regime change on a 
     Math.abs(entry.heightM - 51.5) < 1e-9,
     'the parked vehicle adopts the mesh floor',
   );
-  assert.ok(Math.abs(height() - 51.5) < 0.5, 'and is drawn on it');
+  assert.ok(
+    Math.abs(height() - (51.5 + TRANSIT_ENTITY_GROUND_CLEARANCE_M)) < 0.5,
+    'and is drawn above it',
+  );
 
   // Leaving the photoreal regime: the shared floor answers the DEM again.
   app.ground._warm.set(app.ground._key(42.36, -71.06), 10);
   app.advance(TRANSIT_POLL_MS);
   await app.layer.update();
   app.frame();
-  assert.ok(Math.abs(height() - 11.5) < 0.5, 'and follows it back down');
+  assert.ok(
+    height() >= 11.5 + TRANSIT_ENTITY_GROUND_CLEARANCE_M,
+    'and remains above the ground after the floor changes',
+  );
 });
 
 test('a stamp an hour ahead is bounded, so the honest fixes that follow are not refused', async (t) => {

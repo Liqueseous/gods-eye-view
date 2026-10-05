@@ -24,9 +24,8 @@ export function createState({ services }) {
 
   /** @type {Cesium.Viewer|null} */
   state._viewer = null;
-  /** Runtime params (DataLayerManager.setLayerParams path). routes: whether
-   *  route-line geometry draws at all, independent of the altitude gate. */
-  state._params = { routes: true };
+  /** Runtime params (DataLayerManager.setLayerParams path). */
+  state._params = { routes: true, placards: true };
   /** @type {(() => void)|null} Row-controls "repaint me" hook for the manager. */
   state._rowControlsListener = null;
   /** @type {Cesium.BillboardCollection|null} */
