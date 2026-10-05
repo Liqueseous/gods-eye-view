@@ -40,7 +40,7 @@ _“pretty cool”_ — [Brendan Eich](https://x.com/BrendanEich/status/20945920
 >
 > **AI disclosure:** AI-assisted development tools were used during production of this application, including implementation, debugging, testing, and documentation work. Human review and validation remain the responsibility of this fork's maintainers.
 >
-> **Build identity:** The application displays its semantic version and build number under Visual Presets, with the parent source baseline under Location. The version comes from `package.json`; builds use `GEV_BUILD_NUMBER`, `BUILD_NUMBER`, or `GITHUB_RUN_NUMBER`, falling back to `dev` for local development. The `SRC` field identifies the last parent-repository baseline merged into this fork (`0.1.1@b210ab0` by default).
+> **Build identity:** The application displays its semantic version and build number under Visual Presets, with the parent source baseline under Location. The version comes from `package.json`; builds use `GEV_BUILD_NUMBER`, `BUILD_NUMBER`, or `GITHUB_RUN_NUMBER`, falling back to `dev` for local development. Pushes to `main` publish `ghcr.io/liqueseous/gods-eye-view:latest` and `:build-<run-number>` with the GitHub Actions run number baked in. The `SRC` field identifies the last parent-repository baseline merged into this fork (`0.1.1@b210ab0` by default).
 
 ---
 
@@ -139,15 +139,31 @@ Open **`http://localhost:4173`**. Choose **Live Contacts**, **Space Missions**,
 ### Docker deployment
 
 The Docker Compose deployment uses `PORT` for both the host and container
-port, defaulting to `4173`. Set a different value per checkout in `.env`, or
-provide it when starting the instance:
+port, defaulting to `4173`. It pulls the `latest` image published from `main`.
+Set a different value per checkout in `.env`, or provide it when starting the
+instance:
 
 ```bash
-PORT=4281 docker compose up -d --build
+PORT=4281 docker compose pull && PORT=4281 docker compose up -d
 ```
 
 That instance is available at **`http://localhost:4281`**. Keep each checkout's
 `PORT` value distinct when running multiple instances on the same host.
+
+Every push to `main` publishes `ghcr.io/liqueseous/gods-eye-view:latest` and
+`ghcr.io/liqueseous/gods-eye-view:build-<run-number>`. To deploy an immutable
+published build, set its tag through `GEV_BUILD_NUMBER`:
+
+```bash
+GEV_BUILD_NUMBER=build-123 docker compose pull && GEV_BUILD_NUMBER=build-123 docker compose up -d
+```
+
+For a local build, layer the build override and pass the number to bake into the
+bundle:
+
+```bash
+GEV_BUILD_NUMBER=123 docker compose -f docker-compose.yml -f docker-compose.build.yml build
+```
 
 <details>
 <summary>Startup performance</summary>

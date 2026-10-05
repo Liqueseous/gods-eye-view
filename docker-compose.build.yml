@@ -1,3 +1,6 @@
+# Layer over docker-compose.yml to replace the selected GHCR image with a local
+# build. GEV_BUILD_NUMBER is baked into the browser bundle and also selects the
+# resulting image tag inherited from docker-compose.yml.
 services:
   gods-eye-view:
     build:
@@ -8,3 +11,4 @@ services:
         # `.env` alone.
         CESIUM_ION_TOKEN: ${CESIUM_ION_TOKEN}
         GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+        GEV_BUILD_NUMBER: ${GEV_BUILD_NUMBER:-dev}

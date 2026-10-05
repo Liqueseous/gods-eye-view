@@ -1,5 +1,6 @@
 # Development-only Overpass override: import New York instead of the
-# continent-scale extract configured by docker-compose.yml.
+# continent-scale extract configured by docker-compose.yml. It inherits the
+# GEV_BUILD_NUMBER-selected image from docker-compose.yml.
 services:
   gods-eye-view:
     environment:

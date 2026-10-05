@@ -1,20 +1,11 @@
 services:
   gods-eye-view:
-    # Built separately (see docker-compose.build.yml) — a stack-deploy tool that
-    # only has this file, not the full repo, can't `docker build` a Dockerfile
-    # it was never given. Build+tag first, then deploy this file as-is:
+    # Published from main by CI. Set GEV_BUILD_NUMBER=build-<run-number> to
+    # deploy an immutable published image instead of the latest main build.
+    image: ghcr.io/liqueseous/gods-eye-view:${GEV_BUILD_NUMBER:-latest}
+    # To build locally, layer docker-compose.build.yml over this file:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml build
-    #   docker compose up -d
-      # Development can use docker-compose.dev.yml for a New England-only
-      # Overpass database and a separate overpass volume.
-    # Comment out the pre-built image to use the local Dockerfile build instead
-    #image: gods-eye-view:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        CESIUM_ION_TOKEN: ${CESIUM_ION_TOKEN}
-        GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+    # Development overrides can be layered on either image source.
     ports:
       - "0.0.0.0:${PORT:-4173}:4173"
     env_file:

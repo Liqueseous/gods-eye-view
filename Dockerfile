@@ -11,8 +11,10 @@ ENV NODE_ENV=development \
 # browser key change requires rebuilding the image, not just restarting it.
 ARG CESIUM_ION_TOKEN
 ARG GOOGLE_MAPS_API_KEY
+ARG GEV_BUILD_NUMBER=dev
 ENV CESIUM_ION_TOKEN=${CESIUM_ION_TOKEN} \
-    GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+    GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY} \
+    GEV_BUILD_NUMBER=${GEV_BUILD_NUMBER}
 
 COPY package.json package-lock.json ./
 RUN npm ci
