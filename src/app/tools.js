@@ -2,11 +2,9 @@ import { SceneDirector } from '../scenes/director.js';
 import { initAnnotations } from '../annotations/index.js';
 import { initDrawTool } from '../annotations/drawTool.js';
 import { initImageryBoxTool } from '../ui/imageryBoxTool.js';
-import { initIncidentCommand } from '../ui/incidentCommand.js';
-import { initAnalystConsole } from '../ui/analystConsole.js';
-import { initDeveloperMode } from '../ui/developerMode.js';
 import { createRecentImageryPanel } from '../ui/recentImagery.js';
 import { initGevVoiceCommands } from '../voice/gevRealtime.js';
+import { installViews, isEmbeddedInline } from './embed.js';
 import { installScopeMask, destroyScopeMask } from '../scopeMask.js';
 import {
   installRenderGovernor,
@@ -33,8 +31,6 @@ export function createApplicationTools({
   const { viewer, tileset, mapStackController, operations } = scene;
   const { styleManager, weatherEffects, cockpitCloudEffects } = controls;
   const { dataManager } = data;
-  const developerMode = initDeveloperMode();
-  defer(() => developerMode?.destroy());
   const sceneDirector = new SceneDirector(viewer, styleManager, dataManager, {
     dataPacks: sceneDataPacks,
     isMapStackAvailable: (id) =>
@@ -60,19 +56,6 @@ export function createApplicationTools({
   // lifetime rather than to whoever last pressed the button.
   const drawTool = initDrawTool({ viewer, annotations });
   defer(() => drawTool?.destroy());
-  const incidentCommand = initIncidentCommand({ viewer, annotations });
-  defer(() => {
-    if (window.__gevIncidentCommand === incidentCommand)
-      delete window.__gevIncidentCommand;
-    incidentCommand?.destroy();
-  });
-  const analystConsole = initAnalystConsole({
-    viewer,
-    dataManager,
-    placeSearch,
-    annotationResolver: operations.annotationResolver,
-  });
-  defer(() => analystConsole?.destroy());
   // DATA ▸ Recent Imagery: the box tool claims the pointer like Draw and the
   // panel lives on the right rail, so both belong to the application
   // lifetime. The tileset lets the layer drape while the globe is hidden.
@@ -136,7 +119,9 @@ export function createApplicationTools({
   // GPU. Holder/data state is untouched, so return is seamless: restore
   // the loop, refresh the one DOM surface we gated, render a frame.
   const syncVisibilitySuspension = () => {
-    const hidden = document.hidden;
+    // A panel's host may report it hidden while it is on screen; the panel
+    // keeps drawing itself (see keepPanelRendering in embed.js).
+    const hidden = document.hidden && !isEmbeddedInline();
     viewer.useDefaultRenderLoop = !hidden;
     cockpitCloudEffects?.setSuspended?.(hidden);
     if (!hidden) {
@@ -194,13 +179,14 @@ export function createApplicationTools({
       delete window.__gevVoiceCommands;
   });
   debug.voiceCommands = voiceCommands;
-  debug.incidentCommand = incidentCommand;
-  debug.analystConsole = analystConsole;
-  return {
-    sceneDirector,
-    annotations,
-    voiceCommands,
-    incidentCommand,
-    analystConsole,
-  };
+  defer(
+    installViews({
+      shell: styleManager,
+      viewer,
+      dataManager,
+      run: (name, args) => voiceCommands.runner(name, args, { signal }),
+      signal,
+    }),
+  );
+  return { sceneDirector, annotations, voiceCommands };
 }

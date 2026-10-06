@@ -1,9 +1,9 @@
 {
   "name": "gods-eye-view",
   "private": true,
-  "version": "0.1.1",
-  "sourceVersion": "0.1.1",
-  "sourceCommit": "b210ab0",
+  "version": "0.2.1",
+  "sourceVersion": "0.2.1",
+  "sourceCommit": "a08a53cf9469eb991f708bd3d042c327a2347e3c",
   "description": "A real-time intelligence console for planet Earth — photorealistic 3D globe, live aircraft/ships/satellites/earthquakes/CCTV, and hands-free voice control. Runs in a browser.",
   "type": "module",
   "license": "MIT",
@@ -37,18 +37,20 @@
     "doctor": "node scripts/setup-doctor.mjs",
     "format": "node scripts/format.mjs --write",
     "format:check": "node scripts/format.mjs --check",
+    "layer-token:next": "node scripts/next-layer-state-token.mjs",
+    "layer-token:check": "node scripts/check-layer-state-tokens.mjs",
     "dev": "vite",
     "dev:secure": "./scripts/dev-secure.sh",
     "opensky:import": "./scripts/opensky-import-client.sh",
     "build": "vite build",
+    "build:panel": "node scripts/build-panel.mjs",
     "preview": "vite preview",
-    "docker:build": "docker compose -f docker-compose.yml -f docker-compose.build.yml build",
     "test": "node scripts/run-unit-tests.mjs",
-    "test:all": "node scripts/run-full-tests.mjs",
     "test:track": "node scripts/track-regression.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",
     "check:boundaries": "node scripts/check-import-directions.mjs && node scripts/check-package-boundaries.mjs",
-    "qa:transit": "node scripts/qa-transit.mjs"
+    "qa:transit": "node scripts/qa-transit.mjs",
+    "mcp": "node server/mcp/stdio.js"
   },
   "dependencies": {
     "@jtarrio/signals": "^0.10.0",
@@ -252,6 +254,11 @@
     "./layers/transit/standalone": "./src/data/transit.js",
     "./layers/transit/source": "./src/layers/transit/source.js",
     "./sources/transit-service": "./src/sources/transitService.js",
-    "./sources/map-features": "./src/sources/overpassFeatures.js"
+    "./sources/map-features": "./src/sources/overpassFeatures.js",
+    "./tools": "./src/tools/index.js",
+    "./tools/mcp": "./src/tools/mcp/index.js",
+    "./tools/panel": "./src/tools/panel.js",
+    "./tools/services": "./src/tools/services.js",
+    "./view": "./src/view/index.js"
   }
 }

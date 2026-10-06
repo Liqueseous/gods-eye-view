@@ -11,11 +11,12 @@ import { createApplicationVessels } from './layers/aisLiveVessels.js';
 import { createApplicationCctv } from './layers/cctv.js';
 import { createApplicationRadio } from './layers/radio.js';
 import { createApplicationTraffic } from './layers/traffic.js';
-import { createApplicationTunnels } from './layers/tunnels.js';
 import { createApplicationBikeshare } from './layers/bikeshare.js';
 import { createApplicationDirections } from './layers/directions.js';
 import { createApplicationRecentImagery } from './layers/recentImagery.js';
 import { createApplicationTransit } from './layers/transit.js';
+import { createApplicationTunnels } from './layers/tunnels.js';
+import { createApplicationNwsAlerts } from './layers/nwsAlerts.js';
 import { createApplicationInstallations } from './layers/militaryInstallations.js';
 import { createApplicationSatellites } from './layers/satellites.js';
 import { createApplicationLaunches } from './layers/rocketLaunches.js';
@@ -25,7 +26,6 @@ import { createApplicationAwareness } from './layers/militaryAwareness.js';
 import { createApplicationFirms } from './layers/firms.js';
 import { createApplicationEarthquakes } from './layers/earthquakes.js';
 import { createApplicationFirePerimeters } from './layers/perimeters.js';
-import { createApplicationNwsAlerts } from './layers/nwsAlerts.js';
 import { createApplicationCables } from './layers/submarineCables.js';
 import { createInfrastructureLayers } from '../data/infrastructure.js';
 import { localGeoJsonServices } from './localGeojsonServices.js';
@@ -45,7 +45,6 @@ const SOURCE_METHODS = Object.freeze({
     'getFlowSessionStats',
     'resetFlowTileCache',
   ],
-  tunnels: ['requestTunnels'],
   bikeshare: ['getStations'],
   installations: ['getMappedSites', 'searchNearby'],
   satellites: ['readGroup'],
@@ -57,7 +56,6 @@ const SOURCE_METHODS = Object.freeze({
   cyclones: ['getSnapshot'],
   earthquakes: ['getSnapshot'],
   'fire-perimeters': ['getSnapshot'],
-  'nws-alerts': ['getSnapshot'],
   cables: ['fetch'],
 });
 
@@ -133,11 +131,8 @@ export function createApplicationCatalog({
     const satellites = createApplicationSatellites({
       source: sources.satellites,
     });
-    const traffic = createApplicationTraffic({ source: sources.traffic });
-    const transit = createApplicationTransit({
-      surface,
-      source: sources.transit,
-    });
+    const traffic = createApplicationTraffic({ source: sources.traffic, surface });
+    const transit = createApplicationTransit({ source: sources.transit, surface });
     const catalog = createLayerCatalog(
       [
         createBhoteKoshiEventLayer(),
@@ -156,7 +151,6 @@ export function createApplicationCatalog({
         createApplicationFirePerimeters({
           source: sources['fire-perimeters'],
         }),
-        createApplicationNwsAlerts({ source: sources['nws-alerts'] }),
         createApplicationAlpr({ surface, source: sources.alpr }),
         satellites,
         createApplicationLaunches({ source: sources.launches, satellites }),
@@ -199,6 +193,7 @@ export function createApplicationCatalog({
         createCyclonesLayer({ feed: sources.cyclones }),
         ...createInfrastructureLayers(localGeoJsonServices),
         createApplicationCables({ source: sources.cables }),
+        createApplicationNwsAlerts({ source: sources['nws-alerts'] }),
         createApplicationFirms({
           surface,
           id: 'local-firms',

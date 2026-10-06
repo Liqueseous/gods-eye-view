@@ -1,4 +1,4 @@
-import { OVERPASS_BBOX_RE, OVERPASS_UPSTREAMS } from './constants.js';
+import { OVERPASS_BBOX_RE, resolveOverpassUpstreams } from './constants.js';
 
 const SELF_HOSTED_URL = String(
   process.env.OVERPASS_SELF_HOSTED_URL || '',
@@ -58,10 +58,11 @@ function withinCoverage(bbox) {
  * mirrors rather than caching a false empty answer.
  */
 function resolveOverpassEndpoints(body) {
-  if (!SELF_HOSTED_URL) return OVERPASS_UPSTREAMS;
+  const upstreams = resolveOverpassUpstreams();
+  if (!SELF_HOSTED_URL) return upstreams;
   const bbox = firstBbox(body);
-  if (!bbox || !withinCoverage(bbox)) return OVERPASS_UPSTREAMS;
-  return [SELF_HOSTED_URL, ...OVERPASS_UPSTREAMS];
+  if (!bbox || !withinCoverage(bbox)) return upstreams;
+  return [SELF_HOSTED_URL, ...upstreams];
 }
 
 export { resolveOverpassEndpoints };

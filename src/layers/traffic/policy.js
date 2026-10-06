@@ -1,35 +1,10 @@
 import * as Cesium from 'cesium';
 
 /**
- * @file Street Traffic — animated dots along OSM road polylines, colored by
- * live TomTom congestion when a key is configured.
- *
- * Road geometry: OSM Overpass API (free, no auth). Fetches road polylines for
- * the camera viewport, spawns PointPrimitives that lerp along pre-computed
- * Cartesian3 waypoints. Camera-gated: only active below ~8 km altitude.
- *
- * Two modes (decided once per session via `/api/tomtom/status`):
- *  - `sim` (keyless default): white dots at hardcoded per-road-class speeds —
- *    the original simulation, byte-identical behavior.
- *  - `live`: TomTom flow tiles (`flowTiles.js`) are matched onto the same
- *    Overpass roads (`flowMatch.js`); matched roads color/slow/densify their
- *    dots by real congestion (`trafficFlowStyle.js`), closed roads spawn no
- *    dots, and unmatched roads keep the simulated white.
- *
- * Architecture overview:
- *  - Camera-change listener triggers debounced road fetching per viewport tile.
- *  - Fetch bounds center on the camera's look-at point (`trafficBounds.js`, C4).
- *  - Roads are fetched in two passes: major-only (fast) then full graph (detailed).
- *  - Fetched tiles are cached by clamped bounding-box key to avoid re-fetching.
- *  - Dot budget allocation distributes a hard cap fairly across visible roads.
- *  - Each dot lerps along pre-computed Cartesian3 waypoints every preRender frame.
- *
- * @module data/traffic
+ * @file Street Traffic selects TomTom, OpenMapTiles or Hybrid motor roads,
+ * with directional TomTom congestion in live mode. Tile acquisition is
+ * bounded and camera-driven; animation lerps precomputed Cartesian waypoints.
  */
-
-/** @const {string} Proxy endpoint for Overpass API queries */
-
-export const OVERPASS_URL = '/api/overpass';
 
 /** @const {number} Meters — hide all traffic dots above this camera altitude */
 
@@ -54,46 +29,31 @@ export const OVERLAP_THRESHOLD = 0.6;
 /** @const {number} Hard cap on total rendered dot primitives for GPU/CPU performance */
 
 export const MAX_DOTS = 6000;
-
-export const MIN_ADAPTIVE_DOTS = 1000;
-export const TRAFFIC_DOT_TARGET_MS = 8;
+export const MIN_ADAPTIVE_DOTS = 400;
 
 export function adaptTrafficDotCap(currentCap, constructionMs) {
-  const current = Number.isFinite(currentCap) ? currentCap : MAX_DOTS;
-  const duration = Number.isFinite(constructionMs) ? constructionMs : 0;
-  if (duration > TRAFFIC_DOT_TARGET_MS * 1.5)
-    return Math.max(MIN_ADAPTIVE_DOTS, Math.floor(current * 0.8));
-  if (duration < TRAFFIC_DOT_TARGET_MS * 0.5)
-    return Math.min(MAX_DOTS, Math.ceil(current * 1.1));
-  return Math.min(MAX_DOTS, Math.max(MIN_ADAPTIVE_DOTS, Math.floor(current)));
+  const cap = Math.max(MIN_ADAPTIVE_DOTS, Math.min(MAX_DOTS, Math.round(currentCap)));
+  const ms = Number(constructionMs);
+  if (!Number.isFinite(ms)) return cap;
+  if (ms > 2)
+    return Math.max(
+      MIN_ADAPTIVE_DOTS,
+      Math.round(cap * (1 - Math.min(0.8, (ms - 2) / 90))),
+    );
+  return Math.min(MAX_DOTS, cap + Math.ceil(cap * 0.1) + 1);
+}
+
+/** Keep a dense street view while bounding both dot and surface work at city scale. */
+export function roadDotBudget(altitude) {
+  return Math.max(
+    400,
+    Math.round(MAX_DOTS * Math.pow(1000 / Math.max(1000, altitude), 2)),
+  );
 }
 
 /** @const {number} Polylines longer than this are simplified by sub-sampling */
 
 export const MAX_WAYPOINTS_PER_ROAD = 80;
-
-/** @const {number} Max NEW scene.sampleHeight() calls per parseRoads() pass.
- * scene.sampleHeight is a synchronous GPU readback (readPixels) — a pan that
- * reveals hundreds of never-before-seen ~111 m cells at once froze the tab for
- * several seconds spending nearly all of that time inside readPixels. Capping
- * new samples per pass and persisting the cache across passes (state.js
- * `_heightCellCache`) means only a bounded number of stalls happen per parse;
- * the rest fall back to the nearest already-cached height until a later pass
- * fills them in. This is a hard ceiling — MAX_HEIGHT_SAMPLE_MS_PER_PARSE is
- * what actually limits the pass under real GPU contention (each call can cost
- * anywhere from <1ms idle to 10s of ms busy). */
-
-export const MAX_HEIGHT_SAMPLES_PER_PARSE = 40;
-
-/** @const {number} Milliseconds of cumulative scene.sampleHeight() time
- * allowed per parseRoads() pass, checked between calls. A dense pan measured
- * ~14ms per call under GPU contention, so the 40-call ceiling above still let
- * a single pass stall 300-560ms. Bailing out once this budget is spent makes
- * the per-pass stall adapt to current GPU cost instead of a fixed call count:
- * cheap/idle GPU still gets up to the ceiling above, busy GPU bails after a
- * couple of calls and retries the rest on a later pass. */
-
-export const MAX_HEIGHT_SAMPLE_MS_PER_PARSE = 8;
 
 /** @const {number} Km — minimum viewport center shift before allowing refresh */
 
@@ -200,17 +160,6 @@ export const HEAT_JAM_COLOR = Cesium.Color.fromCssColorString('#e05252');
 export const HEAT_SLOW_COLOR =
   Cesium.Color.fromCssColorString('#f0b23e').withAlpha(0.2);
 
-/**
- * @const {number} Meters — jam dots depth-test-punch through the 3D tiles out
- * to this camera distance so queues stay visible at city scale. The single
- * start-of-road terrain sample puts much of a road below the rendered mesh
- * at oblique city views (first A/B capture: 396 jam dots, zero visible), so
- * the shipped 2 km window hides exactly the congestion this prototype is
- * meant to surface. Live jam dots only; sim dots keep the shipped 2 km.
- */
-
-export const JAM_DOT_DEPTH_PUNCH = 15000;
-
 /** @const {number} Far-distance scale floor for jam dots (shipped: 0.3). */
 
 export const JAM_DOT_FAR_SCALE = 0.55;
@@ -249,3 +198,7 @@ export const TILE_CACHE_MAX_ENTRIES = 64;
  */
 
 export const FLOW_RENDER_RACE_MS = 250;
+
+/** Bound terrain readback work per road parse pass. */
+export const MAX_HEIGHT_SAMPLES_PER_PARSE = 64;
+export const MAX_HEIGHT_SAMPLE_MS_PER_PARSE = 8;
