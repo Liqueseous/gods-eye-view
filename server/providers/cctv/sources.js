@@ -16,6 +16,10 @@ import {
   ONTARIO_511_IMAGE_ORIGIN,
   DEFAULT_ONTARIO_MAX_SOURCES,
   ONTARIO_ANCHORS,
+  MASS511_CAMERAS_URL,
+  MASS511_IMAGE_ORIGIN,
+  DEFAULT_MASS511_MAX_SOURCES,
+  MASS511_ANCHORS,
   FINTRAFFIC_STATIONS_URL,
   FINTRAFFIC_IMAGE_ORIGIN,
   FINTRAFFIC_GROUND_ELEVATION_M,
@@ -547,6 +551,135 @@ export async function loadOntarioSourcesFromOpenData() {
   } catch (error) {
     console.warn(
       '[CCTV] Ontario 511 camera download error:',
+      error?.message || error,
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch Massachusetts 511 CCTV cameras. The CARS catalog requires the
+ * MASS511_API_KEY environment variable; frame URLs are pinned to mass511.com.
+ * The payload follows the standard 511 camera schema used by Ontario 511.
+ *
+ * @returns {Promise<Array<object>>} Normalized camera source objects.
+ */
+export async function loadMass511SourcesFromOpenData() {
+  const apiKey = String(process.env.MASS511_API_KEY || '').trim();
+  if (!apiKey) return [];
+
+  try {
+    const endpoint = new URL(MASS511_CAMERAS_URL);
+    endpoint.searchParams.set('key', apiKey);
+    const resp = await fetch(endpoint, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(CCTV_SOURCE_FETCH_TIMEOUT_MS),
+      redirect: 'error',
+    });
+    if (!resp.ok) {
+      console.warn(
+        '[CCTV] Massachusetts 511 camera download failed:',
+        resp.status,
+      );
+      return [];
+    }
+    const rows = await resp.json();
+    if (!Array.isArray(rows)) return [];
+
+    const cameras = [];
+    for (const row of rows) {
+      const rawId = String(row?.Id ?? row?.id ?? '').trim();
+      if (!rawId) continue;
+      const lat = toFiniteNumber(row?.Latitude ?? row?.latitude);
+      const lon = toFiniteNumber(row?.Longitude ?? row?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      if (lat < 41.0 || lat > 43.0 || lon < -73.6 || lon > -69.8) continue;
+
+      const views = Array.isArray(row?.Views || row?.views)
+        ? row.Views || row.views
+        : [];
+      const view = views
+        .map((item) => ({
+          url: String(item?.Url ?? item?.url ?? '').trim(),
+          description: String(
+            item?.Description ?? item?.description ?? '',
+          ).trim(),
+          status: String(item?.Status ?? item?.status ?? '')
+            .trim()
+            .toLowerCase(),
+        }))
+        .map((item) => {
+          try {
+            const parsed = new URL(item.url);
+            const match = /^\/map\/Cctv\/([A-Za-z0-9_.-]+)$/i.exec(
+              parsed.pathname,
+            );
+            if (
+              parsed.protocol !== 'https:' ||
+              parsed.hostname.toLowerCase() !== 'mass511.com' ||
+              !match
+            )
+              return null;
+            return { ...item, url: `${MASS511_IMAGE_ORIGIN}${match[1]}` };
+          } catch {
+            return null;
+          }
+        })
+        .filter((item) => item?.status === 'enabled' && item.url)
+        .find((item) => !/\bdown\b/i.test(item.description));
+      if (!view) continue;
+
+      const location = String(row?.Location ?? row?.location ?? '').trim();
+      const roadway = String(row?.Roadway ?? row?.roadway ?? '').trim();
+      const label = [location || roadway || `Massachusetts 511 Camera ${rawId}`]
+        .filter(Boolean)
+        .join(' - ');
+      let heading = directionToHeading(row?.Direction ?? row?.direction, true);
+      if (!Number.isFinite(heading)) {
+        heading = directionToHeading(view.description, true);
+      }
+      const hasHeading = Number.isFinite(heading);
+      const cameraId = `mass511-${rawId}`;
+      cameras.push({
+        id: cameraId,
+        name: label,
+        city: location || roadway || 'Massachusetts',
+        cityId: 'massachusetts',
+        provider: 'Massachusetts 511',
+        lat,
+        lon,
+        headingDeg: hasHeading ? heading : fallbackHeadingFromId(cameraId),
+        headingConfidence: hasHeading ? 'high' : 'low',
+        pitchDeg: hasHeading ? -24 : -18,
+        fovDeg: hasHeading ? 56 : 44,
+        rangeM: hasHeading ? 210 : 145,
+        mountHeightM: hasHeading ? 10 : 8,
+        groundElevationM: 75,
+        feedType: 'image',
+        url: view.url,
+        snapshotUrl: view.url,
+        sourceKind: 'mass511-open-data',
+        license: 'Massachusetts 511 public traffic camera data',
+      });
+    }
+
+    const unique = Array.from(
+      new Map(cameras.map((camera) => [camera.id, camera])).values(),
+    );
+    const maxRaw = Number(
+      process.env.CCTV_MASS511_MAX_SOURCES || DEFAULT_MASS511_MAX_SOURCES,
+    );
+    const maxCount = Number.isFinite(maxRaw)
+      ? Math.max(8, Math.min(1000, Math.floor(maxRaw)))
+      : DEFAULT_MASS511_MAX_SOURCES;
+    const prioritized = prioritizeSources(unique, maxCount, MASS511_ANCHORS);
+    console.log(
+      `[CCTV] Loaded Massachusetts 511 camera sources: ${unique.length} enabled (using nearest ${prioritized.length})`,
+    );
+    return prioritized;
+  } catch (error) {
+    console.warn(
+      '[CCTV] Massachusetts 511 camera download error:',
       error?.message || error,
     );
     return [];

@@ -123,6 +123,17 @@ export const LONDON_CENTER = { lat: 51.5074, lon: -0.1278 };
 export const ONTARIO_511_CAMERAS_URL =
   'https://511on.ca/api/v2/get/cameras?format=json&lang=en';
 export const ONTARIO_511_IMAGE_ORIGIN = 'https://511on.ca/map/Cctv/';
+/** Massachusetts 511: the CARS camera catalog requires a user API key. */
+export const MASS511_CAMERAS_URL =
+  'https://www.mass511.com/api/v2/get/cameras?format=json&lang=en';
+export const MASS511_IMAGE_ORIGIN = 'https://mass511.com/map/Cctv/';
+export const DEFAULT_MASS511_MAX_SOURCES = 500;
+export const MASS511_ANCHORS = [
+  { lat: 42.3601, lon: -71.0589 }, // Boston
+  { lat: 42.2626, lon: -71.8023 }, // Worcester
+  { lat: 42.1015, lon: -72.5898 }, // Springfield
+  { lat: 41.9584, lon: -70.6673 }, // Plymouth
+];
 export const DEFAULT_ONTARIO_MAX_SOURCES = 1000;
 export const ONTARIO_ANCHORS = [
   { lat: 43.4516, lon: -80.4925 }, // Kitchener

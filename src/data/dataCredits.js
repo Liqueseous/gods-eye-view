@@ -196,6 +196,13 @@ export const DATA_CREDITS = [
       '(<a href="https://www.ontario.ca/page/open-government-licence-ontario" target="_blank" rel="noopener">Open Government Licence - Ontario</a>)',
   },
   {
+    key: 'massachusetts-511-cctv',
+    html:
+      'CCTV cameras &amp; frames (Massachusetts): ' +
+      '<a href="https://mass511.com/" target="_blank" rel="noopener">Massachusetts 511</a> ' +
+      '(public traffic camera data)',
+  },
+  {
     key: 'fintraffic-cctv',
     html:
       'CCTV cameras &amp; frames (Finland): Fintraffic / ' +

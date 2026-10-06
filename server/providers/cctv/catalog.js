@@ -9,6 +9,7 @@ import {
   loadCaltransSourcesFromOpenData,
   loadTflSourcesFromOpenData,
   loadOntarioSourcesFromOpenData,
+  loadMass511SourcesFromOpenData,
   loadFintrafficSourcesFromOpenData,
   loadDriveBcSourcesFromOpenData,
   loadTxdotSourcesFromOpenData,
@@ -46,6 +47,11 @@ const LIVE_PACKS = [
     name: 'ontario',
     enabled: () => envEnabled('CCTV_ONTARIO_ENABLED'),
     load: loadOntarioSourcesFromOpenData,
+  },
+  {
+    name: 'mass511',
+    enabled: () => envEnabled('CCTV_MASS511_ENABLED'),
+    load: loadMass511SourcesFromOpenData,
   },
   {
     name: 'fintraffic',
