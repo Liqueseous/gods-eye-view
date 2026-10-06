@@ -184,24 +184,15 @@ test('tunnel layer fetches bounded geometry, styles road and rail separately, an
     null,
     app.layer.getStats().error || '',
   );
-  assert.equal(app.primitives.length, 0);
   assert.equal(
     app.entities.length,
-    6,
-    'outline plus road and rail color passes',
+    0,
+    'ground-clamped alignment lines are not rendered',
   );
-  assert.equal(app.entities[0].polyline.width, 7);
-  assert.equal(app.entities[0].polyline.clampToGround, true);
-  assert.equal(app.entities[0].polyline.zIndex, 10);
-  assert.equal(app.entities[3].polyline.width, 3.4);
   assert.equal(
-    app.entities[3].polyline.material.toCssHexString().toLowerCase(),
-    '#f5b942',
-  );
-  assert.equal(app.entities[5].polyline.width, 3.8);
-  assert.equal(
-    app.entities[5].polyline.material.toCssHexString().toLowerCase(),
-    '#50d8f0',
+    app.ghostPrimitives.length,
+    2,
+    'road and rail tunnel shells are rendered',
   );
   const published = app.overlays.get('tunnels');
   assert.equal(
@@ -241,7 +232,11 @@ test('tunnel alignments get ghostly 3D shells that hide at range and clean up', 
 
   await app.layer.enable(app.viewer);
 
-  assert.equal(app.ghostPrimitives.length, 2, 'road and rail shells are batched');
+  assert.equal(
+    app.ghostPrimitives.length,
+    2,
+    'road and rail shells are batched',
+  );
   assert.ok(app.ghostPrimitives.every((primitive) => primitive.show));
   assert.ok(
     app.ghostPrimitives.every(
@@ -291,7 +286,6 @@ test('tunnel layer reloads after camera move and releases its geometry and label
 test('camera pan keeps old tunnel primitives until replacements are ready', async (t) => {
   const app = harness(t, undefined, [road]);
   await app.layer.enable(app.viewer);
-  const previousEntities = [...app.entities];
   const previousGhosts = [...app.ghostPrimitives];
 
   app.setRectangle(Cesium.Rectangle.fromDegrees(-70.8, 42.2, -70.5, 42.5));
@@ -299,37 +293,33 @@ test('camera pan keeps old tunnel primitives until replacements are ready', asyn
   app.moveEnd.raiseEvent();
   for (
     let attempt = 0;
-    attempt < 10 && app.entities.length === previousEntities.length;
+    attempt < 10 && app.ghostPrimitives.length === previousGhosts.length;
     attempt++
   )
     await new Promise((resolve) => setImmediate(resolve));
 
-  const nextEntities = app.entities.filter(
-    (entity) => !previousEntities.includes(entity),
-  );
   const nextGhosts = app.ghostPrimitives.filter(
     (primitive) => !previousGhosts.includes(primitive),
   );
-  assert.ok(nextEntities.length > 0);
   assert.ok(nextGhosts.length > 0);
-  assert.ok(previousEntities.every((entity) => app.entities.includes(entity)));
   assert.ok(
-    previousGhosts.every((primitive) => app.ghostPrimitives.includes(primitive)),
+    previousGhosts.every((primitive) =>
+      app.ghostPrimitives.includes(primitive),
+    ),
   );
-  assert.ok(nextEntities.every((entity) => entity.show === false));
   assert.ok(nextGhosts.every((primitive) => primitive.show === false));
 
   for (const primitive of nextGhosts)
     Object.defineProperty(primitive, 'ready', { value: true });
   app.postRender.raiseEvent();
 
-  assert.ok(previousEntities.every((entity) => !app.entities.includes(entity)));
   assert.ok(
     previousGhosts.every(
       (primitive) => !app.ghostPrimitives.includes(primitive),
     ),
   );
-  assert.ok(nextEntities.every((entity) => app.entities.includes(entity)));
-  assert.ok(nextGhosts.every((primitive) => app.ghostPrimitives.includes(primitive)));
-  assert.ok(nextEntities.every((entity) => entity.show === true));
+  assert.ok(
+    nextGhosts.every((primitive) => app.ghostPrimitives.includes(primitive)),
+  );
+  assert.ok(nextGhosts.every((primitive) => primitive.show === true));
 });

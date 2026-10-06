@@ -618,23 +618,7 @@ export function createTransitRouteLines({
     stationListItems = [];
   }
 
-  function setStationItemVisible(item, show) {
-    if (item.billboard) item.billboard.show = show;
-    if (item.label) item.label.show = show;
-    if (item.point) item.point.show = show;
-    if (item.stationNameLabel) item.stationNameLabel.show = show;
-    if (item.entity) {
-      if (item.entity.billboard) item.entity.billboard.show = show;
-      if (item.entity.label) item.entity.label.show = show;
-      if (item.entity.point) item.entity.point.show = show;
-    }
-  }
-
   function syncStationListVisibility() {
-    if (!stationPlacardsVisible) {
-      for (const item of stationListItems) setStationItemVisible(item, false);
-      return;
-    }
     const camera = viewer?.camera;
     const worldPosition = camera?.positionWC;
     const cartographic = worldPosition
@@ -667,7 +651,7 @@ export function createTransitRouteLines({
             ? false
             : allStationsCollapsed === false ||
               !collapsedStations.has(item.stationId);
-        const show = showNames && altitudeVisible;
+        const show = stationPlacardsVisible && showNames && altitudeVisible;
         const toggleScale = showExpandedList ? placardScale : 1;
         const expandedOffset = stationPlacardToggleOffset({
           width: item.placardWidth,
@@ -712,7 +696,7 @@ export function createTransitRouteLines({
         if (item.entity?.point) item.entity.point.show = showNames;
         continue;
       }
-      const show = showExpandedList;
+      const show = stationPlacardsVisible && showExpandedList;
       if (item.billboard) item.billboard.show = show;
       if (item.label) item.label.show = show;
       if (item.entity?.billboard) item.entity.billboard.show = show;
@@ -1040,7 +1024,10 @@ export function createTransitRouteLines({
             text: station.name,
             show: true,
             showBackground: false,
-            pixelOffset: new Cesium.Cartesian2(0, stationLabelOffset + compactLift),
+            pixelOffset: new Cesium.Cartesian2(
+              0,
+              stationLabelOffset + compactLift,
+            ),
             eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
             disableDepthTestDistance: stationDepthTestDistance,
           }

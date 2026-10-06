@@ -363,8 +363,25 @@ test('route lines render with a contrast outline and route color, then release o
   assert.equal(badge.disableDepthTestDistance, 0);
   assert.equal(badge.eyeOffset.z, -100);
   layer.setStationPlacardsVisible(false);
-  assert.equal(station.point.show, false);
+  assert.equal(
+    station.point.show,
+    true,
+    'station markers remain visible when placards are disabled',
+  );
   assert.equal(badge.show, false);
+  const stationToggleWhileHidden = sceneEntities.find(
+    (entity) => entity.id === 'transit-station:name:central:0:toggle',
+  );
+  assert.equal(
+    stationToggleWhileHidden.billboard.show,
+    false,
+    'station collapse/expand buttons remain hidden with placards disabled',
+  );
+  assert.equal(
+    layer.selectFromPick('transit-station:name:central:0'),
+    true,
+    'station markers remain selectable when placards are disabled',
+  );
   layer.setStationPlacardsVisible(true);
   assert.equal(station.point.show, true);
   layer.collapseAllStations();
@@ -381,7 +398,8 @@ test('route lines render with a contrast outline and route color, then release o
     'the dedicated button is visible while the placard is expanded',
   );
   assert.ok(
-    stationToggle.billboard.pixelOffset.y + stationToggle.billboard.height / 2 <=
+    stationToggle.billboard.pixelOffset.y +
+      stationToggle.billboard.height / 2 <=
       badge.pixelOffset.y - badge.height / 2,
     'the placard button clears compact route icons',
   );
