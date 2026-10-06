@@ -3,6 +3,8 @@ import { initAnnotations } from '../annotations/index.js';
 import { initDrawTool } from '../annotations/drawTool.js';
 import { initImageryBoxTool } from '../ui/imageryBoxTool.js';
 import { createRecentImageryPanel } from '../ui/recentImagery.js';
+import { initAnalystConsole } from '../ui/analystConsole.js';
+import { initDeveloperMode } from '../ui/developerMode.js';
 import { initGevVoiceCommands } from '../voice/gevRealtime.js';
 import { installViews, isEmbeddedInline } from './embed.js';
 import { installScopeMask, destroyScopeMask } from '../scopeMask.js';
@@ -160,6 +162,15 @@ export function createApplicationTools({
   defer(() => {
     if (window.__godsEyeView === debug) delete window.__godsEyeView;
   });
+  const analystConsole = initAnalystConsole({
+    viewer,
+    dataManager,
+    placeSearch,
+    annotationResolver: operations.annotationResolver,
+  });
+  defer(() => analystConsole?.destroy());
+  const developerMode = initDeveloperMode();
+  defer(() => developerMode?.destroy());
   const voiceCommands = initGevVoiceCommands({
     ...voice,
     floorServices: operations.surface.groundFloor,

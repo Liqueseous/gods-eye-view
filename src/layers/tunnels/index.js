@@ -14,18 +14,18 @@ const CACHE_TTL_MS = 6 * 60 * 60_000;
 const ROAD_COLOR = '#F5B942';
 const RAIL_COLOR = '#50D8F0';
 const OUTLINE_COLOR = '#101820';
-const OUTLINE_WIDTH = 5;
-const ROAD_WIDTH = 2.4;
-const RAIL_WIDTH = 2.8;
-const OUTLINE_ALPHA = 0.08;
-const LINE_ALPHA = 0.28;
+const OUTLINE_WIDTH = 7;
+const ROAD_WIDTH = 3.4;
+const RAIL_WIDTH = 3.8;
+const OUTLINE_ALPHA = 0.16;
+const LINE_ALPHA = 0.5;
 const GHOST_MAX_CAMERA_ALTITUDE_M = 18_000;
 const GHOST_CENTER_HEIGHT_M = 4;
-const GHOST_ALPHA = 0.05;
+const GHOST_ALPHA = 0.1;
 // No globe means no terrain surface to classify against — the depth-tested
 // ghost tube becomes the only correctly-occluded (behind-buildings) stand-in,
-// so it needs to read as a real tunnel line rather than a faint hint.
-const GHOST_ALPHA_NO_GLOBE = 0.2;
+// so it needs to read clearly through the Google 3D presentation.
+const GHOST_ALPHA_NO_GLOBE = 0.38;
 
 function tunnelLabelLimit(densityPct = getDetectionTuning().densityPct) {
   const density = Math.max(0, Math.min(100, Number(densityPct) || 0));

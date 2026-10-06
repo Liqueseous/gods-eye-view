@@ -190,15 +190,15 @@ test('tunnel layer fetches bounded geometry, styles road and rail separately, an
     6,
     'outline plus road and rail color passes',
   );
-  assert.equal(app.entities[0].polyline.width, 5);
+  assert.equal(app.entities[0].polyline.width, 7);
   assert.equal(app.entities[0].polyline.clampToGround, true);
   assert.equal(app.entities[0].polyline.zIndex, 10);
-  assert.equal(app.entities[3].polyline.width, 2.4);
+  assert.equal(app.entities[3].polyline.width, 3.4);
   assert.equal(
     app.entities[3].polyline.material.toCssHexString().toLowerCase(),
     '#f5b942',
   );
-  assert.equal(app.entities[5].polyline.width, 2.8);
+  assert.equal(app.entities[5].polyline.width, 3.8);
   assert.equal(
     app.entities[5].polyline.material.toCssHexString().toLowerCase(),
     '#50d8f0',

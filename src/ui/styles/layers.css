@@ -352,6 +352,14 @@
 #right-context-rail.layout-focus.layout-exclusive > [data-panel-id].collapsed {
   display: none;
 }
+/* Developer mode must retain its collapsed launcher even while an operational
+   panel owns the rail; otherwise its toolbox has no way to be reopened. */
+html.developer-mode
+  #right-context-rail.layout-exclusive
+  > #developer-tools-panel.collapsed {
+  display: block;
+  flex: 0 0 auto;
+}
 #right-context-rail.layout-focus > #pp-toggles:not(.collapsed),
 #right-context-rail.layout-focus > #cctv-panel:not(.collapsed),
 #right-context-rail.layout-focus > #weather-panel:not(.collapsed),
