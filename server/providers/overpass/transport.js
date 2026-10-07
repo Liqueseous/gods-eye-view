@@ -155,7 +155,10 @@ async function fetchOverpassPayload(
         upstream.status === 429 ||
         upstream.status === 406 ||
         overpassLooksRateLimited(responseBody);
-      attempts.push({ endpoint: new URL(endpoint).host, status: upstream.status });
+      attempts.push({
+        endpoint: new URL(endpoint).host,
+        status: upstream.status,
+      });
       if (
         rateLimited ||
         upstream.status < 200 ||

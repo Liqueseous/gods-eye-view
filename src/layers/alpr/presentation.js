@@ -646,18 +646,29 @@ export function createAlprPresentation({ state, services, source }) {
         state.viewer.scene,
         Cesium.Cartesian3.fromDegrees(record.longitude, record.latitude),
       );
-      return point && point.x >= 0 && point.x <= width && point.y >= 0 && point.y <= height;
+      return (
+        point &&
+        point.x >= 0 &&
+        point.x <= width &&
+        point.y >= 0 &&
+        point.y <= height
+      );
     });
     if (candidates.length) return candidates;
     const center = state.viewer.camera.positionCartographic;
     if (!state.records?.length) return candidates;
     if (!center) return [state.records[0]];
-    return [state.records.slice().sort((a, b) =>
-      (a.latitude - Cesium.Math.toDegrees(center.latitude)) ** 2 +
-      (a.longitude - Cesium.Math.toDegrees(center.longitude)) ** 2 -
-      ((b.latitude - Cesium.Math.toDegrees(center.latitude)) ** 2 +
-        (b.longitude - Cesium.Math.toDegrees(center.longitude)) ** 2),
-    )[0]];
+    return [
+      state.records
+        .slice()
+        .sort(
+          (a, b) =>
+            (a.latitude - Cesium.Math.toDegrees(center.latitude)) ** 2 +
+            (a.longitude - Cesium.Math.toDegrees(center.longitude)) ** 2 -
+            ((b.latitude - Cesium.Math.toDegrees(center.latitude)) ** 2 +
+              (b.longitude - Cesium.Math.toDegrees(center.longitude)) ** 2),
+        )[0],
+    ];
   }
 
   return {

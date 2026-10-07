@@ -249,9 +249,12 @@ export function createTiming({ state: layerState, services, parts, source }) {
         typeof scene.sampleHeight !== 'function' ||
         sampled >= 64 ||
         performance.now() - started >= MAX_HEIGHT_SAMPLE_MS_PER_PARSE
-      ) return null;
+      )
+        return null;
       sampled += 1;
-      const value = scene.sampleHeight(Cesium.Cartographic.fromDegrees(lng, lat));
+      const value = scene.sampleHeight(
+        Cesium.Cartographic.fromDegrees(lng, lat),
+      );
       if (Number.isFinite(value)) layerState._heightCellCache?.set(key, value);
       return value;
     };
@@ -260,12 +263,17 @@ export function createTiming({ state: layerState, services, parts, source }) {
     /* TRACE_ONLY_END */
     for (const road of roadData.roads) {
       if (!road.coordinates || road.coordinates.length < 2) continue;
-      const roadFloor = sampledHeight(road.coordinates[0][1], road.coordinates[0][0]);
+      const roadFloor = sampledHeight(
+        road.coordinates[0][1],
+        road.coordinates[0][0],
+      );
       const longRoad =
         Math.abs(road.coordinates.at(-1)[0] - road.coordinates[0][0]) > 0.01 ||
         Math.abs(road.coordinates.at(-1)[1] - road.coordinates[0][1]) > 0.01;
 
-      for (const coords of longRoad ? [road.coordinates] : roadSurfaceChunks(road.coordinates)) {
+      for (const coords of longRoad
+        ? [road.coordinates]
+        : roadSurfaceChunks(road.coordinates)) {
         const type = road.type;
         const oneway = road.oneway;
 
@@ -292,8 +300,7 @@ export function createTiming({ state: layerState, services, parts, source }) {
           performance.now() - _trafficTimingMaterializeStart;
         /* TRACE_ONLY_END */
 
-        const directions =
-          oneway || longRoad ? [oneway || 1] : [1, -1];
+        const directions = oneway || longRoad ? [oneway || 1] : [1, -1];
         for (const direction of directions)
           roads.push({
             densityWeight: road.densityWeight ?? (oneway ? 1 : 0.5),

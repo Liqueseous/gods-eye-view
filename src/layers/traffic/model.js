@@ -25,7 +25,8 @@ export function createModel({ state: layerState, services, parts, source }) {
     const started = performance.now();
     const sampledHeight = (lat, lng) => {
       const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
-      if (layerState._heightCellCache?.has(key)) return layerState._heightCellCache.get(key);
+      if (layerState._heightCellCache?.has(key))
+        return layerState._heightCellCache.get(key);
       if (
         !layerState._heightCellCache ||
         layerState._liveMode === false ||
@@ -33,25 +34,34 @@ export function createModel({ state: layerState, services, parts, source }) {
         typeof scene.sampleHeight !== 'function' ||
         sampled >= 64 ||
         performance.now() - started >= MAX_HEIGHT_SAMPLE_MS_PER_PARSE
-      ) return null;
+      )
+        return null;
       sampled += 1;
-      const value = scene.sampleHeight(Cesium.Cartographic.fromDegrees(lng, lat));
+      const value = scene.sampleHeight(
+        Cesium.Cartographic.fromDegrees(lng, lat),
+      );
       if (Number.isFinite(value)) layerState._heightCellCache?.set(key, value);
       return value;
     };
     for (const road of roadData.roads) {
       if (!road.coordinates || road.coordinates.length < 2) continue;
-      const roadFloor = sampledHeight(road.coordinates[0][1], road.coordinates[0][0]);
+      const roadFloor = sampledHeight(
+        road.coordinates[0][1],
+        road.coordinates[0][0],
+      );
       const longRoad =
         Math.abs(road.coordinates.at(-1)[0] - road.coordinates[0][0]) > 0.01 ||
         Math.abs(road.coordinates.at(-1)[1] - road.coordinates[0][1]) > 0.01;
 
-      for (const coords of longRoad ? [road.coordinates] : roadSurfaceChunks(road.coordinates)) {
+      for (const coords of longRoad
+        ? [road.coordinates]
+        : roadSurfaceChunks(road.coordinates)) {
         const type = road.type;
         const oneway = road.oneway;
         // Pre-compute Cartesian3 waypoints (lon, lat, height) for fast lerp animation
         const waypoints = coords.map(([lng, lat]) => {
-          const floor = roadFloor ?? services?.ground?.cachedGroundFloor?.(lat, lng);
+          const floor =
+            roadFloor ?? services?.ground?.cachedGroundFloor?.(lat, lng);
           const h =
             (Number.isFinite(floor) && Math.abs(floor) <= 9000
               ? floor
@@ -67,11 +77,7 @@ export function createModel({ state: layerState, services, parts, source }) {
           );
         }
 
-        const directions =
-          oneway ||
-          longRoad
-            ? [oneway || 1]
-            : [1, -1];
+        const directions = oneway || longRoad ? [oneway || 1] : [1, -1];
         for (const direction of directions)
           roads.push({
             densityWeight: road.densityWeight ?? (oneway ? 1 : 0.5),

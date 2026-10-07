@@ -131,8 +131,14 @@ export function createApplicationCatalog({
     const satellites = createApplicationSatellites({
       source: sources.satellites,
     });
-    const traffic = createApplicationTraffic({ source: sources.traffic, surface });
-    const transit = createApplicationTransit({ source: sources.transit, surface });
+    const traffic = createApplicationTraffic({
+      source: sources.traffic,
+      surface,
+    });
+    const transit = createApplicationTransit({
+      source: sources.transit,
+      surface,
+    });
     const catalog = createLayerCatalog(
       [
         createBhoteKoshiEventLayer(),

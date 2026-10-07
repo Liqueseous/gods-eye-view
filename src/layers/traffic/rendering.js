@@ -68,7 +68,8 @@ export function createRendering({
     const primitives = layerState._viewer?.scene?.groundPrimitives;
     if (!primitives?.raiseToTop) return;
     if (layerState._heatJamPrim) primitives.raiseToTop(layerState._heatJamPrim);
-    if (layerState._heatSlowPrim) primitives.raiseToTop(layerState._heatSlowPrim);
+    if (layerState._heatSlowPrim)
+      primitives.raiseToTop(layerState._heatSlowPrim);
   }
 
   function rebuildHeatLines(roads) {

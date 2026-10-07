@@ -341,14 +341,18 @@ export function createControls({ state: layerState, services, parts, source }) {
         roadModeRequested: layerState._roadMode,
         roadSource: layerState._roadSource,
         source: layerState._roadSource,
-        status: layerState._enabled && !layerState._lastBounds ? 'unavailable' : 'ready',
-        loadingLabel: layerState._enabled && !layerState._lastBounds
-          ? layerState._roadMode || feed.error
-            ? roadStatusLabel(feed)
-            : layerState._roadRetryStopped
-              ? 'OSM road data UNAVAILABLE'
-              : 'OSM road data unavailable'
-          : roadStatusLabel(feed),
+        status:
+          layerState._enabled && !layerState._lastBounds
+            ? 'unavailable'
+            : 'ready',
+        loadingLabel:
+          layerState._enabled && !layerState._lastBounds
+            ? layerState._roadMode || feed.error
+              ? roadStatusLabel(feed)
+              : layerState._roadRetryStopped
+                ? 'OSM road data UNAVAILABLE'
+                : 'OSM road data unavailable'
+            : roadStatusLabel(feed),
       };
     },
   };

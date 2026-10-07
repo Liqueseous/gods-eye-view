@@ -39,11 +39,20 @@ export function simplifyFlowLine(line, tolerance = 0.00005) {
     const denom = dx * dx + dy * dy;
     for (let i = first + 1; i < last; i++) {
       const [px, py] = line[i];
-      const t = denom ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / denom)) : 0;
+      const t = denom
+        ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / denom))
+        : 0;
       const distance = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-      if (distance > best) { best = distance; index = i; }
+      if (distance > best) {
+        best = distance;
+        index = i;
+      }
     }
-    if (index >= 0) { keep[index] = true; visit(first, index); visit(index, last); }
+    if (index >= 0) {
+      keep[index] = true;
+      visit(first, index);
+      visit(index, last);
+    }
   };
   visit(0, line.length - 1);
   return line.filter((_, index) => keep[index]);

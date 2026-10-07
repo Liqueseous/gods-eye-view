@@ -542,10 +542,13 @@ const parsedLayerStateTokenReservations =
 // These allocations are already part of the current application contract, but
 // are intentionally non-enumerable until the next published ledger revision.
 export const LAYER_STATE_TOKEN_RESERVATIONS = Object.freeze(
-  Object.defineProperties({ ...parsedLayerStateTokenReservations }, {
-    tunnels: { value: '3', enumerable: false },
-    'nws-alerts': { value: '4', enumerable: false },
-  }),
+  Object.defineProperties(
+    { ...parsedLayerStateTokenReservations },
+    {
+      tunnels: { value: '3', enumerable: false },
+      'nws-alerts': { value: '4', enumerable: false },
+    },
+  ),
 );
 
 /**
@@ -828,7 +831,10 @@ export function validateLayerStateRegistry(
         : entry.id === 'nws-alerts'
           ? '4'
           : reservations[entry.id];
-    if (currentAllocation === entry.token && !reservedIdsByToken.has(entry.token))
+    if (
+      currentAllocation === entry.token &&
+      !reservedIdsByToken.has(entry.token)
+    )
       reservedIdsByToken.set(entry.token, entry.id);
   }
   const ids = new Set();

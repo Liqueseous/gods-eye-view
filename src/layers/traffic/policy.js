@@ -32,7 +32,10 @@ export const MAX_DOTS = 6000;
 export const MIN_ADAPTIVE_DOTS = 400;
 
 export function adaptTrafficDotCap(currentCap, constructionMs) {
-  const cap = Math.max(MIN_ADAPTIVE_DOTS, Math.min(MAX_DOTS, Math.round(currentCap)));
+  const cap = Math.max(
+    MIN_ADAPTIVE_DOTS,
+    Math.min(MAX_DOTS, Math.round(currentCap)),
+  );
   const ms = Number(constructionMs);
   if (!Number.isFinite(ms)) return cap;
   if (ms > 2)
