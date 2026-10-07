@@ -618,23 +618,7 @@ export function createTransitRouteLines({
     stationListItems = [];
   }
 
-  function setStationItemVisible(item, show) {
-    if (item.billboard) item.billboard.show = show;
-    if (item.label) item.label.show = show;
-    if (item.point) item.point.show = show;
-    if (item.stationNameLabel) item.stationNameLabel.show = show;
-    if (item.entity) {
-      if (item.entity.billboard) item.entity.billboard.show = show;
-      if (item.entity.label) item.entity.label.show = show;
-      if (item.entity.point) item.entity.point.show = show;
-    }
-  }
-
   function syncStationListVisibility() {
-    if (!stationPlacardsVisible) {
-      for (const item of stationListItems) setStationItemVisible(item, false);
-      return;
-    }
     const camera = viewer?.camera;
     const worldPosition = camera?.positionWC;
     const cartographic = worldPosition
@@ -667,7 +651,7 @@ export function createTransitRouteLines({
             ? false
             : allStationsCollapsed === false ||
               !collapsedStations.has(item.stationId);
-        const show = showNames && altitudeVisible;
+        const show = stationPlacardsVisible && showNames && altitudeVisible;
         const toggleScale = showExpandedList ? placardScale : 1;
         const expandedOffset = stationPlacardToggleOffset({
           width: item.placardWidth,
@@ -712,7 +696,7 @@ export function createTransitRouteLines({
         if (item.entity?.point) item.entity.point.show = showNames;
         continue;
       }
-      const show = showExpandedList;
+      const show = stationPlacardsVisible && showExpandedList;
       if (item.billboard) item.billboard.show = show;
       if (item.label) item.label.show = show;
       if (item.entity?.billboard) item.entity.billboard.show = show;
@@ -924,7 +908,6 @@ export function createTransitRouteLines({
       viewer?.scene?.context &&
       viewer?.scene?.primitives?.add &&
       typeof Cesium.BillboardCollection === 'function' &&
-      typeof Cesium.LabelCollection === 'function' &&
       typeof Cesium.PointPrimitiveCollection === 'function'
         ? {
             // Cesium composites these collections in insertion order. Keep
@@ -934,10 +917,8 @@ export function createTransitRouteLines({
             compactPlacards: new Cesium.BillboardCollection(),
             stationToggles: new Cesium.BillboardCollection(),
             compactBillboards: new Cesium.BillboardCollection(),
-            compactLabels: new Cesium.LabelCollection(),
             compactPoints: new Cesium.PointPrimitiveCollection(),
             listBillboards: new Cesium.BillboardCollection(),
-            listLabels: new Cesium.LabelCollection(),
             listPoints: new Cesium.PointPrimitiveCollection(),
           }
         : null;
@@ -1007,17 +988,14 @@ export function createTransitRouteLines({
               ? overlay.listBillboards
               : overlay.compactBillboards,
             placards: isList ? overlay.listBillboards : overlay.compactPlacards,
-            labels: isList ? overlay.listLabels : overlay.compactLabels,
             points: isList ? overlay.listPoints : overlay.compactPoints,
           }
         : null;
       if (stationOverlay && nextStationCollections.length === 0) {
         const collections = [
           overlay.listPoints,
-          overlay.listLabels,
           overlay.listBillboards,
           overlay.compactPoints,
-          overlay.compactLabels,
           overlay.compactBillboards,
           overlay.compactPlacards,
           overlay.stationToggles,
@@ -1040,28 +1018,18 @@ export function createTransitRouteLines({
       const toggleOffsetY = placardOffsetY + 10 - placardHeight / 2;
       // Collection order, not placard area or per-station depth offsets,
       // determines which station content is in front.
+      // Keep legacy entity readout as plain metadata; rendered text remains overlay-owned.
       const stationLabel = station.name
         ? {
-            id,
-            position: stationPosition,
             text: station.name,
-            font: '11px sans-serif',
-            fillColor: Cesium.Color.WHITE,
+            show: true,
             showBackground: false,
-            backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
-            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-            verticalOrigin: Cesium.VerticalOrigin.CENTER,
-            // Keep the station name above the line rows and marker.
             pixelOffset: new Cesium.Cartesian2(
               0,
               stationLabelOffset + compactLift,
             ),
             eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
             disableDepthTestDistance: stationDepthTestDistance,
-            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
-              0,
-              STATION_LABEL_MAX_DISTANCE_M,
-            ),
           }
         : null;
       const placardId = `${id}:placard`;
@@ -1187,26 +1155,9 @@ export function createTransitRouteLines({
                 disableDepthTestDistance: stationDepthTestDistance,
               },
             }),
-        label: overlay ? undefined : stationLabel,
       });
-      nextEntities.push(stationEntity);
-      nextStationListItems.push({
-        stationId: id,
-        isStationMarker: true,
-        isList,
-        entity: stationEntity,
-        point: marker,
-      });
-      if (overlay && stationLabel) {
-        const stationNameLabel = stationOverlay.labels.add(stationLabel);
-        nextStationListItems.push({
-          stationId: id,
-          isStationName: true,
-          isList,
-          stationNameLabel,
-          expandedOffset: stationLabelOffset + compactLift,
-        });
-      } else if (stationLabel) {
+      if (stationLabel && !overlay) {
+        stationEntity.label = stationLabel;
         nextStationListItems.push({
           stationId: id,
           isStationName: true,
@@ -1215,6 +1166,14 @@ export function createTransitRouteLines({
           expandedOffset: stationLabelOffset + compactLift,
         });
       }
+      nextEntities.push(stationEntity);
+      nextStationListItems.push({
+        stationId: id,
+        isStationMarker: true,
+        isList,
+        entity: stationEntity,
+        point: marker,
+      });
       const renderedBadges = overlay || isList ? [] : station.badges;
       const badgeCount = renderedBadges.length;
       renderedBadges.forEach((badge, index) => {
@@ -1272,36 +1231,19 @@ export function createTransitRouteLines({
           eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
           disableDepthTestDistance: stationDepthTestDistance,
         };
-        const label = {
-          id: `${badgeId}:label`,
-          position: stationPosition,
-          text: entry.label,
-          font: '10px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          showBackground: false,
-          backgroundColor: Cesium.Color.BLACK.withAlpha(0.65),
-          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          verticalOrigin: Cesium.VerticalOrigin.CENTER,
-          pixelOffset: new Cesium.Cartesian2(rowLeft + 30, rowY),
-          eyeOffset: new Cesium.Cartesian3(0, 0, STATION_EYE_OFFSET_M),
-          disableDepthTestDistance: stationDepthTestDistance,
-        };
         if (overlay) {
           const billboardInstance = stationOverlay.billboards.add(billboard);
-          const labelInstance = stationOverlay.labels.add(label);
           nextStationListItems.push({
             stationId: id,
             isPanelIcon: true,
             isList,
             billboard: billboardInstance,
-            label: labelInstance,
           });
         } else {
           const entity = viewer.entities.add({
             id: badgeId,
             position: stationPosition,
             billboard,
-            label,
           });
           nextEntities.push(entity);
           nextStationListItems.push({ stationId: id, entity });

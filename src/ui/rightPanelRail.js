@@ -91,10 +91,18 @@ export function layoutRightPanelRail({
     hasExpandedPanel,
   });
   stack.classList.toggle('layout-exclusive', exclusive);
+  const keepDeveloperLauncher =
+    documentRef?.documentElement?.classList.contains('developer-mode') === true;
+  const remainsVisible = (panel) =>
+    !exclusive ||
+    !panel.classList.contains('collapsed') ||
+    (keepDeveloperLauncher && panel.id === 'developer-tools-panel');
   for (const panel of panels) {
     if (exclusive && panel.classList.contains('collapsed'))
       panel.setAttribute('aria-hidden', 'true');
     else panel.removeAttribute('aria-hidden');
+    if (keepDeveloperLauncher && panel.id === 'developer-tools-panel')
+      panel.removeAttribute('aria-hidden');
   }
 
   if (isMobile) {
@@ -145,13 +153,10 @@ export function layoutRightPanelRail({
   // presentation hides them. Manually collapsed launchers keep their policy.
   const measuredPanels = panels.filter(
     (panel) =>
-      !exclusive ||
-      !panel.classList.contains('collapsed') ||
+      remainsVisible(panel) ||
       panel.classList.contains('layout-auto-collapsed'),
   );
-  const visiblePanels = panels.filter(
-    (panel) => !exclusive || !panel.classList.contains('collapsed'),
-  );
+  const visiblePanels = panels.filter(remainsVisible);
   const displayScrollTop = readDisplayScrollTop();
   // Measuring lifts each opted-in scroller's max-height, which clamps its
   // scroll offset; remember the offsets to put back afterwards.

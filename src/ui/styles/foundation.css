@@ -310,34 +310,26 @@ body.cockpit-mode #cockpit-cloud-effects.active {
   color: rgba(232, 234, 237, 0.55);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
+/* Cesium injects inline `display` styles while refreshing its credits. Keep
+   the ion and Google credit groups as separate flex items so a refresh cannot
+   lay one watermark over the other. */
+#cesium-credits .cesium-widget-credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 #cesium-credits .cesium-credit-logoContainer,
-#cesium-credits .cesium-credit-textContainer,
-#cesium-credits .cesium-credit-expand-link {
-  display: inline-block;
-  vertical-align: middle;
+#cesium-credits .cesium-credit-textContainer {
+  display: block !important;
+  flex: 0 0 auto;
+}
+#cesium-credits .cesium-credit-textContainer {
+  display: inline-flex !important;
+  align-items: center;
 }
 #cesium-credits a,
 #cesium-credits .cesium-credit-expand-link {
   color: rgba(232, 234, 237, 0.7);
-}
-
-/* Keep the ALPR source overflow reachable even after its brief on-map credit
-   collapses. Wrap whole entries only while the optional layer is on. */
-body:has(.data-toggle-row[data-layer-id='alpr-cameras'] .data-toggle-btn.active)
-  #cesium-credits {
-  white-space: normal;
-}
-body:has(.data-toggle-row[data-layer-id='alpr-cameras'] .data-toggle-btn.active)
-  #cesium-credits
-  .cesium-credit-wrapper {
-  display: inline-block !important;
-  white-space: nowrap;
-}
-body:has(.data-toggle-row[data-layer-id='alpr-cameras'] .data-toggle-btn.active)
-  #cesium-credits
-  .cesium-credit-expand-link {
-  /* Keep the complete link at the left edge, clear of the Power Up button. */
-  display: block !important;
 }
 
 /* Cesium's stock attribution lightbox grows with every registered data source.

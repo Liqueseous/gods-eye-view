@@ -8,7 +8,7 @@ import { VectorTile } from '@mapbox/vector-tile';
  * (the TomTom key never reaches the browser) and decodes the Mapbox Vector
  * Tile layer "Traffic flow" into plain lon/lat polylines with congestion
  * attributes. Consumed by the traffic layer's live mode
- * (`src/data/traffic.js` → `src/data/flowMatch.js`).
+ * for matching congestion onto OpenStreetMap roads.
  *
  * Segment shape: `{coords: [[lon,lat],…], trafficLevel: 0..1, roadType: string,
  * closure: boolean}` — `trafficLevel` is TomTom's current/free-flow speed
@@ -24,69 +24,49 @@ import { VectorTile } from '@mapbox/vector-tile';
 
 const FLOW_LAYER_NAME = 'Traffic flow';
 
-const FLOW_GEOMETRY_TOLERANCE_DEG = 0.00005;
-
-function squaredDistance(point, start, end) {
-  const dx = end[0] - start[0];
-  const dy = end[1] - start[1];
-  if (dx === 0 && dy === 0) {
-    const px = point[0] - start[0];
-    const py = point[1] - start[1];
-    return px * px + py * py;
-  }
-  const t = Math.max(
-    0,
-    Math.min(
-      1,
-      ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) /
-        (dx * dx + dy * dy),
-    ),
-  );
-  const px = start[0] + t * dx - point[0];
-  const py = start[1] + t * dy - point[1];
-  return px * px + py * py;
-}
-
-function simplifyRange(points, first, last, toleranceSquared, keep) {
-  let furthest = toleranceSquared;
-  let furthestIndex = -1;
-  for (let index = first + 1; index < last; index++) {
-    const distance = squaredDistance(
-      points[index],
-      points[first],
-      points[last],
-    );
-    if (distance > furthest) {
-      furthest = distance;
-      furthestIndex = index;
+/** Remove vertices whose perpendicular degree-space deviation is negligible. */
+export function simplifyFlowLine(line, tolerance = 0.00005) {
+  if (!Array.isArray(line) || line.length <= 2) return line || [];
+  const keep = new Array(line.length).fill(false);
+  keep[0] = keep[line.length - 1] = true;
+  const visit = (first, last) => {
+    let best = tolerance;
+    let index = -1;
+    const [ax, ay] = line[first];
+    const [bx, by] = line[last];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const denom = dx * dx + dy * dy;
+    for (let i = first + 1; i < last; i++) {
+      const [px, py] = line[i];
+      const t = denom
+        ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / denom))
+        : 0;
+      const distance = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+      if (distance > best) {
+        best = distance;
+        index = i;
+      }
     }
-  }
-  if (furthestIndex < 0) return;
-  keep[furthestIndex] = true;
-  simplifyRange(points, first, furthestIndex, toleranceSquared, keep);
-  simplifyRange(points, furthestIndex, last, toleranceSquared, keep);
+    if (index >= 0) {
+      keep[index] = true;
+      visit(first, index);
+      visit(index, last);
+    }
+  };
+  visit(0, line.length - 1);
+  return line.filter((_, index) => keep[index]);
 }
 
-export function simplifyFlowLine(
-  points,
-  tolerance = FLOW_GEOMETRY_TOLERANCE_DEG,
-) {
-  if (!Array.isArray(points) || points.length < 3 || tolerance <= 0)
-    return points;
-  const keep = new Array(points.length).fill(false);
-  keep[0] = true;
-  keep[points.length - 1] = true;
-  simplifyRange(points, 0, points.length - 1, tolerance * tolerance, keep);
-  return points.filter((_point, index) => keep[index]);
-}
-
-export function decodeFlowTile(data, z, x, y) {
+/** Decode flow geometry; strict mode distinguishes damaged tiles from valid empty coverage. */
+export function decodeFlowTile(data, z, x, y, { strict = false } = {}) {
   let layer;
   try {
     const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
     const tile = new VectorTile(new PbfReader(bytes));
     layer = tile.layers[FLOW_LAYER_NAME];
   } catch {
+    if (strict) throw new Error('Malformed TomTom flow tile');
     return [];
   }
   if (!layer) return [];
@@ -121,10 +101,16 @@ export function decodeFlowTile(data, z, x, y) {
     for (const coords of lines) {
       if (!Array.isArray(coords) || coords.length < 2) continue;
       segments.push({
-        coords: simplifyFlowLine(coords),
+        coords,
         trafficLevel,
         roadType,
+        roadCategory: props.road_category ?? null,
+        roadSubcategory: props.road_subcategory ?? null,
         closure,
+        coverage: props.traffic_road_coverage ?? null,
+        leftHandTraffic:
+          props.left_hand_traffic === true ||
+          props.left_hand_traffic === 'true',
       });
     }
   }

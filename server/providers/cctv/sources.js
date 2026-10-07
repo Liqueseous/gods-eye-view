@@ -16,6 +16,10 @@ import {
   ONTARIO_511_IMAGE_ORIGIN,
   DEFAULT_ONTARIO_MAX_SOURCES,
   ONTARIO_ANCHORS,
+  MASS511_CAMERAS_URL,
+  MASS511_IMAGE_ORIGIN,
+  DEFAULT_MASS511_MAX_SOURCES,
+  MASS511_ANCHORS,
   FINTRAFFIC_STATIONS_URL,
   FINTRAFFIC_IMAGE_ORIGIN,
   FINTRAFFIC_GROUND_ELEVATION_M,
@@ -59,6 +63,12 @@ import {
   DELDOT_CCTV_URL,
   DEFAULT_DELDOT_MAX_SOURCES,
   DELDOT_ANCHORS,
+  DEFAULT_VEGVESEN_CCTV_URL,
+  VEGVESEN_IMAGE_ORIGIN,
+  VEGVESEN_VIDEO_URL,
+  DEFAULT_VEGVESEN_MAX_SOURCES,
+  VEGVESEN_MAX_CATALOG_BYTES,
+  NORWAY_ANCHORS,
 } from './constants.js';
 import {
   toFiniteNumber,
@@ -76,6 +86,7 @@ import {
   isLikelyTexasCoordinate,
   isLikelyNswCoordinate,
   isLikelyCalgaryCoordinate,
+  isLikelyNorwayCoordinate,
   cameraDisplayCode,
   rowArrayToObject,
   prioritizeSources,
@@ -547,6 +558,135 @@ export async function loadOntarioSourcesFromOpenData() {
   } catch (error) {
     console.warn(
       '[CCTV] Ontario 511 camera download error:',
+      error?.message || error,
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch Massachusetts 511 CCTV cameras. The CARS catalog requires the
+ * MASS511_API_KEY environment variable; frame URLs are pinned to mass511.com.
+ * The payload follows the standard 511 camera schema used by Ontario 511.
+ *
+ * @returns {Promise<Array<object>>} Normalized camera source objects.
+ */
+export async function loadMass511SourcesFromOpenData() {
+  const apiKey = String(process.env.MASS511_API_KEY || '').trim();
+  if (!apiKey) return [];
+
+  try {
+    const endpoint = new URL(MASS511_CAMERAS_URL);
+    endpoint.searchParams.set('key', apiKey);
+    const resp = await fetch(endpoint, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(CCTV_SOURCE_FETCH_TIMEOUT_MS),
+      redirect: 'error',
+    });
+    if (!resp.ok) {
+      console.warn(
+        '[CCTV] Massachusetts 511 camera download failed:',
+        resp.status,
+      );
+      return [];
+    }
+    const rows = await resp.json();
+    if (!Array.isArray(rows)) return [];
+
+    const cameras = [];
+    for (const row of rows) {
+      const rawId = String(row?.Id ?? row?.id ?? '').trim();
+      if (!rawId) continue;
+      const lat = toFiniteNumber(row?.Latitude ?? row?.latitude);
+      const lon = toFiniteNumber(row?.Longitude ?? row?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      if (lat < 41.0 || lat > 43.0 || lon < -73.6 || lon > -69.8) continue;
+
+      const views = Array.isArray(row?.Views || row?.views)
+        ? row.Views || row.views
+        : [];
+      const view = views
+        .map((item) => ({
+          url: String(item?.Url ?? item?.url ?? '').trim(),
+          description: String(
+            item?.Description ?? item?.description ?? '',
+          ).trim(),
+          status: String(item?.Status ?? item?.status ?? '')
+            .trim()
+            .toLowerCase(),
+        }))
+        .map((item) => {
+          try {
+            const parsed = new URL(item.url);
+            const match = /^\/map\/Cctv\/([A-Za-z0-9_.-]+)$/i.exec(
+              parsed.pathname,
+            );
+            if (
+              parsed.protocol !== 'https:' ||
+              parsed.hostname.toLowerCase() !== 'mass511.com' ||
+              !match
+            )
+              return null;
+            return { ...item, url: `${MASS511_IMAGE_ORIGIN}${match[1]}` };
+          } catch {
+            return null;
+          }
+        })
+        .filter((item) => item?.status === 'enabled' && item.url)
+        .find((item) => !/\bdown\b/i.test(item.description));
+      if (!view) continue;
+
+      const location = String(row?.Location ?? row?.location ?? '').trim();
+      const roadway = String(row?.Roadway ?? row?.roadway ?? '').trim();
+      const label = [location || roadway || `Massachusetts 511 Camera ${rawId}`]
+        .filter(Boolean)
+        .join(' - ');
+      let heading = directionToHeading(row?.Direction ?? row?.direction, true);
+      if (!Number.isFinite(heading)) {
+        heading = directionToHeading(view.description, true);
+      }
+      const hasHeading = Number.isFinite(heading);
+      const cameraId = `mass511-${rawId}`;
+      cameras.push({
+        id: cameraId,
+        name: label,
+        city: location || roadway || 'Massachusetts',
+        cityId: 'massachusetts',
+        provider: 'Massachusetts 511',
+        lat,
+        lon,
+        headingDeg: hasHeading ? heading : fallbackHeadingFromId(cameraId),
+        headingConfidence: hasHeading ? 'high' : 'low',
+        pitchDeg: hasHeading ? -24 : -18,
+        fovDeg: hasHeading ? 56 : 44,
+        rangeM: hasHeading ? 210 : 145,
+        mountHeightM: hasHeading ? 10 : 8,
+        groundElevationM: 75,
+        feedType: 'image',
+        url: view.url,
+        snapshotUrl: view.url,
+        sourceKind: 'mass511-open-data',
+        license: 'Massachusetts 511 public traffic camera data',
+      });
+    }
+
+    const unique = Array.from(
+      new Map(cameras.map((camera) => [camera.id, camera])).values(),
+    );
+    const maxRaw = Number(
+      process.env.CCTV_MASS511_MAX_SOURCES || DEFAULT_MASS511_MAX_SOURCES,
+    );
+    const maxCount = Number.isFinite(maxRaw)
+      ? Math.max(8, Math.min(1000, Math.floor(maxRaw)))
+      : DEFAULT_MASS511_MAX_SOURCES;
+    const prioritized = prioritizeSources(unique, maxCount, MASS511_ANCHORS);
+    console.log(
+      `[CCTV] Loaded Massachusetts 511 camera sources: ${unique.length} enabled (using nearest ${prioritized.length})`,
+    );
+    return prioritized;
+  } catch (error) {
+    console.warn(
+      '[CCTV] Massachusetts 511 camera download error:',
       error?.message || error,
     );
     return [];
@@ -1696,6 +1836,161 @@ export async function loadDelDOTSourcesFromOpenData() {
   } catch (error) {
     console.warn(
       '[CCTV] DelDOT source download error:',
+      error?.message || error,
+    );
+    return [];
+  }
+}
+
+/**
+ * One Statens vegvesen `CctvSimple` feature -> one catalog source, or null.
+ *
+ * `orientationDescription` names the place the camera looks towards
+ * ("Svelgen"), not a bearing, so it goes into the label and the heading uses
+ * the shared id-hash fallback at low confidence, like Calgary and Fintraffic.
+ * Cameras the feed reports as faulty are dropped. Cameras that publish HLS
+ * get live video, with the still as the snapshot fallback.
+ *
+ * @param {object} feature - GeoJSON feature from the OGC items response.
+ * @returns {?object}
+ */
+export function vegvesenCameraToSource(feature) {
+  if (!feature || typeof feature !== 'object') return null;
+  const props = feature.properties;
+  if (!props || typeof props !== 'object') return null;
+  const availability = String(
+    props['status.stillImageAvailability'] ?? '',
+  ).trim();
+  if (availability && availability !== 'videoOrImagesAvailable') return null;
+
+  const coordinates = feature?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return null;
+  const lon = toFiniteNumber(coordinates[0]);
+  const lat = toFiniteNumber(coordinates[1]);
+  if (!isLikelyNorwayCoordinate(lat, lon)) return null;
+
+  const rawId = String(props.cameraId ?? '').trim();
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(rawId)) return null;
+  let image;
+  try {
+    image = new URL(String(props.stillImageUrl ?? ''));
+  } catch {
+    return null;
+  }
+  if (image.username || image.password) return null;
+  const imageUrl = image.href;
+  if (imageUrl !== `${VEGVESEN_IMAGE_ORIGIN}${rawId}`) return null;
+
+  const cameraId = `no-vegvesen-${rawId.toLowerCase()}`;
+  const place = String(props.description ?? '').trim() || `Kamera ${rawId}`;
+  const towards = String(props.orientationDescription ?? '').trim();
+  const road = String(props.roadNumber ?? '').trim();
+  const name = towards && towards !== place ? `${place} → ${towards}` : place;
+  // Live video when the camera publishes HLS on the agency's own host; the
+  // still stays the snapshot fallback. CCTV_VEGVESEN_VIDEO=0 keeps stills only.
+  const videoUrl =
+    String(process.env.CCTV_VEGVESEN_VIDEO || '1').trim() !== '0' &&
+    Number(props.videoServiceLevel) > 0 &&
+    String(props.videoEncodingStandard ?? '').toLowerCase() === 'hls' &&
+    String(props.videoUrl ?? '').trim() === VEGVESEN_VIDEO_URL(rawId)
+      ? VEGVESEN_VIDEO_URL(rawId)
+      : '';
+
+  return {
+    id: cameraId,
+    name: road ? `${road} ${name}` : name,
+    // One country-wide category in the camera picker, like Finland; the
+    // place itself is already in the name.
+    city: 'Norway',
+    cityId: 'norway',
+    provider: 'Statens vegvesen',
+    lat,
+    lon,
+    headingDeg: fallbackHeadingFromId(cameraId),
+    headingConfidence: 'low',
+    pitchDeg: -18,
+    fovDeg: 44,
+    rangeM: 145,
+    mountHeightM: 8,
+    // KNOWN LIMITATION: the feed's coordinates are 2D, so this is one flat
+    // prior for the whole country, while cameras run from sea level to
+    // mountain passes near 1,000 m (Haukelifjell, Sjonfjellet, Rugeldalen).
+    // The point-height prior and the client's one-shot ground snap correct it
+    // where they resolve; on a stack where neither does (no 3D tiles), a pass
+    // camera stays hundreds of metres below the terrain, the same risk the
+    // Caltrans pack documents. A per-camera height (e.g. Kartverket's keyless
+    // point-height API) would remove it.
+    groundElevationM: 150,
+    feedType: videoUrl ? 'hls' : 'image',
+    url: videoUrl || imageUrl,
+    snapshotUrl: imageUrl,
+    sourceKind: 'vegvesen-datex',
+    license:
+      'Contains data under the Norwegian licence for Open Government data (NLOD) distributed by Statens vegvesen',
+    code: cameraDisplayCode(place.toUpperCase()),
+  };
+}
+
+/**
+ * Fetch Statens vegvesen (Norway) road cameras from the keyless OGC API
+ * Features view of the DATEX 3.1 CCTV table. Frames are stills on
+ * kamera.atlas.vegvesen.no.
+ *
+ * @returns {Promise<Array<object>>} Normalized camera source objects.
+ */
+export async function loadVegvesenSourcesFromOpenData() {
+  try {
+    const endpoint = process.env.CCTV_VEGVESEN_URL || DEFAULT_VEGVESEN_CCTV_URL;
+    const resp = await fetch(endpoint, {
+      headers: { Accept: 'application/geo+json,application/json' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(CCTV_SOURCE_FETCH_TIMEOUT_MS),
+    });
+    const discard = async () => {
+      try {
+        await resp.body?.cancel();
+      } catch {
+        /* no-op */
+      }
+      return [];
+    };
+    if (resp.status >= 300 && resp.status < 400) {
+      console.warn(
+        '[CCTV] Vegvesen catalog redirected; redirects are not followed',
+      );
+      return discard();
+    }
+    if (!resp.ok) {
+      console.warn('[CCTV] Vegvesen camera download failed:', resp.status);
+      return discard();
+    }
+    const payload = await readResponseJsonCapped(
+      resp,
+      VEGVESEN_MAX_CATALOG_BYTES,
+    );
+    const features = Array.isArray(payload?.features) ? payload.features : [];
+    const cameras = [];
+    const seen = new Set();
+    for (const feature of features) {
+      const camera = vegvesenCameraToSource(feature);
+      if (!camera || seen.has(camera.id)) continue;
+      seen.add(camera.id);
+      cameras.push(camera);
+    }
+    const maxRaw = Number(
+      process.env.CCTV_VEGVESEN_MAX_SOURCES || DEFAULT_VEGVESEN_MAX_SOURCES,
+    );
+    const maxCount = Number.isFinite(maxRaw)
+      ? Math.max(8, Math.min(1000, Math.floor(maxRaw)))
+      : DEFAULT_VEGVESEN_MAX_SOURCES;
+    const prioritized = prioritizeSources(cameras, maxCount, NORWAY_ANCHORS);
+    console.log(
+      `[CCTV] Loaded Vegvesen camera sources: ${cameras.length} (using nearest ${prioritized.length})`,
+    );
+    return prioritized;
+  } catch (error) {
+    console.warn(
+      '[CCTV] Vegvesen camera download error:',
       error?.message || error,
     );
     return [];

@@ -366,6 +366,17 @@ test('developer diagnostics export includes view, matching Transit feeds, and so
   assert.equal(snapshot.layers[1].stats.error, null);
 });
 
+test('application tools initialize the developer-mode surfaces', () => {
+  const tools = readFileSync(
+    new URL('../app/tools.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(tools, /initAnalystConsole\(\{[\s\S]*?annotationResolver: operations\.annotationResolver,[\s\S]*?\}\)/);
+  assert.match(tools, /initDeveloperMode\(\)/);
+  assert.match(tools, /defer\(\(\) => analystConsole\?\.destroy\(\)\)/);
+  assert.match(tools, /defer\(\(\) => developerMode\?\.destroy\(\)\)/);
+});
+
 test('developer diagnostics export downloads a local JSON file', () => {
   let clicked = false;
   let exportedBlob = null;

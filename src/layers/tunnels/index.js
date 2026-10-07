@@ -14,18 +14,19 @@ const CACHE_TTL_MS = 6 * 60 * 60_000;
 const ROAD_COLOR = '#F5B942';
 const RAIL_COLOR = '#50D8F0';
 const OUTLINE_COLOR = '#101820';
-const OUTLINE_WIDTH = 5;
-const ROAD_WIDTH = 2.4;
-const RAIL_WIDTH = 2.8;
-const OUTLINE_ALPHA = 0.08;
-const LINE_ALPHA = 0.28;
+const OUTLINE_WIDTH = 7;
+const ROAD_WIDTH = 3.4;
+const RAIL_WIDTH = 3.8;
+const OUTLINE_ALPHA = 0.16;
+const LINE_ALPHA = 0.5;
+const TUNNEL_DASH_LENGTH = 64;
 const GHOST_MAX_CAMERA_ALTITUDE_M = 18_000;
 const GHOST_CENTER_HEIGHT_M = 4;
-const GHOST_ALPHA = 0.05;
+const GHOST_ALPHA = 0.1;
 // No globe means no terrain surface to classify against — the depth-tested
 // ghost tube becomes the only correctly-occluded (behind-buildings) stand-in,
-// so it needs to read as a real tunnel line rather than a faint hint.
-const GHOST_ALPHA_NO_GLOBE = 0.2;
+// so it needs to read clearly through the Google 3D presentation.
+const GHOST_ALPHA_NO_GLOBE = 0.38;
 
 function tunnelLabelLimit(densityPct = getDetectionTuning().densityPct) {
   const density = Math.max(0, Math.min(100, Number(densityPct) || 0));
@@ -90,9 +91,23 @@ function midpointOfLine(coordinates) {
   return coordinates.at(-1);
 }
 
+function tunnelDashMaterial(cssColor, alpha) {
+  const color = Cesium.Color.fromCssColorString(cssColor);
+  // Cesium's dash material needs browser canvas support during construction;
+  // keep the headless fallback path testable and solid where it is unavailable.
+  if (typeof globalThis.HTMLCanvasElement === 'undefined') return color;
+  return Cesium.Material.fromType('PolylineDash', {
+    color: color.withAlpha(alpha),
+    gapColor: Cesium.Color.TRANSPARENT,
+    dashLength: TUNNEL_DASH_LENGTH,
+  });
+}
+
 function ghostTunnelShape(kind) {
-  const horizontalRadius = kind === 'rail' ? 4 : 5.5;
-  const verticalRadius = kind === 'rail' ? 3.5 : 4.5;
+  // Use a larger shell so the rendered tunnel reads as a volume rather than a
+  // thin alignment line.
+  const horizontalRadius = kind === 'rail' ? 8 : 11;
+  const verticalRadius = kind === 'rail' ? 7 : 9;
   return Array.from({ length: 16 }, (_, index) => {
     const angle = (index * Math.PI * 2) / 16;
     return new Cesium.Cartesian2(
@@ -269,14 +284,11 @@ export function createTunnelsLayer({ source, services }) {
     const primitive = new Cesium.GroundPolylinePrimitive({
       geometryInstances,
       appearance: new Cesium.PolylineMaterialAppearance({
-        // Glow (not solid Color) reads as light shining through geometry rather
-        // than a line painted on it — tunnels under Google 3D buildings.
-        material: Cesium.Material.fromType('PolylineGlow', {
-          color: Cesium.Color.fromCssColorString(cssColor).withAlpha(
-            cssColor === OUTLINE_COLOR ? OUTLINE_ALPHA : LINE_ALPHA,
-          ),
-          glowPower: 0.1,
-        }),
+        // Long dashes keep tunnel alignments distinct from surface roads.
+        material: tunnelDashMaterial(
+          cssColor,
+          cssColor === OUTLINE_COLOR ? OUTLINE_ALPHA : LINE_ALPHA,
+        ),
       }),
       // Tunnels are underground; classifying onto 3D tile buildings paints
       // them up building facades instead of hiding them. Terrain only — the
@@ -290,7 +302,10 @@ export function createTunnelsLayer({ source, services }) {
   }
 
   async function addFallbackLines(tunnels, width, cssColor, isCurrent) {
-    const material = Cesium.Color.fromCssColorString(cssColor);
+    const material = tunnelDashMaterial(
+      cssColor,
+      cssColor === OUTLINE_COLOR ? OUTLINE_ALPHA : LINE_ALPHA,
+    );
     const created = [];
     for (let index = 0; index < tunnels.length; index++) {
       if (!isCurrent()) return null;
@@ -431,65 +446,10 @@ export function createTunnelsLayer({ source, services }) {
     const primitives = [];
     const entities = [];
     const ghosts = [];
-    let useGroundPrimitives = false;
-    if (
-      viewer.scene.context &&
-      viewer.scene.groundPrimitives?.add &&
-      typeof Cesium.GroundPolylinePrimitive.isSupported === 'function'
-    ) {
-      try {
-        useGroundPrimitives = Cesium.GroundPolylinePrimitive.isSupported(
-          viewer.scene,
-        );
-      } catch {
-        useGroundPrimitives = false;
-      }
-    }
     try {
-      if (useGroundPrimitives) {
-        const outline = await addGroundPrimitive(
-          tunnels,
-          OUTLINE_WIDTH,
-          OUTLINE_COLOR,
-          isCurrent,
-        );
-        const roadLines = await addGroundPrimitive(
-          roads,
-          ROAD_WIDTH,
-          ROAD_COLOR,
-          isCurrent,
-        );
-        if (outline) primitives.push(outline);
-        if (roadLines) primitives.push(roadLines);
-        const railLines = await addGroundPrimitive(
-          rail,
-          RAIL_WIDTH,
-          RAIL_COLOR,
-          isCurrent,
-        );
-        if (railLines) primitives.push(railLines);
-      } else {
-        entities.push(
-          ...((await addFallbackLines(
-            tunnels,
-            OUTLINE_WIDTH,
-            OUTLINE_COLOR,
-            isCurrent,
-          )) || []),
-          ...((await addFallbackLines(
-            roads,
-            ROAD_WIDTH,
-            ROAD_COLOR,
-            isCurrent,
-          )) || []),
-          ...((await addFallbackLines(
-            rail,
-            RAIL_WIDTH,
-            RAIL_COLOR,
-            isCurrent,
-          )) || []),
-        );
-      }
+      // Render the volumetric tunnel shells only. The former ground-clamped
+      // alignment lines obscured the tunnel treatment and are intentionally
+      // omitted here.
       if (!isCurrent())
         throw Object.assign(new Error('Tunnel geometry superseded'), {
           name: 'AbortError',
