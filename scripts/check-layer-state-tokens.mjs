@@ -10,10 +10,14 @@ import {
   validateLayerStateRegistry,
 } from '../src/data/layerState.js';
 
-// The pre-ledger main revision had exactly the 28 pinned v2 registry entries.
-// Accept only that source blob as the one-time bootstrap; any other published
-// source without a ledger must fail closed rather than risk losing a token.
-const PRE_LEDGER_LAYER_STATE_BLOB = 'e559a4c40191512dcefb83134958a3bfd4a98a69';
+// These pre-ledger published revisions had exactly the 28 pinned v2 registry
+// entries. Accept only these source blobs as the one-time bootstrap; any other
+// published source without a ledger must fail closed rather than risk losing a
+// token.
+const PRE_LEDGER_LAYER_STATE_BLOBS = new Set([
+  'e559a4c40191512dcefb83134958a3bfd4a98a69',
+  'dc9c936d92ece81236dd1e6f38946cc8b71b7414',
+]);
 // This snapshot belongs to the verified published blob above, not to the PR's
 // editable legacy map. Otherwise a candidate could redefine both its ledger
 // and its comparison baseline before the first ledger reaches main.
@@ -76,7 +80,7 @@ export function readPublishedLayerStateReservations(
   }
   if (!hasLedger) {
     const sourceBlob = git(['rev-parse', `${commit}:${SOURCE_PATH}`], cwd);
-    if (sourceBlob !== PRE_LEDGER_LAYER_STATE_BLOB) {
+    if (!PRE_LEDGER_LAYER_STATE_BLOBS.has(sourceBlob)) {
       throw new Error(
         'Published base has no recognizable layer-state token ledger',
       );
