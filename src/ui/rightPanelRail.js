@@ -98,8 +98,11 @@ export function layoutRightPanelRail({
     !panel.classList.contains('collapsed') ||
     (keepDeveloperLauncher && panel.id === 'developer-tools-panel');
   for (const panel of panels) {
-    if (!remainsVisible(panel)) panel.setAttribute('aria-hidden', 'true');
+    if (exclusive && panel.classList.contains('collapsed'))
+      panel.setAttribute('aria-hidden', 'true');
     else panel.removeAttribute('aria-hidden');
+    if (keepDeveloperLauncher && panel.id === 'developer-tools-panel')
+      panel.removeAttribute('aria-hidden');
   }
 
   if (isMobile) {
@@ -150,7 +153,8 @@ export function layoutRightPanelRail({
   // presentation hides them. Manually collapsed launchers keep their policy.
   const measuredPanels = panels.filter(
     (panel) =>
-      remainsVisible(panel) || panel.classList.contains('layout-auto-collapsed'),
+      remainsVisible(panel) ||
+      panel.classList.contains('layout-auto-collapsed'),
   );
   const visiblePanels = panels.filter(remainsVisible);
   const displayScrollTop = readDisplayScrollTop();
